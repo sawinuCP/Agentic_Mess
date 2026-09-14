@@ -1,4 +1,4 @@
-"""Liveness and readiness endpoints (spec §43: health checks for local services)."""
+"""Health endpoints: liveness + fail-closed readiness (spec §43)."""
 
 from __future__ import annotations
 
@@ -8,34 +8,16 @@ import nats
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy import text
 
 from app import __version__
 from app.core.config import Settings
+from app.schemas.health import ComponentHealth, LivenessReport, ReadinessReport
 
 router = APIRouter(tags=["health"])
 
 STATUS_OK = "ok"
 STATUS_DOWN = "down"
-
-
-class ComponentHealth(BaseModel):
-    status: str
-    detail: str | None = None
-
-
-class LivenessReport(BaseModel):
-    status: str
-    version: str
-    environment: str
-
-
-class ReadinessReport(BaseModel):
-    ready: bool
-    version: str
-    environment: str
-    checks: dict[str, ComponentHealth]
 
 
 def _settings(request: Request) -> Settings:
@@ -46,6 +28,21 @@ def _settings(request: Request) -> Settings:
 def liveness(request: Request) -> LivenessReport:
     settings = _settings(request)
     return LivenessReport(status=STATUS_OK, version=__version__, environment=settings.environment)
+
+
+def _build_report(
+    settings: Settings, checks: dict[str, ComponentHealth]
+) -> tuple[bool, ReadinessReport]:
+    required = {"postgres"}
+    if settings.require_redis:
+        required.add("redis")
+    if settings.require_nats:
+        required.add("nats")
+    ready = all(checks[name].status == STATUS_OK for name in required)
+    report = ReadinessReport(
+        ready=ready, version=__version__, environment=settings.environment, checks=checks
+    )
+    return ready, report
 
 
 @router.get(
@@ -63,19 +60,8 @@ async def readiness(request: Request) -> JSONResponse:
         "redis": await _check_redis(settings),
         "nats": await _check_nats(settings),
     }
-    required = {"postgres"}
-    if settings.require_redis:
-        required.add("redis")
-    if settings.require_nats:
-        required.add("nats")
-    ready = all(checks[name].status == STATUS_OK for name in required)
-    report = ReadinessReport(
-        ready=ready, version=__version__, environment=settings.environment, checks=checks
-    )
-    return JSONResponse(
-        status_code=200 if ready else 503,
-        content=report.model_dump(mode="json"),
-    )
+    ready, report = _build_report(settings, checks)
+    return JSONResponse(status_code=200 if ready else 503, content=report.model_dump(mode="json"))
 
 
 async def _check_postgres(request: Request) -> ComponentHealth:

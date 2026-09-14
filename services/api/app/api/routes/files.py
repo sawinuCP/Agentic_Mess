@@ -4,54 +4,21 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_files_service, get_project
-from app.db.models import Project
-from app.events.recorder import record_event
+from app.api.deps import get_files_service
 from app.files.search import ProjectSearch
 from app.files.service import FileContent, ProjectFiles, TreeEntry
+from app.schemas.files import (
+    EntryCreateRequest,
+    EntryRenameRequest,
+    FileContentOut,
+    FileWriteRequest,
+    SearchMatchOut,
+    TreeEntryOut,
+)
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["files"])
-
-
-class FileWriteRequest(BaseModel):
-    path: str
-    content: str
-
-
-class EntryCreateRequest(BaseModel):
-    path: str
-    kind: str  # "file" | "directory"
-
-
-class EntryRenameRequest(BaseModel):
-    path: str
-    new_path: str
-
-
-class FileContentOut(BaseModel):
-    path: str
-    content: str
-    is_binary: bool
-    size: int
-    mtime_ms: int
-
-
-class TreeEntryOut(BaseModel):
-    name: str
-    path: str
-    kind: str
-    size: int
-    has_children: bool
-
-
-class SearchMatchOut(BaseModel):
-    path: str
-    line: int
-    column: int
-    text: str
 
 
 def _content_dto(content: FileContent) -> FileContentOut:
@@ -76,8 +43,7 @@ def _entry_dto(entry: TreeEntry) -> TreeEntryOut:
 
 @router.get("/tree", response_model=list[TreeEntryOut])
 async def tree(
-    path: str = "",
-    files: ProjectFiles = Depends(get_files_service),
+    path: str = "", files: ProjectFiles = Depends(get_files_service)
 ) -> list[TreeEntryOut]:
     entries = await asyncio.to_thread(files.tree, path)
     return [_entry_dto(e) for e in entries]
@@ -87,41 +53,28 @@ async def tree(
 async def read_file(
     path: str = Query(...), files: ProjectFiles = Depends(get_files_service)
 ) -> FileContentOut:
-    content = await asyncio.to_thread(files.read, path)
-    return _content_dto(content)
+    return _content_dto(await asyncio.to_thread(files.read, path))
 
 
 @router.put("/file", response_model=FileContentOut)
 async def write_file(
-    body: FileWriteRequest,
-    request: Request,
-    project: Project = Depends(get_project),
-    files: ProjectFiles = Depends(get_files_service),
+    body: FileWriteRequest, files: ProjectFiles = Depends(get_files_service)
 ) -> FileContentOut:
-    content = await asyncio.to_thread(files.write, body.path, body.content)
-    await record_event(
-        request.app.state.session_factory,
-        "FILE_WRITTEN",
-        project_id=project.id,
-        payload={"path": body.path, "bytes": len(body.content.encode("utf-8"))},
-    )
-    return _content_dto(content)
+    return _content_dto(await asyncio.to_thread(files.write, body.path, body.content))
 
 
 @router.post("/entries", response_model=TreeEntryOut)
 async def create_entry(
     body: EntryCreateRequest, files: ProjectFiles = Depends(get_files_service)
 ) -> TreeEntryOut:
-    entry = await asyncio.to_thread(files.create, body.path, body.kind)
-    return _entry_dto(entry)
+    return _entry_dto(await asyncio.to_thread(files.create, body.path, body.kind))
 
 
 @router.post("/rename", response_model=TreeEntryOut)
 async def rename_entry(
     body: EntryRenameRequest, files: ProjectFiles = Depends(get_files_service)
 ) -> TreeEntryOut:
-    entry = await asyncio.to_thread(files.rename, body.path, body.new_path)
-    return _entry_dto(entry)
+    return _entry_dto(await asyncio.to_thread(files.rename, body.path, body.new_path))
 
 
 @router.delete("/entries", status_code=204)

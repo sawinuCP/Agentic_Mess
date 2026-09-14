@@ -18,6 +18,33 @@
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
 
+## 2026-09-14 — Industry-standard restructure (v0.3.0, pre-Phase-3)
+
+Codebase audit and restructure before Phase 3, per the layering discipline now documented in
+[CONTRIBUTING.md](CONTRIBUTING.md):
+
+- **`app/schemas/`** layer created — all Pydantic request/response DTOs moved out of route files
+  into per-domain contract modules (health, projects, files, git, requirements, tasks, agents,
+  messages, artifacts, knowledge, toolchains).
+- **`app/services/`** layer created — business logic + persistence extracted from routes into
+  framework-free, fully-typed sync services (projects, requirements, plans, tasks, agents,
+  messages, artifacts, knowledge, toolchains, events). Routes are now thin:
+  parse → `asyncio.to_thread(service)` → return.
+- **Fixed dependency direction** enforced: routes → schemas → services → db/adapters; services
+  import no FastAPI. `core.errors.DomainError` is the single error contract.
+- `db/models/event.py` renamed to `events.py` (consistency with sibling domain modules);
+  superseded `app/events/` package folded into `app/services/events.py`.
+- Tool runs now persist large outputs as **evidence artifacts** automatically
+  (`ToolRunOut.artifact_ids`), closing the loop with the Phase-2 artifact store (LANG-005).
+- **Frontend ESLint** (flat config, typescript-eslint + react-hooks) added with `npm run lint`
+  and a CI gate; zero violations.
+- Versions synced to **0.3.0** (api + web-ui); CI web-ui job renamed "lint + build".
+- New: [CONTRIBUTING.md](CONTRIBUTING.md) (layering rules, endpoint checklist, commit style).
+
+Validation: ruff ✓ · mypy (104 files) ✓ · pytest **68 passed** ✓ · web-ui lint + build ✓ ·
+`smoke_editor.py` PASS (7/7 incl. PTY round-trip) · `smoke_durable.py` PASS (Temporal execution
+with evidence artifact) — all after the restructure.
+
 ## Phase 2 — completed scope
 
 - [x] **Full durable schema (spec §29)** — migrations `0002_planning`, `0003_tasks_messaging`,

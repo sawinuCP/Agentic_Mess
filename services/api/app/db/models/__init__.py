@@ -2,7 +2,7 @@
 
 from app.db.models.agents import Agent, AgentSession
 from app.db.models.artifacts import Artifact
-from app.db.models.event import Event
+from app.db.models.events import Event
 from app.db.models.infra import RuntimeInstance, ToolchainConfig
 from app.db.models.isolation import Resource, Worktree
 from app.db.models.knowledge import ContextItem, Memory

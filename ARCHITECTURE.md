@@ -213,19 +213,37 @@ prefer a different model family.
 ```text
 repo root
 ├── apps/
-│   └── web-ui/            # React+TS+Vite UI (Phase 0 shell; Monaco Phase 1)
+│   └── web-ui/            # React+TS+Vite UI (editor: explorer/Monaco/Git/terminals/toolchains)
 ├── services/
 │   └── api/               # FastAPI control plane (modular monolith)
-│       ├── app/           # application package (module map in §2)
+│       ├── app/
+│       │   ├── api/       # thin HTTP routes + deps + middleware
+│       │   ├── schemas/   # Pydantic request/response contracts
+│       │   ├── services/  # business logic + persistence (framework-free)
+│       │   ├── core/      # config, errors, logging, observability
+│       │   ├── db/        # SQLAlchemy models + engine/session management
+│       │   ├── files/     # project filesystem (path-safety, tree, search)
+│       │   ├── gitops/    # git CLI client
+│       │   ├── toolchains/# language registry, detection, tool execution
+│       │   ├── runtime/   # process runner (timeout/kill/caps)
+│       │   ├── terminal/  # PTY sessions over WebSocket
+│       │   ├── artifacts/ # content-addressed artifact store
+│       │   ├── tasks/     # task-graph integrity (cycle detection)
+│       │   ├── durable/   # Temporal client/workflow/activities/worker
+│       │   └── main.py    # app factory
 │       ├── alembic/       # migrations
 │       └── tests/         # unit + integration tests
-├── packages/              # shared contracts (schemas/protocols) — Phase 2+
+├── packages/              # shared contracts (schemas/protocols) — Phase 5+
 ├── infrastructure/
 │   └── observability/     # OTel collector config
 ├── docs/
-├── scripts/
+├── scripts/               # check.ps1, smoke_editor.py, smoke_durable.py
 └── docker-compose.yml     # local infra with profiles
 ```
+
+Layering rule (ADR-0001, see CONTRIBUTING.md): routes → schemas → services → db/adapters.
+Routes are thin; business logic lives in `services/` (framework-free, sync, invoked via
+`asyncio.to_thread`); adapters wrap external tools; `core` stays dependency-free.
 
 Deliberate deviations from spec §36: no separate `services/orchestrator`, `services/context-engine`
 … directories yet — those exist as modules inside `services/api/app/` and are extracted only when

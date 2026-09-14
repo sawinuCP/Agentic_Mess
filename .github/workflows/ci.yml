@@ -48,7 +48,7 @@ jobs:
         run: pytest -q
 
   web-ui:
-    name: Web UI — build
+    name: Web UI — lint + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,6 +61,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web-ui/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
 
   compose:

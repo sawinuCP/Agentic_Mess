@@ -1,4 +1,4 @@
-"""Write durable events to PostgreSQL. Best-effort: never breaks the main request."""
+"""Event recording service (FR-024): durable audit/observability events."""
 
 from __future__ import annotations
 
