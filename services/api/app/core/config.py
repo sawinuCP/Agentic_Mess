@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str = "http://localhost:4318/v1/traces"
     otel_service_name: str = "ai-harness-api"
 
+    # Durable execution (Temporal, Phase 2). Opt-in; the compose profile
+    # `--profile temporal` provides the server.
+    temporal_enabled: bool = False
+    temporal_address: str = "localhost:7233"
+    temporal_task_queue: str = "ai-harness-tasks"
+
+    # Content-addressed artifact storage root (raw outputs, evidence, files).
+    artifacts_dir: str = "./data/artifacts"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

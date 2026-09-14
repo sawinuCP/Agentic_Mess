@@ -52,6 +52,9 @@ are replaceable; requirements, tasks, code, artifacts, evidence and history are 
 │   app/runtime/      process runner (timeout/kill/caps) — Phase 6    │
 │                     grows this into sandboxed runtimes              │
 │   app/terminal/     PTY sessions over WebSocket (pywinpty/POSIX)    │
+│   app/artifacts/    content-addressed artifact store (sha256)       │
+│   app/tasks/        task-graph integrity (cycle detection)          │
+│   app/durable/      Temporal client/workflow/activities/worker      │
 │   app/events/       durable event recording (events table)          │
 │   app/orchestration Phase 4: scheduler, supervisor, recovery        │
 │   app/agents/       Phase 3: agent runtime, lifecycle, model calls  │
@@ -249,7 +252,7 @@ because Alembic requires the models importable; documented, not accidental.
 | ----- | ----------- | ------------------------ | ------ |
 | 0 | Architecture foundation | Repo, CI, schemas, local services, observability skeleton | **COMPLETE** |
 | 1 | Conventional editor | Project open/edit/search/terminal/Git/toolchain basics | **COMPLETE** (web UI; Tauri shell in Phase 10) |
-| 2 | Durable core | PG schemas, projects/tasks/agents/events, artifacts | NOT_STARTED |
+| 2 | Durable core | PG schemas, projects/tasks/agents/events, artifacts | **COMPLETE** (Temporal opt-in via `HARNESS_TEMPORAL_ENABLED`) |
 | 3 | Agent runtime + durable orchestration | Lifecycle, tools, context broker, Temporal, pause/resume | NOT_STARTED |
 | 4 | Multi-agent team | Dynamic spawn, scheduler, messaging, worktrees, leases | NOT_STARTED |
 | 5 | Code intelligence | Tree-sitter + LSP/SCIP + retrieval/ranking | NOT_STARTED |

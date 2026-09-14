@@ -19,6 +19,7 @@ def _write(
     factory: sessionmaker[Session],
     event_type: str,
     project_id: uuid.UUID | None,
+    task_id: uuid.UUID | None,
     payload: Mapping[str, Any] | None,
     source: str | None,
 ) -> None:
@@ -28,6 +29,7 @@ def _write(
                 event_type=event_type,
                 source=source or "api",
                 project_id=project_id,
+                task_id=task_id,
                 payload=dict(payload or {}),
             )
         )
@@ -39,11 +41,12 @@ async def record_event(
     event_type: str,
     *,
     project_id: uuid.UUID | None = None,
+    task_id: uuid.UUID | None = None,
     payload: Mapping[str, Any] | None = None,
     source: str | None = None,
 ) -> None:
     """Persist an event off the event loop; failures are logged, never raised."""
     try:
-        await asyncio.to_thread(_write, factory, event_type, project_id, payload, source)
+        await asyncio.to_thread(_write, factory, event_type, project_id, task_id, payload, source)
     except Exception as exc:  # noqa: BLE001 — observability must not break requests
         logger.warning("event_write_failed type=%s error=%s", event_type, exc)

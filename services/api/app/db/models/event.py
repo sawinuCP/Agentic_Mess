@@ -31,9 +31,11 @@ class Event(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), default=None
     )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), default=None
+    )
     execution_id: Mapped[str | None] = mapped_column(String(64), default=None)
     agent_id: Mapped[str | None] = mapped_column(String(64), default=None)
-    task_id: Mapped[str | None] = mapped_column(String(64), default=None)
     correlation_id: Mapped[str | None] = mapped_column(String(64), default=None)
     trace_id: Mapped[str | None] = mapped_column(String(64), default=None)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)

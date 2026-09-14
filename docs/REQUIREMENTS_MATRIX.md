@@ -17,12 +17,12 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-002 | Arbitrary languages via configurable toolchains | language-adapters, registry | 1 | IN_PROGRESS | services/api/app/toolchains/registry.py | tests/unit/test_toolchains.py | FR-004 | H |
 | FR-003 | Detect project languages/build systems | language-adapters | 1 | IMPLEMENTED | services/api/app/toolchains/detection.py | tests/unit/test_toolchains.py | FR-002 | M |
 | FR-004 | Configure compilers/interpreters/formatters/linters/test runners/debuggers/package managers/LSP | toolchain registry | 1 | IN_PROGRESS | app/toolchains/registry.py, app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | M |
-| FR-005 | Accept NL requirements + desired outcomes | requirement-engine | 2 | NOT_STARTED | — | — | FR-006 | M |
-| FR-006 | Decompose requirements into durable tasks | planner/orchestrator | 2 | NOT_STARTED | — | — | FR-005 | H |
+| FR-005 | Accept NL requirements + desired outcomes | requirement-engine | 2 | IN_PROGRESS | services/api/app/api/routes/requirements.py | tests/integration/test_durable_core_api.py | FR-006 | M |
+| FR-006 | Decompose requirements into durable tasks | planner/orchestrator | 2 | IMPLEMENTED | app/api/routes/plans.py, app/tasks/graph.py, app/durable/ | tests/integration/test_durable_core_api.py | FR-005 | H |
 | FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | NOT_STARTED | — | — | FR-006 | H |
-| FR-008 | Agents disposable/replaceable, task identity preserved | agent-runtime, db | 3 | NOT_STARTED | — | — | FR-006 | H |
+| FR-008 | Agents disposable/replaceable, task identity preserved | agent-runtime, db | 3 | IN_PROGRESS | app/db/models/agents.py, app/api/routes/agents.py | tests/integration/test_durable_core_api.py | FR-006 | H |
 | FR-009 | Multiple concurrent instances of same role | scheduler | 4 | NOT_STARTED | — | — | FR-008 | M |
-| FR-010 | Async durable structured inter-agent messaging | messaging (NATS+PG) | 4 | NOT_STARTED | — | — | FR-006 | M |
+| FR-010 | Async durable structured inter-agent messaging | messaging (NATS+PG) | 4 | IN_PROGRESS | app/db/models/messages.py, app/api/routes/messages.py | tests/integration/test_durable_core_api.py | FR-006 | M |
 | FR-011 | Configurable concurrency/resource limits | scheduler | 4 | NOT_STARTED | — | — | FR-011-b | M |
 | FR-012 | Isolated workspaces/worktrees for conflicting work | integration-manager | 4 | NOT_STARTED | — | — | FR-001 | M |
 | FR-013 | Requirement→task→code→test traceability | requirement-engine, db | 2/8 | NOT_STARTED | — | — | FR-006 | H |
@@ -36,7 +36,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
 | FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | NOT_STARTED | — | — | — | L |
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | NOT_STARTED | — | — | — | H |
-| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | services/api/app/db/models/event.py, app/events/recorder.py | tests/integration/test_db_smoke.py | — | L |
+| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | app/db/models/event.py, app/events/recorder.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
 | FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | NOT_STARTED | — | — | FR-013 | H |
 | FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | NOT_STARTED | — | — | FR-026 | M |
@@ -58,11 +58,11 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 
 | ID | Requirement | Subsystem | Phase | Status | Files | Tests | Depends | Risk |
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
-| TASK-001 | No vague tasks when acceptance criteria can be explicit | planner | 2 | NOT_STARTED | — | — | FR-006 | M |
-| TASK-002 | Task state persisted independently of worker process | db, orchestrator | 2 | NOT_STARTED | — | — | FR-006 | H |
-| TASK-003 | Task attempts preserve failure reasons + evidence | db, recovery | 2/3 | NOT_STARTED | — | — | TASK-002 | M |
-| REC-001 | Recovery preserves task identity + attempt evidence | recovery-manager | 3 | NOT_STARTED | — | — | TASK-003 | H |
-| REC-002 | Retries are bounded | recovery-manager, temporal | 3 | NOT_STARTED | — | — | REC-001 | M |
+| TASK-001 | No vague tasks when acceptance criteria can be explicit | planner | 2 | IMPLEMENTED | app/api/routes/requirements.py | tests/integration/test_durable_core_api.py | FR-006 | M |
+| TASK-002 | Task state persisted independently of worker process | db, orchestrator | 2 | IMPLEMENTED | app/db/models/tasks.py, app/durable/ | tests/integration/test_durable_activities.py | FR-006 | H |
+| TASK-003 | Task attempts preserve failure reasons + evidence | db, recovery | 2/3 | IMPLEMENTED | app/db/models/tasks.py, app/durable/activities.py | tests/integration/test_durable_activities.py | TASK-002 | M |
+| REC-001 | Recovery preserves task identity + attempt evidence | recovery-manager | 3 | IN_PROGRESS | app/durable/workflows.py, app/durable/activities.py | tests/integration/test_durable_activities.py | TASK-003 | H |
+| REC-002 | Retries are bounded | recovery-manager, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (max_attempts + durable timers) | tests/integration/test_durable_activities.py | REC-001 | M |
 | REC-003 | Repeated failure → escalation/replan, never infinite loop | recovery-manager | 3 | NOT_STARTED | — | — | REC-002 | M |
 
 ## Security rules (spec §31)
@@ -89,7 +89,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | PERF-003 | Scheduler concurrency bounded by config | scheduler | 4 | NOT_STARTED | — | — | FR-011 | L |
 | PERF-004 | Large logs never injected wholesale into context | context-engine | 3 | NOT_STARTED | — | — | FR-023 | H |
 | PERF-005 | Recovery operations idempotent where possible | recovery-manager | 3 | NOT_STARTED | — | — | REC-001 | M |
-| PERF-006 | Durable state survives application restart | db, temporal | 2/3 | NOT_STARTED | — | — | FR-024 | H |
+| PERF-006 | Durable state survives application restart | db, temporal | 2/3 | IN_PROGRESS | app/durable/workflows.py (durable timers/state) | scripts/smoke_durable.py | FR-024 | H |
 | PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | NOT_STARTED | — | — | TASK-002 | H |
 | PERF-008 | Index updates incremental after file changes | code-intelligence | 5 | NOT_STARTED | — | — | FR-013 | M |
 
@@ -98,7 +98,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | ID | Acceptance criterion | Verified via | Phase | Status |
 |----|----------------------|--------------|-------|--------|
 | AC-001 | Open real repo, edit/format/build/test without AI | E2E suite + manual | 1 | IN_PROGRESS (works today; scripts/smoke_editor.py covers the API path) |
-| AC-002 | Submit requirement → structured execution plan | E2E | 2 | NOT_STARTED |
+| AC-002 | Submit requirement → structured execution plan | E2E | 2 | IN_PROGRESS (API flow live; planner UI lands later) |
 | AC-003 | Dynamic multi-agent concurrent execution | Agent-protocol + concurrency tests | 4 | NOT_STARTED |
 | AC-004 | Async communication + durable shared artifacts | Contract tests | 4 | NOT_STARTED |
 | AC-005 | Parallel changes isolated + safely integrated | Worktree/integration tests | 4 | NOT_STARTED |

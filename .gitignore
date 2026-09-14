@@ -25,6 +25,7 @@ apps/web-ui/*.tsbuildinfo
 
 # --- Local infra data ---
 infrastructure/data/
+services/api/data/
 
 # --- Logs / temp ---
 *.log

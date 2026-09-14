@@ -4,22 +4,35 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api.middleware import RequestIDMiddleware
-from app.api.routes import files, git, health, projects, terminal, toolchains
+from app.api.routes import (
+    agents,
+    artifacts,
+    files,
+    git,
+    health,
+    knowledge,
+    messages,
+    plans,
+    projects,
+    requirements,
+    tasks,
+    terminal,
+    toolchains,
+)
+from app.artifacts.store import ArtifactStore
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
 from app.core.logging import configure_logging
 from app.core.observability import setup_tracing
 from app.db.base import build_engine, build_session_factory
-from app.files.service import FileServiceError
-from app.gitops.client import GitError
 from app.terminal.manager import TerminalManager
-from app.toolchains.errors import ToolchainError
 
 
 def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -42,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.session_factory = build_session_factory(engine)
         app.state.terminals = TerminalManager()
+        app.state.artifacts = ArtifactStore(Path(settings.artifacts_dir))
         yield
         app.state.terminals.close_all()
         engine.dispose()
@@ -54,9 +68,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(git.router)
     app.include_router(toolchains.router)
     app.include_router(terminal.router)
+    app.include_router(requirements.router)
+    app.include_router(plans.router)
+    app.include_router(tasks.router)
+    app.include_router(agents.router)
+    app.include_router(messages.router)
+    app.include_router(artifacts.router)
+    app.include_router(knowledge.router)
     app.add_middleware(RequestIDMiddleware)
-    for error_class in (FileServiceError, ToolchainError, GitError):
-        app.add_exception_handler(error_class, _domain_error_handler)
+    # DomainError is the shared base (FileServiceError/ToolchainError/GitError subclass it).
+    app.add_exception_handler(DomainError, _domain_error_handler)
     setup_tracing(app, settings)
     return app
 

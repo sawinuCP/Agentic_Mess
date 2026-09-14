@@ -8,7 +8,7 @@
 | ----- | ----------- | ------ | ----- |
 | 0 | Architecture foundation | **COMPLETE** | Repo, CI, service scaffold, migrations, tests, compose, observability skeleton, docs |
 | 1 | Conventional editor (no AI required) | **COMPLETE** | Projects, explorer, Monaco editor+tabs, search, Git panel, terminals (real PTY), toolchain registry/detection/run, quick-open |
-| 2 | Durable core (PostgreSQL entities + artifacts) | NOT_STARTED | Remaining entities from spec §29; Temporal integration |
+| 2 | Durable core (PostgreSQL entities + artifacts) | **COMPLETE** | Full spec §29 schema (21 entities, migrations 0002-0006), artifacts store, durable Temporal task execution with attempts/evidence |
 | 3 | Agent runtime + durable orchestration | NOT_STARTED | Lifecycle, model adapter, tool gateway, context broker, pause/resume |
 | 4 | Multi-agent orchestration | NOT_STARTED | Spawn policy, scheduler, messaging, worktrees, leases |
 | 5 | Code intelligence | NOT_STARTED | Tree-sitter, LSP, SCIP, retrieval |
@@ -17,6 +17,55 @@
 | 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
+
+## Phase 2 — completed scope
+
+- [x] **Full durable schema (spec §29)** — migrations `0002_planning`, `0003_tasks_messaging`,
+      `0004_knowledge_isolation`, `0005_oversight_infra`, `0006_events_task_uuid`:
+      workspaces, requirements, acceptance_criteria, plans, agents, agent_sessions, tasks,
+      task_dependencies, task_attempts, messages, artifacts, context_items, memories, worktrees,
+      resources (lease columns), decisions, reviews, validations, hitl_requests, runtime_instances,
+      toolchains — all with FKs, indexes and JSONB defaults
+- [x] **Requirements → plans → tasks** domain APIs with mandatory acceptance criteria (TASK-001),
+      dependency edges and up-front cycle rejection (spec §18), traceability columns
+      (requirement→plan→task→attempt, FR-013)
+- [x] **Task attempts** with bounded retry policy, outcome + failure class (spec §26 classes),
+      evidence artifact links (TASK-003, REC-001)
+- [x] **Artifacts**: content-addressed on-disk store (dedupe by sha256) + metadata API
+      (upload/download); Phase-1-style raw outputs persisted as evidence by workflow activities
+- [x] **Agents & sessions**: durable registry with lifecycle state, sessions with heartbeats
+- [x] **Messages**: durable, replayable inter-agent envelopes (spec §14) with conversations,
+      correlation ids, payload refs, TTL
+- [x] **Memories** (FACT/EVIDENCE/DECISION/OPINION/APPROVAL + provenance/freshness) and
+      **context items** (T0..T6 tiering) — durable substrates for the Phase 3 context broker
+- [x] **Temporal integration**: opt-in (`HARNESS_TEMPORAL_ENABLED`), `TaskExecutionWorkflow`
+      with bounded retries and durable backoff timers, six activities (load_task,
+      start_attempt, execute_work, finish_attempt, set_task_status, record_event), worker
+      entrypoint (`python -m app.durable.worker`), fail-closed 503 execute endpoint when disabled
+- [x] `scripts/smoke_durable.py`: live smoke — requirement → plan → task → workflow → completion
+      → evidence artifact verified by content
+
+### Phase 2 validation log (all gates executed locally, 2026-09-14)
+
+| Gate | Result |
+| ---- | ------ |
+| `alembic upgrade head` (0002 → 0006) against Docker PostgreSQL | pass |
+| `ruff check` / `ruff format --check` | pass |
+| `mypy` (83 source files) | pass |
+| `pytest -q` — **68 passed** (incl. new durable-core + activity integration tests) | pass |
+| `npm run build` (web-ui) | pass |
+| `scripts/smoke_durable.py` — full Temporal execution with live worker | **PASS** |
+
+Issues found and fixed during Phase 2 validation (kept for the record):
+
+1. `events.task_id` was still the Phase-0 correlation string — promoted to a real UUID FK to tasks
+   via migration `0006` (USING cast + FK, SET NULL).
+2. Exception handlers were registered for the three domain-error subclasses but not the shared
+   `DomainError` base, so directly-raised base errors bypassed HTTP mapping — now registered once.
+3. Temporal `auto-setup` loops forever without an explicit `DB_PORT` — pinned `DB_PORT: "5432"` in
+   compose (documented quirk).
+4. `RetryPolicy` uses `initial_interval` (timedelta) and `execute_activity` timeouts are typed
+   `timedelta` — corrected to satisfy temporalio's typed API.
 
 ## Phase 1 — completed scope
 
@@ -128,16 +177,19 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 2)
+## Next phase entry criteria (Phase 3)
 
-Phase 1 gates green (see validation logs) → begin Phase 2 durable core:
-complete the PostgreSQL entity set from spec §29 (requirements, plans, tasks, task_attempts,
-agents, agent_sessions, messages, context_items, memories, artifacts, tool_definitions, tool_calls,
-worktrees, resources, decisions, reviews, validations, hitl_requests, runtime_instances,
-toolchains), artifact storage, then Temporal integration.
+Phase 2 gates green → begin Phase 3 agent runtime + durable orchestration:
+agent lifecycle state machine (spec §12) driven by the runtime, model registry/routing
+(config-driven, no hard-coded models), tool gateway with policy enforcement (SEC-001..002),
+context broker consuming `context_items`/`memories` tiers, observation compression (FR-023)
+plugged into `execute_work_activity`, pause/resume via Temporal signals, HITL approval gates
+(`hitl_requests`), and `agent_sessions` heartbeats wired to the lifecycle.
 
 ## Change log
 
+- 2026-09-14 — Phase 2 durable core implemented and validated (full §29 schema, artifacts,
+  requirement→plan→task graph, Temporal task execution with attempts/evidence; durable smoke green).
 - 2026-09-14 — Phase 1 conventional editor implemented and validated (projects/explorer/Monaco
   tabs/search/Git/PTY terminals/toolchain registry+run; smoke script green).
 - 2026-09-14 — Phase 0 architecture foundation implemented and validated.

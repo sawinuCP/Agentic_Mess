@@ -35,6 +35,10 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_REQUIRE_REDIS` / `HARNESS_REQUIRE_NATS` | `false` | Fail readiness when components are down |
 | `HARNESS_OTEL_ENABLED` | `false` | Enable OTel tracing |
 | `HARNESS_OTEL_EXPORTER_ENDPOINT` | `http://localhost:4318/v1/traces` | OTLP/HTTP endpoint |
+| `HARNESS_TEMPORAL_ENABLED` | `false` | Durable task execution via Temporal |
+| `HARNESS_TEMPORAL_ADDRESS` | `localhost:7233` | Temporal frontend gRPC address |
+| `HARNESS_TEMPORAL_TASK_QUEUE` | `ai-harness-tasks` | Task queue for the durable worker |
+| `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run
 
@@ -51,10 +55,23 @@ npm run dev          # http://localhost:5173 — proxies /api → localhost:8000
 # End-to-end smoke (editor API + git + terminal round-trip) with the server running:
 ..\.venv\Scripts\python scripts\smoke_editor.py
 
+# Durable execution smoke (Temporal). Requires: --profile temporal up,
+# the worker running, and the API started with HARNESS_TEMPORAL_ENABLED=true:
+#   .venv\Scripts\python -m app.durable.worker    # cwd: services/api
+..\.venv\Scripts\python scripts\smoke_durable.py
+
 # Optional heavy infra
 docker compose --profile temporal up -d          # Temporal + UI (http://localhost:8088)
 docker compose --profile observability up -d     # OTel collector (OTLP 4317/4318)
 ```
+
+### Durable execution (Phase 2)
+
+Tasks are durable rows; executing one starts the `TaskExecutionWorkflow` in Temporal, which runs
+bounded, retryable attempts with backoff timers and stores raw output as evidence artifacts.
+Temporal is **opt-in**: with `HARNESS_TEMPORAL_ENABLED=false` (default) the execute endpoint fails
+closed with 503 and a clear message. The worker is a separate process (`python -m
+app.durable.worker`, cwd `services/api`).
 
 ### Editor features (Phase 1)
 

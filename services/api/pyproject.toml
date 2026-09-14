@@ -22,6 +22,8 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.25",
     "opentelemetry-instrumentation-fastapi>=0.46b0",
     "pywinpty>=2.0.13; sys_platform == 'win32'",
+    "python-multipart>=0.0.9",
+    "temporalio>=1.7",
 ]
 
 [project.optional-dependencies]

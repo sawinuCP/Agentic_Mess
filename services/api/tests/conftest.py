@@ -35,7 +35,10 @@ def client() -> Iterator[TestClient]:
 
 @pytest.fixture(scope="session")
 def app() -> FastAPI:
-    """App wired for integration tests; uses HARNESS_DATABASE_URL or the compose default."""
+    """App wired for integration tests; uses HARNESS_DATABASE_URL or the compose default.
+
+    Temporal is pinned off so the fail-closed execute test is deterministic.
+    """
     settings = Settings(
         environment="test",
         readiness_timeout_seconds=2.0,
@@ -43,5 +46,6 @@ def app() -> FastAPI:
         require_nats=False,
         log_level="INFO",
         otel_enabled=False,
+        temporal_enabled=False,
     )
     return create_app(settings)
