@@ -27,11 +27,41 @@ class TaskExecutionInput:
 
 @workflow.defn
 class TaskExecutionWorkflow:
-    """Execute one durable task: attempts with bounded retries and evidence.
+    """Execute one durable task with a disposable agent (spec §11-§13).
 
-    The Phase 3 agent runtime plugs into ``execute_work_activity``; until then the
-    honest work unit is a command supplied on the task payload (``payload.command``).
+    Pause/resume are first-class: the ``pause``/``resume`` signals set a flag the
+    workflow waits on between activities; the agent reaches a safe checkpoint
+    (between atomic steps) and its lifecycle state is recorded durably.
     """
+
+    def __init__(self) -> None:
+        self._paused = False
+
+    @workflow.signal
+    def pause(self) -> None:
+        self._paused = True
+
+    @workflow.signal
+    def resume(self) -> None:
+        self._paused = False
+
+    async def _checkpoint(self, agent_id: str | None) -> None:
+        """Safe checkpoint between activities: suspends new work while pausing."""
+        if agent_id is None or not self._paused:
+            return
+        await workflow.execute_activity(
+            "set_agent_state_activity",
+            {"agent_id": agent_id, "state": "paused"},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RETRY_DB,
+        )
+        await workflow.wait_condition(lambda: not self._paused)
+        await workflow.execute_activity(
+            "set_agent_state_activity",
+            {"agent_id": agent_id, "state": "resuming"},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RETRY_DB,
+        )
 
     @workflow.run
     async def run(self, input: TaskExecutionInput) -> dict:
@@ -61,11 +91,31 @@ class TaskExecutionWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=RETRY_DB,
             )
+            agent = await workflow.execute_activity(
+                "start_agent_activity",
+                {
+                    "task_id": input.task_id,
+                    "attempt_number": attempt_number,
+                    "attempt_id": attempt["id"],
+                },
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RETRY_DB,
+            )
+            agent_id: str = agent["agent_id"]
+            await workflow.execute_activity(
+                "set_agent_state_activity",
+                {"agent_id": agent_id, "state": "running"},
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RETRY_DB,
+            )
+
+            await self._checkpoint(agent_id)
             result = await workflow.execute_activity(
-                "execute_work_activity",
+                "agent_execute_activity",
                 {
                     "task_id": input.task_id,
                     "attempt_id": attempt["id"],
+                    "agent_id": agent_id,
                     "project_id": task["project_id"],
                     "payload": task.get("payload", {}),
                 },
@@ -73,6 +123,14 @@ class TaskExecutionWorkflow:
                     seconds=max(60, float(task.get("payload", {}).get("timeout_seconds", 300)))
                 ),
                 retry_policy=RETRY_NONE,
+            )
+
+            await self._checkpoint(agent_id)
+            await workflow.execute_activity(
+                "set_agent_state_activity",
+                {"agent_id": agent_id, "state": "verifying"},
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RETRY_DB,
             )
             await workflow.execute_activity(
                 "finish_attempt_activity",
@@ -88,7 +146,19 @@ class TaskExecutionWorkflow:
             )
             if result["outcome"] == "success":
                 summary["outcome"] = "success"
+                await workflow.execute_activity(
+                    "set_agent_state_activity",
+                    {"agent_id": agent_id, "state": "completed"},
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=RETRY_DB,
+                )
                 break
+            await workflow.execute_activity(
+                "set_agent_state_activity",
+                {"agent_id": agent_id, "state": "failed"},
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RETRY_DB,
+            )
             if attempt_number < max_attempts:
                 await workflow.sleep(backoff)  # durable timer — survives restarts
 

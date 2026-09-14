@@ -67,3 +67,11 @@ class DurableTasks:
             "workflow_id": handle.id,
             "run_id": handle.result_run_id or handle.first_execution_run_id or "",
         }
+
+    async def signal_task(self, task_id: uuid.UUID, signal_name: str) -> None:
+        """Send a control signal (pause/resume) to a running task workflow."""
+        from app.durable.workflows import TaskExecutionWorkflow  # noqa: PLC0415
+
+        client = await self.client()
+        handle = client.get_workflow_handle(f"task-exec-{task_id}")
+        await handle.signal(getattr(TaskExecutionWorkflow, signal_name))

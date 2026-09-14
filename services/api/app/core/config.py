@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # Content-addressed artifact storage root (raw outputs, evidence, files).
     artifacts_dir: str = "./data/artifacts"
 
+    # Agent runtime (Phase 3). The rehearsal model provider is the offline default;
+    # point HARNESS_MODELS_CONFIG at a JSON file to route roles at real providers.
+    agents_enabled: bool = True
+    models_config_path: str = ""
+    context_budget_tokens: int = 8000
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -60,7 +60,7 @@ def main() -> int:
     started.raise_for_status()
     print(f"[3] workflow started: {started.json()['workflow_id']}")
 
-    deadline = time.time() + 90
+    deadline = time.time() + 240
     task = client.get(f"/api/tasks/{task_id}").json()
     while time.time() < deadline and task["status"] not in ("completed", "failed", "cancelled"):
         time.sleep(2)

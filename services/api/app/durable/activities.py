@@ -9,27 +9,41 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 from temporalio import activity
 
+from app.agents_runtime.context_broker import assemble
+from app.agents_runtime.gateway import PolicyViolation, ToolInvocation
+from app.agents_runtime.gateway import invoke as gateway_invoke
+from app.agents_runtime.lifecycle import assert_transition
+from app.agents_runtime.models_registry import ModelRegistry, extract_commands
+from app.agents_runtime.providers import ModelRequest
 from app.artifacts.store import ArtifactStore
-from app.db.models import Artifact, Event, Project, Task, TaskAttempt
+from app.core.errors import DomainError
+from app.db.models import Agent, Artifact, Event, Memory, Project, Task, TaskAttempt
 from app.runtime.runner import run_process
 
 _EVIDENCE_MIN_BYTES = 512
 
 
-def init_refs(session_factory: sessionmaker[Session], artifact_store: ArtifactStore) -> None:
+def init_refs(
+    session_factory: sessionmaker[Session],
+    artifact_store: ArtifactStore,
+    settings: Any = None,
+) -> None:
     _Refs.session_factory = session_factory
     _Refs.artifact_store = artifact_store
+    _Refs.settings = settings
 
 
 class _Refs:
     session_factory: sessionmaker[Session] | None = None
     artifact_store: ArtifactStore | None = None
+    settings: Any = None
 
 
 def _refs() -> tuple[sessionmaker[Session], ArtifactStore]:
@@ -216,3 +230,227 @@ async def record_event_activity(input: dict[str, Any]) -> None:
             session.commit()
 
     await asyncio.to_thread(_record)
+
+
+@activity.defn
+async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Create the agent for this attempt (spec §11: agents are disposable)."""
+    factory, _store = _refs()
+
+    def _start() -> dict[str, Any]:
+        with factory() as session:
+            task_id = uuid.UUID(input["task_id"])
+            attempt_id = uuid.UUID(input["attempt_id"])
+            task = _db_task(session, task_id)
+            role = str((task.payload or {}).get("agent_role", "worker"))
+            agent = Agent(
+                project_id=task.project_id,
+                name=f"agent-{task_id.hex[:8]}-a{input['attempt_number']}",
+                role=role,
+                model=None,  # resolved by the model registry at execution time
+                capabilities=["shell"],
+                state="created",
+            )
+            session.add(agent)
+            attempt = session.get(TaskAttempt, attempt_id)
+            if attempt is not None:
+                attempt.agent_id = agent.id
+            session.add(
+                Event(
+                    event_type="AGENT_CREATED",
+                    source="temporal",
+                    project_id=task.project_id,
+                    task_id=task_id,
+                    payload={"agent_id": str(agent.id), "role": role},
+                )
+            )
+            session.commit()
+            return {"agent_id": str(agent.id), "role": role, "state": agent.state}
+
+    return await asyncio.to_thread(_start)
+
+
+@activity.defn
+async def set_agent_state_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Validate + apply an agent lifecycle transition (spec §12) and emit an event."""
+    factory, _store = _refs()
+
+    def _apply() -> dict[str, Any]:
+        with factory() as session:
+            agent = session.get(Agent, uuid.UUID(input["agent_id"]))
+            if agent is None:
+                raise RuntimeError(f"Agent not found: {input['agent_id']}")
+            assert_transition(agent.state, input["state"])
+            previous = agent.state
+            agent.state = input["state"]
+            session.add(
+                Event(
+                    event_type="AGENT_STATUS_CHANGED",
+                    source="temporal",
+                    project_id=agent.project_id,
+                    agent_id=str(agent.id),
+                    payload={"from": previous, "to": agent.state},
+                )
+            )
+            session.commit()
+            return {"agent_id": str(agent.id), "from": previous, "to": agent.state}
+
+    return await asyncio.to_thread(_apply)
+
+
+def _run_markers(payload: dict[str, Any]) -> str:
+    """Render payload commands as RUN markers for the model prompt."""
+    command = payload.get("command", [])
+    if command and isinstance(command[0], list):
+        return "\n".join("- RUN: " + " ".join(str(a) for a in argv) for argv in command)
+    return "- RUN: " + " ".join(str(a) for a in command) if command else ""
+
+
+def _decide_commands(payload: dict[str, Any], model_text: str) -> list[list[str]]:
+    """Determine the argv lists to execute.
+
+    Payload commands (argv lists) take precedence — deterministic and safe. When
+    absent, the model decision text is parsed into shell-string commands.
+    """
+    def _as_argv_list(cmd: Any) -> list[list[str]]:
+        if cmd and isinstance(cmd[0], list):
+            return [[str(a) for a in argv] for argv in cmd]
+        return [[str(a) for a in cmd]]
+
+    payload_commands = _as_argv_list(payload.get("command", []))
+    if payload_commands:
+        return payload_commands
+    return [text.split() for text in extract_commands(model_text)]
+
+
+@activity.defn
+async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent-driven work unit (Phase 3).
+
+    Context broker assembles tiered context; the role-routed model (rehearsal by
+    default) decides the commands; the tool gateway enforces policy and returns a
+    compressed observation (FR-023). Raw output is preserved as evidence artifacts.
+    """
+    factory, store = _refs()
+    settings = _Refs.settings
+    task_id = uuid.UUID(input["task_id"])
+    agent_id: str = input["agent_id"]
+    project_id = input.get("project_id")
+
+    def _load_context() -> dict[str, Any]:
+        with factory() as session:
+            task = _db_task(session, task_id)
+            project = session.get(Project, task.project_id) if task.project_id else None
+            memories = session.scalars(
+                select(Memory).where(Memory.project_id == task.project_id).limit(20)
+            ).all()
+            prior = session.scalars(select(TaskAttempt).where(TaskAttempt.task_id == task_id)).all()
+            return {
+                "title": task.title,
+                "request": task.request,
+                "expected_output": task.expected_output,
+                "allowed_tools": list(task.allowed_tools or []),
+                "payload": task.payload or {},
+                "project_name": project.name if project else "",
+                "project_root": project.root_path if project else ".",
+                "memories": [f"{m.kind}: {m.content}" for m in memories],
+                "prior_attempts": len(prior),
+            }
+
+    context_data = await asyncio.to_thread(_load_context)
+    payload = context_data["payload"]
+
+    bundle = assemble(
+        safety_text=(
+            "You are an agent inside the AI Harness. Policy: only execute commands the "
+            "task allowlist permits; the gateway denies dangerous commands outside the "
+            "model's control. Never claim completion without a successful observation."
+        ),
+        task_text=(
+            f"Task: {context_data['title']}\nRequest: {context_data['request']}\n"
+            f"Expected output: {context_data['expected_output'] or '(unspecified)'}\n"
+            "Commands from the task payload are listed below with '- RUN:' markers."
+        ),
+        state_text=f"Project: {context_data['project_name']}",
+        history_text=f"Prior attempts on this task: {context_data['prior_attempts']}",
+        evidence_text="\n".join(context_data["memories"]),
+        budget_tokens=int(getattr(settings, "context_budget_tokens", 8000) or 8000),
+    )
+
+    model_request = ModelRequest(
+        role=str(payload.get("agent_role", "worker")),
+        system="You are a disciplined software-engineering agent. Output the scripted decision.",
+        prompt=bundle.render()
+        + "\n\n"
+        + _run_markers(payload),
+        max_output_tokens=1024,
+    )
+    registry = ModelRegistry.load(Path(getattr(settings, "models_config_path", "") or "") or None)
+    model_response = await registry.complete(model_request)
+
+    commands = _decide_commands(payload, model_response.text)
+
+    allowed = frozenset(context_data["allowed_tools"]) or frozenset({"shell"})
+    observations: list[dict[str, Any]] = []
+    evidence_ids: list[str] = []
+    overall, failure_class, failure_detail = "success", None, None
+
+    async def _store_evidence(name: str, data: bytes) -> str | None:
+        def _persist() -> str:
+            blob = store.put(data)
+            with factory() as session:
+                artifact = Artifact(
+                    project_id=uuid.UUID(project_id) if project_id else None,
+                    name=f"agent-{agent_id[:8]}-{name}",
+                    kind="raw_output",
+                    mime="text/plain",
+                    size=blob.size,
+                    sha256=blob.sha256,
+                    storage_path=blob.storage_path,
+                )
+                session.add(artifact)
+                session.commit()
+                return str(artifact.id)
+
+        return await asyncio.to_thread(_persist)
+
+    for index, command in enumerate(commands):
+        argv = command.split() if isinstance(command, str) else [str(c) for c in command]
+        invocation = ToolInvocation(
+            tool="shell",
+            command=argv,
+            cwd=str(payload.get("cwd") or context_data["project_root"]),
+            timeout_seconds=float(payload.get("timeout_seconds", 120)),
+            allowed_tools=allowed,
+        )
+        try:
+            observation = await gateway_invoke(
+                invocation, invocation.command, store_evidence=_store_evidence
+            )
+        except PolicyViolation as exc:
+            if exc.needs_approval:
+                return {
+                    "outcome": "failed",
+                    "failure_class": "SECURITY_BLOCK",
+                    "failure_detail": exc.reason,
+                    "evidence_artifact_ids": evidence_ids,
+                    "observation": {"tool": "shell", "status": "blocked"},
+                }
+            raise DomainError(exc.reason, 422) from None
+        observations.append(observation.to_json())
+        evidence_ids.extend(observation.artifact_ids)
+        if observation.status != "success":
+            overall = "timeout" if observation.status == "timeout" else "failed"
+            failure_class = "TIMEOUT" if observation.status == "timeout" else "TASK_FAILURE"
+            failure_detail = f"command {index} failed: {observation.summary[:200]}"
+            break
+
+    return {
+        "outcome": overall,
+        "failure_class": failure_class,
+        "failure_detail": failure_detail,
+        "evidence_artifact_ids": evidence_ids,
+        "observation": observations[0] if observations else None,
+        "model": {"provider": model_response.provider, "model": model_response.model},
+        "context_tokens": bundle.total_tokens,
+    }

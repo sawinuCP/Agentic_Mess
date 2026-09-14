@@ -49,6 +49,26 @@ async def cancel_task(
     return task
 
 
+@router.post("/api/tasks/{task_id}/pause", status_code=204)
+async def pause_task(task_id: uuid.UUID, request: Request) -> None:
+    """Pause: the workflow reaches a safe checkpoint and suspends new work (FR-015)."""
+    durable = DurableTasks(request.app.state.settings)
+    try:
+        await durable.signal_task(task_id, "pause")
+    except Exception as exc:  # noqa: BLE001 — unavailable/disabled maps to 503
+        raise DomainError(str(getattr(exc, "message", exc)), 503) from None
+
+
+@router.post("/api/tasks/{task_id}/resume", status_code=204)
+async def resume_task(task_id: uuid.UUID, request: Request) -> None:
+    """Resume a paused task from its durable checkpoint (FR-015)."""
+    durable = DurableTasks(request.app.state.settings)
+    try:
+        await durable.signal_task(task_id, "resume")
+    except Exception as exc:  # noqa: BLE001 — unavailable/disabled maps to 503
+        raise DomainError(str(getattr(exc, "message", exc)), 503) from None
+
+
 @router.post("/api/tasks/{task_id}/execute", response_model=ExecuteOut)
 async def execute_task(
     task_id: uuid.UUID, request: Request, db: Session = Depends(get_db)

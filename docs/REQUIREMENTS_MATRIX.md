@@ -19,15 +19,15 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-004 | Configure compilers/interpreters/formatters/linters/test runners/debuggers/package managers/LSP | toolchain registry | 1 | IN_PROGRESS | app/toolchains/registry.py, app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | M |
 | FR-005 | Accept NL requirements + desired outcomes | requirement-engine | 2 | IN_PROGRESS | services/api/app/api/routes/requirements.py | tests/integration/test_durable_core_api.py | FR-006 | M |
 | FR-006 | Decompose requirements into durable tasks | planner/orchestrator | 2 | IMPLEMENTED | app/api/routes/plans.py, app/tasks/graph.py, app/durable/ | tests/integration/test_durable_core_api.py | FR-005 | H |
-| FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | NOT_STARTED | — | — | FR-006 | H |
-| FR-008 | Agents disposable/replaceable, task identity preserved | agent-runtime, db | 3 | IN_PROGRESS | app/db/models/agents.py, app/api/routes/agents.py | tests/integration/test_durable_core_api.py | FR-006 | H |
+| FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | IN_PROGRESS | app/durable/activities.py (agent per attempt) | tests/integration/test_durable_activities.py | FR-006 | H |
+| FR-008 | Agents disposable/replaceable, task identity preserved | agent-runtime, db | 3 | IMPLEMENTED | app/db/models/agents.py, app/agents_runtime/lifecycle.py, app/durable/ | tests/unit/test_agent_lifecycle.py, tests/integration/test_durable_activities.py | FR-006 | H |
 | FR-009 | Multiple concurrent instances of same role | scheduler | 4 | NOT_STARTED | — | — | FR-008 | M |
 | FR-010 | Async durable structured inter-agent messaging | messaging (NATS+PG) | 4 | IN_PROGRESS | app/db/models/messages.py, app/api/routes/messages.py | tests/integration/test_durable_core_api.py | FR-006 | M |
 | FR-011 | Configurable concurrency/resource limits | scheduler | 4 | NOT_STARTED | — | — | FR-011-b | M |
 | FR-012 | Isolated workspaces/worktrees for conflicting work | integration-manager | 4 | NOT_STARTED | — | — | FR-001 | M |
 | FR-013 | Requirement→task→code→test traceability | requirement-engine, db | 2/8 | NOT_STARTED | — | — | FR-006 | H |
-| FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | NOT_STARTED | — | — | — | M |
-| FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | NOT_STARTED | — | — | FR-008 | H |
+| FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | IN_PROGRESS | app/db/models/oversight.py, gateway approval hooks | — | — | M |
+| FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (signals+checkpoints) | scripts/smoke_durable.py (live) | FR-008 | H |
 | FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
 | FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | NOT_STARTED | — | — | — | H |
@@ -35,14 +35,14 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-020 | Browser-based debugging for web apps | playwright worker | 7 | NOT_STARTED | — | — | FR-018 | M |
 | FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
 | FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | NOT_STARTED | — | — | — | L |
-| FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | NOT_STARTED | — | — | — | H |
+| FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
 | FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | app/db/models/event.py, app/events/recorder.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
 | FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | NOT_STARTED | — | — | FR-013 | H |
 | FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | NOT_STARTED | — | — | FR-026 | M |
 | FR-028 | Editor usable for conventional workflows without AI | editor | 1 | IMPLEMENTED | apps/web-ui/src/ | scripts/smoke_editor.py (live) | — | M |
 | FR-029 | Project-level config, no hard-coded framework | config, toolchain registry | 1 | IMPLEMENTED | app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | L |
-| FR-030 | Security boundaries independent of model instructions | policy engine, gateway | 3+ | NOT_STARTED | — | — | — | H |
+| FR-030 | Security boundaries independent of model instructions | policy engine, gateway | 3+ | IN_PROGRESS | app/agents_runtime/gateway.py (deny/allow/approval outside model) | tests/unit/test_agent_gateway.py | — | H |
 
 ## Language/toolchain rules (spec §8)
 
@@ -69,12 +69,12 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 
 | ID | Requirement | Subsystem | Phase | Status | Files | Tests | Depends | Risk |
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
-| SEC-001 | All tool execution passes policy enforcement | tool-gateway | 3 | NOT_STARTED | — | — | — | H |
-| SEC-002 | Least-privilege files/network/secrets/tools per agent | policy engine | 3 | NOT_STARTED | — | — | SEC-001 | H |
+| SEC-001 | All tool execution passes policy enforcement | tool-gateway | 3 | IMPLEMENTED | app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
+| SEC-002 | Least-privilege files/network/secrets/tools per agent | policy engine | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (allowlists) | tests/unit/test_agent_gateway.py | SEC-001 | H |
 | SEC-003 | Secrets never in prompts or normal logs | secret store, logging | 3 | NOT_STARTED | — | — | SEC-001 | H |
-| SEC-004 | Sensitive actions support HITL approval | hitl, gateway | 3 | NOT_STARTED | — | — | SEC-001 | M |
+| SEC-004 | Sensitive actions support HITL approval | hitl, gateway | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (APPROVAL_PATTERNS) | tests/unit/test_agent_gateway.py | SEC-001 | M |
 | SEC-005 | Untrusted code runs in stronger isolation when configured | runtime-manager | 6 | NOT_STARTED | — | — | FR-018 | H |
-| SEC-006 | Tool outputs treated as untrusted input | context-engine | 3 | NOT_STARTED | — | — | SEC-001 | M |
+| SEC-006 | Tool outputs treated as untrusted input | context-engine | 3 | IN_PROGRESS | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | SEC-001 | M |
 | SEC-007 | Prompt injection cannot override system policy | policy engine, context | 3+ | NOT_STARTED | — | — | SEC-006 | H |
 | SEC-008 | Audit events for security-sensitive actions | events | 3 | NOT_STARTED | — | — | FR-024 | L |
 | SEC-009 | User/project data local by default | packaging, config | 10 | NOT_STARTED | — | — | — | L |
@@ -87,7 +87,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | PERF-001 | UI responsive while agents/runtimes execute | web-ui, api | 9 | NOT_STARTED | — | — | FR-025 | M |
 | PERF-002 | Live event streaming incremental + backpressure-aware | api, nats | 9 | NOT_STARTED | — | — | FR-024 | M |
 | PERF-003 | Scheduler concurrency bounded by config | scheduler | 4 | NOT_STARTED | — | — | FR-011 | L |
-| PERF-004 | Large logs never injected wholesale into context | context-engine | 3 | NOT_STARTED | — | — | FR-023 | H |
+| PERF-004 | Large logs never injected wholesale into context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | FR-023 | H |
 | PERF-005 | Recovery operations idempotent where possible | recovery-manager | 3 | NOT_STARTED | — | — | REC-001 | M |
 | PERF-006 | Durable state survives application restart | db, temporal | 2/3 | IN_PROGRESS | app/durable/workflows.py (durable timers/state) | scripts/smoke_durable.py | FR-024 | H |
 | PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | NOT_STARTED | — | — | TASK-002 | H |

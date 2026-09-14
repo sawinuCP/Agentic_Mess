@@ -18,6 +18,45 @@
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
 
+## Phase 3 — agent runtime core (implemented 2026-09-14)
+
+The Phase-3 increment delivers the agent execution core inside the durable harness:
+
+- **`app/agents_runtime/`** new package:
+  - `lifecycle.py` — spec §12 state machine (14 states), validated transitions, runtime-only control
+  - `providers.py` — model provider protocol; **RehearsalProvider** (deterministic offline
+    default) and **OpenAICompatibleProvider** (real HTTP adapter for GLM/OpenAI/vLLM endpoints via
+    `HARNESS_OPENAI_*`)
+  - `models_registry.py` — config-driven role routing (worker/planner/reviewer/adjudicator/…)
+    from `HARNESS_MODELS_CONFIG` JSON merged over defaults; no model names in code
+  - `observations.py` — RTK-style observation compression (FR-023): status/exit/summary/error
+    lines/artifact refs, never raw logs (PERF-004)
+  - `gateway.py` — tool gateway (SEC-001/002): task allowlists, global deny patterns,
+    approval-required patterns (→ HITL), timeouts, evidence artifacts, normalized observations
+  - `context_broker.py` — tiered context assembly (T0 safety … T5 evidence) with token budgets;
+    T0 never dropped
+- **Durable integration**: workflow now creates a disposable agent per attempt, runs lifecycle
+  transitions (created→running→verifying→completed/failed) with `AGENT_*` events, executes through
+  the gateway, and supports **pause/resume signals** (safe checkpoints between activities; agent
+  reaches `pause_requested→paused→resuming`).
+- **New endpoints**: `POST /api/tasks/{id}/pause` / `resume` (Temporal signals), `GET /api/events`
+  (filterable durable event replay).
+- **Tests**: 87 passing — new unit suites for lifecycle, gateway policy, observation compression,
+  context budgeting, registry routing; live `smoke_durable.py` now exercises the full agent path.
+
+### Phase 3 validation log (2026-09-14)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff / mypy (115 files) | pass |
+| pytest — **87 passed** | pass |
+| `scripts/smoke_durable.py` — agent-driven execution (rehearsal provider → gateway → evidence) | **PASS** |
+| web-ui lint + build | pass |
+
+Remaining Phase-3 work (tracked): HITL approval-gate polling loop on `hitl_requests` (policy
+hooks are in the gateway), model budget escalation policies, heartbeat-based agent session
+supervision, and agent replacement semantics.
+
 ## 2026-09-14 — Industry-standard restructure (v0.3.0, pre-Phase-3)
 
 Codebase audit and restructure before Phase 3, per the layering discipline now documented in
