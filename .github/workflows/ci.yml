@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  python:
+    name: Python (api) — lint, types, tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: harness
+          POSTGRES_PASSWORD: harness
+          POSTGRES_DB: harness
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U harness -d harness"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      HARNESS_DATABASE_URL: postgresql+psycopg://harness:harness@localhost:5432/harness
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Format check (ruff)
+        run: ruff format --check .
+      - name: Type check (mypy)
+        run: mypy
+      - name: Migrations (alembic)
+        run: alembic upgrade head
+      - name: Tests (pytest)
+        run: pytest -q
+
+  web-ui:
+    name: Web UI — build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web-ui/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  compose:
+    name: Compose config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config -q

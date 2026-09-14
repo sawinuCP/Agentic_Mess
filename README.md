@@ -1,0 +1,56 @@
+# AI Harness Code Editor
+
+A durable, locally runnable **AI-native code editor and agentic software-engineering platform**.
+Users describe a software requirement; the harness plans work, dynamically creates agents,
+executes them in isolated workspaces with controlled tools, verifies results with evidence,
+and keeps humans in control — all inside a professional code editor.
+
+> **Status:** Phase 0 (architecture foundation) — see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
+> The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
+
+## Quickstart (local development)
+
+Prerequisites: Python 3.11+, Node 22+, Docker Desktop, Git.
+
+```powershell
+# 1. Start local infrastructure (PostgreSQL + Redis + NATS)
+docker compose up -d postgres redis nats
+
+# 2. Python control plane
+python -m venv .venv
+.venv\Scripts\pip install -e "services/api[dev]"
+
+# 3. Apply migrations (services/api is the working directory for alembic)
+Push-Location services/api
+..\..\.venv\Scripts\alembic upgrade head
+Pop-Location
+
+# 4. Run the API
+.venv\Scripts\uvicorn app.main:app --reload --port 8000 --app-dir services/api
+
+# 5. Run the web UI
+cd apps\web-ui
+npm install
+npm run dev                                                        # http://localhost:5173
+```
+
+Quality gates (same as CI): `powershell -File scripts\check.ps1`
+
+## Repository layout
+
+```text
+apps/web-ui/          React + TypeScript UI (Monaco editor arrives in Phase 1)
+services/api/         FastAPI control plane (modular monolith; module map in ARCHITECTURE.md)
+infrastructure/       Local infra config (OTel collector, later: docker/temporal/nats assets)
+docs/                 Requirements matrix and engineering docs
+scripts/              Developer helper scripts
+```
+
+## Documentation
+
+| Document                                             | Purpose                                        |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                 | Target architecture, decisions, risks          |
+| [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)| Phase tracking and honest NOT_IMPLEMENTED list |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md)                   | Setup, commands, migrations, extension guides  |
+| [`docs/REQUIREMENTS_MATRIX.md`](docs/REQUIREMENTS_MATRIX.md) | Requirement → subsystem → status matrix |

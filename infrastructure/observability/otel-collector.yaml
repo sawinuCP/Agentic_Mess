@@ -1,0 +1,24 @@
+# OpenTelemetry Collector configuration (Phase 0 observability skeleton).
+# Traces received via OTLP are printed to the collector logs; replace the
+# exporter with a durable backend (Tempo/Jaeger) when Phase 9 UI work lands.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
