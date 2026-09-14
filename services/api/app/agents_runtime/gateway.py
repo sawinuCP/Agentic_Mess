@@ -56,6 +56,7 @@ class ToolInvocation:
     cwd: str
     timeout_seconds: float = 120.0
     allowed_tools: frozenset[str] = frozenset()
+    pre_approved: bool = False  # HITL gate approved this exact command (SEC-004)
 
 
 @dataclass(slots=True)
@@ -80,7 +81,7 @@ def check_policy(invocation: ToolInvocation, command: list[str]) -> None:
             f"({sorted(invocation.allowed_tools)})"
         )
     for pattern in APPROVAL_PATTERNS:
-        if pattern in joined:
+        if pattern in joined and not invocation.pre_approved:
             raise PolicyViolation(
                 f"Command requires human approval: matches '{pattern}'", needs_approval=True
             )

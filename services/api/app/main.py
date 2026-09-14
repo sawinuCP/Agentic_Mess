@@ -18,6 +18,7 @@ from app.api.routes import (
     files,
     git,
     health,
+    hitl,
     knowledge,
     messages,
     plans,
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(artifacts.router)
     app.include_router(knowledge.router)
     app.include_router(events.router)
+    app.include_router(hitl.router)
     app.add_middleware(RequestIDMiddleware)
     # DomainError is the shared base (FileServiceError/ToolchainError/GitError subclass it).
     app.add_exception_handler(DomainError, _domain_error_handler)

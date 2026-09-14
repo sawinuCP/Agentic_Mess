@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     models_config_path: str = ""
     context_budget_tokens: int = 8000
 
+    # HITL gates fail closed: if no decision arrives within the timeout the action
+    # is treated as rejected (spec §25).
+    hitl_timeout_seconds: float = 300.0
+    hitl_poll_seconds: float = 1.0
+
+    # Session supervision: heartbeats older than this mark a session "lost".
+    session_stale_seconds: int = 300
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

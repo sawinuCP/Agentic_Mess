@@ -25,6 +25,7 @@ class ModelRoute:
     model: str
     max_output_tokens: int = 2048
     temperature: float = 0.2
+    fallback_role: str = ""  # role to escalate to when this provider fails (spec §32)
 
 
 @dataclass(slots=True)
@@ -42,6 +43,7 @@ class ModelResponse:
     model: str
     prompt_tokens_est: int
     output_tokens_est: int
+    fell_back_to: str = ""
 
 
 class ModelProviderError(Exception):

@@ -96,3 +96,32 @@ def end_session(db: Session, session_id: uuid.UUID) -> SessionOut:
         agent.state = "waiting"
     db.commit()
     return session_out(session)
+
+
+def supervise_sessions(db: Session, stale_seconds: int) -> dict[str, int]:
+    """Mark running sessions whose heartbeat went stale as ``lost`` (spec §12).
+
+    Agent process loss must not destroy task state (PERF-007) — supervision only
+    records reality; recovery decisions belong to the runtime.
+    """
+    from datetime import timedelta
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=stale_seconds)
+    stale = db.scalars(
+        select(AgentSession).where(
+            AgentSession.status == "running",
+            AgentSession.started_at < cutoff,
+        )
+    ).all()
+    lost = 0
+    for session in stale:
+        last = session.heartbeat_at or session.started_at
+        if last < cutoff:
+            session.status = "lost"
+            session.finished_at = datetime.now(UTC)
+            agent = db.get(Agent, session.agent_id)
+            if agent is not None and agent.state == "running":
+                agent.state = "failed"
+            lost += 1
+    db.commit()
+    return {"checked": len(stale), "marked_lost": lost}

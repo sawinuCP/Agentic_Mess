@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,16 @@ from app.agents_runtime.models_registry import ModelRegistry, extract_commands
 from app.agents_runtime.providers import ModelRequest
 from app.artifacts.store import ArtifactStore
 from app.core.errors import DomainError
-from app.db.models import Agent, Artifact, Event, Memory, Project, Task, TaskAttempt
+from app.db.models import (
+    Agent,
+    AgentSession,
+    Artifact,
+    Event,
+    Memory,
+    Project,
+    Task,
+    TaskAttempt,
+)
 from app.runtime.runner import run_process
 
 _EVIDENCE_MIN_BYTES = 512
@@ -57,6 +67,87 @@ def _db_task(session: Session, task_id: uuid.UUID) -> Task:
     if task is None:
         raise RuntimeError(f"Task not found: {task_id}")
     return task
+
+
+async def heartbeat_session(session_id: str) -> None:
+    """Refresh an agent session heartbeat (spec §12: mandatory while running)."""
+    if not session_id:
+        return
+    factory, _store = _refs()
+
+    def _beat() -> None:
+        with factory() as session:
+            row = session.get(AgentSession, uuid.UUID(session_id))
+            if row is not None and row.status == "running":
+                row.heartbeat_at = datetime.now(UTC)
+                session.commit()
+
+    await asyncio.to_thread(_beat)
+
+
+async def hitl_gate(
+    *,
+    project_id: str | None,
+    task_id: uuid.UUID,
+    command: list[str],
+    timeout_seconds: float,
+    poll_seconds: float,
+) -> dict[str, Any]:
+    """Create a durable HITL request and wait (fail-closed) for the decision."""
+    from app.services import hitl as hitl_service  # noqa: PLC0415
+
+    factory, _store = _refs()
+
+    def _create() -> dict[str, Any]:
+        with factory() as session:
+            request = hitl_service.create_request(
+                session,
+                project_id=uuid.UUID(project_id) if project_id else None,
+                task_id=task_id,
+                kind="approve_command",
+                question="Approve execution of a policy-gated command?",
+                choices=["approve", "reject"],
+                risk="high",
+            )
+            return {"request_id": str(request.id), "command": " ".join(command)}
+
+    created = await asyncio.to_thread(_create)
+    request_id = uuid.UUID(created["request_id"])
+
+    with factory() as session:
+        session.add(
+            Event(
+                event_type="HITL_REQUESTED",
+                source="temporal",
+                project_id=uuid.UUID(project_id) if project_id else None,
+                task_id=task_id,
+                payload={"request_id": created["request_id"], "command": created["command"]},
+            )
+        )
+        session.commit()
+
+    def _wait() -> tuple[Any, bool]:
+        with factory() as session:
+            return hitl_service.wait_decision(session, request_id, timeout_seconds, poll_seconds)
+
+    request, approved = await asyncio.to_thread(_wait)
+
+    with factory() as session:
+        session.add(
+            Event(
+                event_type="HITL_RESPONDED",
+                source="temporal",
+                project_id=uuid.UUID(project_id) if project_id else None,
+                task_id=task_id,
+                payload={
+                    "request_id": str(request_id),
+                    "status": request.status,
+                    "approved": approved,
+                },
+            )
+        )
+        session.commit()
+    return {"request_id": str(request_id), "status": request.status, "approved": approved}
 
 
 @activity.defn
@@ -234,7 +325,11 @@ async def record_event_activity(input: dict[str, Any]) -> None:
 
 @activity.defn
 async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
-    """Create the agent for this attempt (spec §11: agents are disposable)."""
+    """Create the agent for this attempt (spec §11: agents are disposable).
+
+    Replacement semantics (FR-008): attempt N>1 records which failed agent it
+    replaces; task identity is preserved across the replacement.
+    """
     factory, _store = _refs()
 
     def _start() -> dict[str, Any]:
@@ -255,17 +350,31 @@ async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
             attempt = session.get(TaskAttempt, attempt_id)
             if attempt is not None:
                 attempt.agent_id = agent.id
+            session_row = AgentSession(
+                agent_id=agent.id, runtime="temporal-worker", heartbeat_at=datetime.now(UTC)
+            )
+            session.add(session_row)
             session.add(
                 Event(
                     event_type="AGENT_CREATED",
                     source="temporal",
                     project_id=task.project_id,
                     task_id=task_id,
-                    payload={"agent_id": str(agent.id), "role": role},
+                    payload={
+                        "agent_id": str(agent.id),
+                        "role": role,
+                        "replaces_agent_id": input.get("replaces_agent_id"),
+                        "session_id": str(session_row.id),
+                    },
                 )
             )
             session.commit()
-            return {"agent_id": str(agent.id), "role": role, "state": agent.state}
+            return {
+                "agent_id": str(agent.id),
+                "session_id": str(session_row.id),
+                "role": role,
+                "state": agent.state,
+            }
 
     return await asyncio.to_thread(_start)
 
@@ -312,6 +421,7 @@ def _decide_commands(payload: dict[str, Any], model_text: str) -> list[list[str]
     Payload commands (argv lists) take precedence — deterministic and safe. When
     absent, the model decision text is parsed into shell-string commands.
     """
+
     def _as_argv_list(cmd: Any) -> list[list[str]]:
         if cmd and isinstance(cmd[0], list):
             return [[str(a) for a in argv] for argv in cmd]
@@ -335,6 +445,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     settings = _Refs.settings
     task_id = uuid.UUID(input["task_id"])
     agent_id: str = input["agent_id"]
+    session_id: str = input.get("session_id", "")
     project_id = input.get("project_id")
 
     def _load_context() -> dict[str, Any]:
@@ -380,9 +491,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     model_request = ModelRequest(
         role=str(payload.get("agent_role", "worker")),
         system="You are a disciplined software-engineering agent. Output the scripted decision.",
-        prompt=bundle.render()
-        + "\n\n"
-        + _run_markers(payload),
+        prompt=bundle.render() + "\n\n" + _run_markers(payload),
         max_output_tokens=1024,
     )
     registry = ModelRegistry.load(Path(getattr(settings, "models_config_path", "") or "") or None)
@@ -428,15 +537,35 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 invocation, invocation.command, store_evidence=_store_evidence
             )
         except PolicyViolation as exc:
-            if exc.needs_approval:
+            if not exc.needs_approval:
+                raise DomainError(exc.reason, 422) from None
+            # HITL gate (SEC-004): create a durable request and fail closed on timeout.
+            settings_obj = _Refs.settings
+            gate = await hitl_gate(
+                project_id=project_id,
+                task_id=task_id,
+                command=argv,
+                timeout_seconds=float(
+                    getattr(settings_obj, "hitl_timeout_seconds", 300.0) or 300.0
+                ),
+                poll_seconds=float(getattr(settings_obj, "hitl_poll_seconds", 1.0) or 1.0),
+            )
+            if not gate["approved"]:
                 return {
                     "outcome": "failed",
                     "failure_class": "SECURITY_BLOCK",
-                    "failure_detail": exc.reason,
+                    "failure_detail": f"HITL {gate['status']}: {exc.reason}",
                     "evidence_artifact_ids": evidence_ids,
-                    "observation": {"tool": "shell", "status": "blocked"},
+                    "observation": {"tool": "shell", "status": "blocked", "hitl": gate["status"]},
                 }
-            raise DomainError(exc.reason, 422) from None
+            observation = await gateway_invoke(
+                replace(invocation, pre_approved=True),
+                invocation.command,
+                store_evidence=_store_evidence,
+            )
+        await heartbeat_session(session_id)
+        if activity.in_activity():
+            activity.heartbeat()
         observations.append(observation.to_json())
         evidence_ids.extend(observation.artifact_ids)
         if observation.status != "success":

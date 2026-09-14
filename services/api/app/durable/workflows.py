@@ -97,10 +97,12 @@ class TaskExecutionWorkflow:
                     "task_id": input.task_id,
                     "attempt_number": attempt_number,
                     "attempt_id": attempt["id"],
+                    "replaces_agent_id": summary.get("last_agent_id"),
                 },
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=RETRY_DB,
             )
+            summary["last_agent_id"] = agent["agent_id"]
             agent_id: str = agent["agent_id"]
             await workflow.execute_activity(
                 "set_agent_state_activity",
@@ -116,6 +118,7 @@ class TaskExecutionWorkflow:
                     "task_id": input.task_id,
                     "attempt_id": attempt["id"],
                     "agent_id": agent_id,
+                    "session_id": agent.get("session_id", ""),
                     "project_id": task["project_id"],
                     "payload": task.get("payload", {}),
                 },

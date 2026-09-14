@@ -36,14 +36,13 @@ class ModelRegistry:
 
     @staticmethod
     def _route(role: str, spec: dict[str, Any]) -> ModelRoute:
-        from app.agents_runtime.providers import ModelRoute  # noqa: PLC0415
-
         return ModelRoute(
             role=role,
             provider=str(spec.get("provider", "rehearsal")),
             model=str(spec.get("model", f"rehearsal-{role}")),
             max_output_tokens=int(spec.get("max_output_tokens", 2048)),
             temperature=float(spec.get("temperature", 0.2)),
+            fallback_role=str(spec.get("fallback_role", "")),
         )
 
     @classmethod
@@ -62,8 +61,19 @@ class ModelRegistry:
         return route
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        """Complete with bounded escalation (spec §32): on provider failure, retry
+        via the route's ``fallback_role`` once, recording that the fallback ran."""
         route = self.route_for(request.role)
-        return await get_provider(route.provider).complete(request, route)
+        try:
+            return await get_provider(route.provider).complete(request, route)
+        except ModelProviderError:
+            fallback_role = str(getattr(route, "fallback_role", "") or "")
+            if not fallback_role or fallback_role == request.role:
+                raise
+            fallback = self.route_for(fallback_role)
+            response = await get_provider(fallback.provider).complete(request, fallback)
+            response.fell_back_to = fallback.role
+            return response
 
 
 def extract_commands(model_text: str) -> list[str]:
