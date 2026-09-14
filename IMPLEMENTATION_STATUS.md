@@ -1,13 +1,13 @@
 # Implementation Status
 
-**Generated:** 2026-09-14 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 0 — Architecture foundation
+**Generated:** 2026-09-14 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 1 — Conventional editor (complete)
 
 ## Phase overview
 
 | Phase | Deliverable | Status | Notes |
 | ----- | ----------- | ------ | ----- |
 | 0 | Architecture foundation | **COMPLETE** | Repo, CI, service scaffold, migrations, tests, compose, observability skeleton, docs |
-| 1 | Conventional editor (no AI required) | NOT_STARTED | Monaco, explorer, tabs, search, terminal, Git basics, toolchain detection |
+| 1 | Conventional editor (no AI required) | **COMPLETE** | Projects, explorer, Monaco editor+tabs, search, Git panel, terminals (real PTY), toolchain registry/detection/run, quick-open |
 | 2 | Durable core (PostgreSQL entities + artifacts) | NOT_STARTED | Remaining entities from spec §29; Temporal integration |
 | 3 | Agent runtime + durable orchestration | NOT_STARTED | Lifecycle, model adapter, tool gateway, context broker, pause/resume |
 | 4 | Multi-agent orchestration | NOT_STARTED | Spawn policy, scheduler, messaging, worktrees, leases |
@@ -17,6 +17,50 @@
 | 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
+
+## Phase 1 — completed scope
+
+- [x] **Projects**: open (absolute path, validated + registered in PostgreSQL), list, re-open
+      idempotent, unregister; `PROJECT_OPENED` events persisted
+- [x] **Explorer**: lazy file tree with ignore rules, create/rename/delete (path-confined),
+      refresh
+- [x] **Editor**: Monaco (bundled locally, no CDN), tabs with dirty tracking, Ctrl+S save,
+      binary-file detection, quick-open (Ctrl+P)
+- [x] **Search**: full-text search with regex/case options, grouped results, click-to-line
+- [x] **Git**: status (porcelain parse incl. renames), stage/unstage, commit, log, branches,
+      checkout, init, diff (HEAD↔worktree in Monaco DiffEditor)
+- [x] **Toolchains**: data-driven registry (Python, JavaScript, TypeScript, Go, Rust, C#),
+      manifest+extension detection, per-project overrides via `.ai-harness/toolchains.json`,
+      PATH availability probes with TTL, format/run/test/build actions with actionable
+      missing-tool diagnostics (LANG-003); formatter output refreshes the open tab
+- [x] **Terminals**: real PTY sessions (pywinpty/ConPTY on Windows; POSIX pty fallback) over
+      WebSocket + xterm.js, bounded session count, resize support
+- [x] **Events**: PROJECT_OPENED / FILE_WRITTEN / TOOL_RUN_COMPLETED / GIT_COMMIT persisted to
+      the durable `events` stream
+- [x] Security posture: every client path validated in-both-path-flavors before normalization
+      (absolute/UNC/traversal rejected) — one real bug of this class found and fixed by tests
+- [x] `scripts/smoke_editor.py`: live end-to-end smoke (project → tree → search → tool run →
+      git cycle → PTY terminal round-trip)
+
+### Phase 1 validation log (all gates executed locally, 2026-09-14)
+
+| Gate | Result |
+| ---- | ------ |
+| `ruff check` / `ruff format --check` (services/api) | pass |
+| `mypy` (53 source files) | pass |
+| `pytest -q` — **50 passed** (unit + live-DB integration) | pass |
+| `npm run build` (tsc --noEmit + vite; Monaco bundled) | pass |
+| `scripts/smoke_editor.py` against live uvicorn | **PASS** (all 7 steps incl. PTY round-trip) |
+
+Issues found and fixed during Phase 1 validation (kept for the record):
+
+1. Terminal session route initially took `project_id` from the body while the dependency expected a
+   path param → 422; route made project-scoped (`/api/projects/{id}/terminal/sessions`).
+2. pywinpty 3.x `read(size)` is a blocking size-read, not a timeout read → backend reworked to
+   blocking pump semantics with exception-safe shutdown.
+3. Path resolver normalized separators before absoluteness checks, letting UNC paths slip through
+   as relative → resolver now rejects absolute paths in both flavors pre-normalization (test-found).
+4. Timed-out processes reported a stale exit code → `ExecResult.exit_code` is now `None` on timeout.
 
 ## Phase 0 — completed scope
 
@@ -84,13 +128,16 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 1)
+## Next phase entry criteria (Phase 2)
 
-Phase 0 gates green (see validation log) → begin Phase 1 conventional editor:
-Monaco integration, project open, file tree, tabs, search, integrated terminal, basic Git panel,
-toolchain detection for ≥3 representative languages, formatter/runner actions — all functional
-with AI disabled (FR-028).
+Phase 1 gates green (see validation logs) → begin Phase 2 durable core:
+complete the PostgreSQL entity set from spec §29 (requirements, plans, tasks, task_attempts,
+agents, agent_sessions, messages, context_items, memories, artifacts, tool_definitions, tool_calls,
+worktrees, resources, decisions, reviews, validations, hitl_requests, runtime_instances,
+toolchains), artifact storage, then Temporal integration.
 
 ## Change log
 
+- 2026-09-14 — Phase 1 conventional editor implemented and validated (projects/explorer/Monaco
+  tabs/search/Git/PTY terminals/toolchain registry+run; smoke script green).
 - 2026-09-14 — Phase 0 architecture foundation implemented and validated.

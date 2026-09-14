@@ -48,10 +48,47 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 # Web UI (from apps/web-ui)
 npm run dev          # http://localhost:5173 — proxies /api → localhost:8000
 
+# End-to-end smoke (editor API + git + terminal round-trip) with the server running:
+..\.venv\Scripts\python scripts\smoke_editor.py
+
 # Optional heavy infra
 docker compose --profile temporal up -d          # Temporal + UI (http://localhost:8088)
 docker compose --profile observability up -d     # OTel collector (OTLP 4317/4318)
 ```
+
+### Editor features (Phase 1)
+
+| Area | Capabilities |
+| ---- | ------------ |
+| Projects | Open by absolute path (registered in PostgreSQL), list, unregister |
+| Explorer | Lazy tree, new/rename/delete, ignored dirs (node_modules, .venv, …) |
+| Editor | Monaco (bundled), tabs, dirty tracking, Ctrl+S, Ctrl+P quick-open |
+| Search | Text/regex, match-case, grouped results, click-to-line |
+| Git | status/stage/unstage/commit/log/branches/checkout/init, HEAD↔worktree diff |
+| Run view | Detected languages + tool availability; format/run/test/build actions |
+| Terminal | Real PTY (PowerShell on Windows), bounded sessions, resize |
+
+### Toolchain overrides (FR-029, LANG-001..004)
+
+Builtin languages: Python, JavaScript, TypeScript, Go, Rust, C#. Detection uses manifest files and
+extensions. Override or add commands per project via `.ai-harness/toolchains.json`:
+
+```json
+{
+  "languages": {
+    "python": {
+      "tools": {
+        "format": { "argv": ["ruff", "format", "{file}"], "in_place": true },
+        "run": { "argv": ["python", "{file}"] }
+      }
+    }
+  }
+}
+```
+
+Placeholders: `{file}` (project-relative), `{file_abs}`, `{dir}`, `{file_stem}`. Tools whose
+command references a file require a file to be selected. Missing executables produce actionable
+diagnostics naming the tool, the executable and the override file (LANG-003).
 
 ## 4. Database migrations
 
@@ -85,12 +122,9 @@ See `ARCHITECTURE.md` §14 for the annotated tree and the module map (§2).
 
 ## 7. Extension guides
 
-Honest status: the extension points below land in later phases. Described here so the architecture
-stays honest about where they will live.
-
-- **Add a language adapter (Phase 1, `packages/language-adapters` → registry):** implement the
-  toolchain profile (compiler/interpreter, formatter, linter, test runner, debugger, LSP, package
-  manager, build system) as declarative config, not code branches; register per-project overrides
+- **Add a language adapter (Phase 1 — available now):** add a `LanguageDefinition` to
+  `services/api/app/toolchains/registry.py` (extensions, manifests, tool commands) or provide a
+  project-level `.ai-harness/toolchains.json` override — no service-logic changes needed
   (LANG-001..004).
 - **Add a tool (Phase 3, `services/api/app/tools/`):** declare schema + permissions in the tool
   registry; the gateway enforces policy, timeout, normalization and audit (SEC-001).

@@ -5,8 +5,19 @@ Users describe a software requirement; the harness plans work, dynamically creat
 executes them in isolated workspaces with controlled tools, verifies results with evidence,
 and keeps humans in control — all inside a professional code editor.
 
-> **Status:** Phase 0 (architecture foundation) — see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
+> **Status:** Phase 1 (conventional editor complete) — see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
 > The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
+
+## What works today (Phase 1)
+
+- Open local projects (registered in PostgreSQL), browse with the file explorer
+- Edit with Monaco (tabs, dirty tracking, Ctrl+S, quick-open Ctrl+P) — fully usable without AI
+- Search across the project (regex/case options, click-to-line)
+- Git basics: status, stage/unstage, commit, log, branches, checkout, init, HEAD↔worktree diff
+- Language toolchains: auto-detection (Python, JS/TS, Go, Rust, C#), per-project overrides
+  (`.ai-harness/toolchains.json`), format/run/test/build with missing-tool diagnostics
+- Integrated terminals: real PTY (PowerShell on Windows) over WebSocket with xterm.js
+- Health/readiness endpoints, durable event stream, structured JSON logs, opt-in OpenTelemetry
 
 ## Quickstart (local development)
 

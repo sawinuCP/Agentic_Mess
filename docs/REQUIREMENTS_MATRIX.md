@@ -13,10 +13,10 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 
 | ID | Requirement | Subsystem | Phase | Status | Files | Tests | Depends | Risk |
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
-| FR-001 | Open/create/clone/manage local projects | workspace-manager (API) | 1 | NOT_STARTED | — | — | FR-029 | M |
-| FR-002 | Arbitrary languages via configurable toolchains | language-adapters, registry | 1 | NOT_STARTED | — | — | FR-004 | H |
-| FR-003 | Detect project languages/build systems | language-adapters | 1 | NOT_STARTED | — | — | FR-002 | M |
-| FR-004 | Configure compilers/interpreters/formatters/linters/test runners/debuggers/package managers/LSP | toolchain registry | 1 | NOT_STARTED | — | — | — | M |
+| FR-001 | Open/create/clone/manage local projects | workspace-manager (API) | 1 | IN_PROGRESS | services/api/app/api/routes/projects.py, app/files/ | tests/unit/test_files_service.py, tests/integration/test_projects_api.py | FR-029 | M |
+| FR-002 | Arbitrary languages via configurable toolchains | language-adapters, registry | 1 | IN_PROGRESS | services/api/app/toolchains/registry.py | tests/unit/test_toolchains.py | FR-004 | H |
+| FR-003 | Detect project languages/build systems | language-adapters | 1 | IMPLEMENTED | services/api/app/toolchains/detection.py | tests/unit/test_toolchains.py | FR-002 | M |
+| FR-004 | Configure compilers/interpreters/formatters/linters/test runners/debuggers/package managers/LSP | toolchain registry | 1 | IN_PROGRESS | app/toolchains/registry.py, app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | M |
 | FR-005 | Accept NL requirements + desired outcomes | requirement-engine | 2 | NOT_STARTED | — | — | FR-006 | M |
 | FR-006 | Decompose requirements into durable tasks | planner/orchestrator | 2 | NOT_STARTED | — | — | FR-005 | H |
 | FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | NOT_STARTED | — | — | FR-006 | H |
@@ -31,27 +31,27 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
 | FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | NOT_STARTED | — | — | — | H |
-| FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | NOT_STARTED | — | — | FR-004 | M |
+| FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | IMPLEMENTED | app/toolchains/service.py, app/runtime/runner.py | tests/unit/test_toolchains.py, tests/unit/test_runner.py | FR-004 | M |
 | FR-020 | Browser-based debugging for web apps | playwright worker | 7 | NOT_STARTED | — | — | FR-018 | M |
 | FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
 | FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | NOT_STARTED | — | — | — | L |
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | NOT_STARTED | — | — | — | H |
-| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | services/api/app/db/models/event.py | tests/integration/test_db_smoke.py | — | L |
+| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | services/api/app/db/models/event.py, app/events/recorder.py | tests/integration/test_db_smoke.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
 | FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | NOT_STARTED | — | — | FR-013 | H |
 | FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | NOT_STARTED | — | — | FR-026 | M |
-| FR-028 | Editor usable for conventional workflows without AI | editor | 1 | NOT_STARTED | — | — | — | M |
-| FR-029 | Project-level config, no hard-coded framework | config, toolchain registry | 1 | NOT_STARTED | — | — | — | L |
+| FR-028 | Editor usable for conventional workflows without AI | editor | 1 | IMPLEMENTED | apps/web-ui/src/ | scripts/smoke_editor.py (live) | — | M |
+| FR-029 | Project-level config, no hard-coded framework | config, toolchain registry | 1 | IMPLEMENTED | app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | L |
 | FR-030 | Security boundaries independent of model instructions | policy engine, gateway | 3+ | NOT_STARTED | — | — | — | H |
 
 ## Language/toolchain rules (spec §8)
 
 | ID | Requirement | Subsystem | Phase | Status | Files | Tests | Depends | Risk |
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
-| LANG-001 | Registry stores paths/args/env/workdir/capabilities | toolchain registry | 1 | NOT_STARTED | — | — | FR-004 | M |
-| LANG-002 | Projects may contain multiple languages/toolchains | registry | 1 | NOT_STARTED | — | — | LANG-001 | M |
-| LANG-003 | Missing tool → actionable diagnostic | toolchain registry | 1 | NOT_STARTED | — | — | LANG-001 | L |
-| LANG-004 | Formatting available manually + as agent action | adapters, tools | 1/3 | NOT_STARTED | — | — | LANG-001 | L |
+| LANG-001 | Registry stores paths/args/env/workdir/capabilities | toolchain registry | 1 | IMPLEMENTED | app/toolchains/registry.py, app/toolchains/service.py | tests/unit/test_toolchains.py | FR-004 | M |
+| LANG-002 | Projects may contain multiple languages/toolchains | registry | 1 | IMPLEMENTED | app/toolchains/detection.py | tests/unit/test_toolchains.py | LANG-001 | M |
+| LANG-003 | Missing tool → actionable diagnostic | toolchain registry | 1 | IMPLEMENTED | app/toolchains/service.py | tests/unit/test_toolchains.py | LANG-001 | L |
+| LANG-004 | Formatting available manually + as agent action | adapters, tools | 1/3 | IN_PROGRESS | app/toolchains/service.py, RunView UI | tests/unit/test_toolchains.py | LANG-001 | L |
 | LANG-005 | Compiler/test output passes observation normalizer | context-engine | 3 | NOT_STARTED | — | — | FR-023 | M |
 
 ## Task / recovery rules (spec §13, §26)
@@ -97,7 +97,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 
 | ID | Acceptance criterion | Verified via | Phase | Status |
 |----|----------------------|--------------|-------|--------|
-| AC-001 | Open real repo, edit/format/build/test without AI | E2E suite + manual | 1 | NOT_STARTED |
+| AC-001 | Open real repo, edit/format/build/test without AI | E2E suite + manual | 1 | IN_PROGRESS (works today; scripts/smoke_editor.py covers the API path) |
 | AC-002 | Submit requirement → structured execution plan | E2E | 2 | NOT_STARTED |
 | AC-003 | Dynamic multi-agent concurrent execution | Agent-protocol + concurrency tests | 4 | NOT_STARTED |
 | AC-004 | Async communication + durable shared artifacts | Contract tests | 4 | NOT_STARTED |

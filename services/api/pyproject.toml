@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-harness-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI Harness Code Editor — control plane API (FastAPI)"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,7 @@ dependencies = [
     "opentelemetry-sdk>=1.25",
     "opentelemetry-exporter-otlp-proto-http>=1.25",
     "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "pywinpty>=2.0.13; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +42,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "C4"]
+# B008: function calls in argument defaults — FastAPI's Depends()/Query() idiom.
+ignore = ["B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

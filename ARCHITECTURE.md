@@ -43,14 +43,20 @@ are replaceable; requirements, tasks, code, artifacts, evidence and history are 
                 │ HTTP + WebSocket/SSE (/api prefix, vite proxy in dev)
 ┌───────────────┴────────────────────────────────────────────────────┐
 │ Control plane — FastAPI "modular monolith" (services/api)          │
-│   app/api/          HTTP surface, middleware                        │
-│   app/core/         config, structured logging, OTel wiring         │
+│   app/api/          HTTP surface, middleware, deps                  │
+│   app/core/         config, errors, structured logging, OTel        │
 │   app/db/           SQLAlchemy models + engine/session management   │
+│   app/files/        project filesystem (path-safety, tree, search)  │
+│   app/gitops/       git CLI client (status/diff/log/stage/commit)   │
+│   app/toolchains/   language registry, detection, tool execution    │
+│   app/runtime/      process runner (timeout/kill/caps) — Phase 6    │
+│                     grows this into sandboxed runtimes              │
+│   app/terminal/     PTY sessions over WebSocket (pywinpty/POSIX)    │
+│   app/events/       durable event recording (events table)          │
 │   app/orchestration Phase 4: scheduler, supervisor, recovery        │
 │   app/agents/       Phase 3: agent runtime, lifecycle, model calls  │
 │   app/context/      Phase 3/5: context broker, observation compress │
 │   app/tools/        Phase 3/7: tool gateway, MCP, web research      │
-│   app/runtime/      Phase 6: execution manager, ports, sandboxes    │
 │   app/integration/  Phase 4/6: worktrees, merge queue               │
 │   app/requirements/ Phase 8: requirement overseer, traceability     │
 └───────┬──────────────┬───────────────┬──────────────┬──────────────┘
@@ -242,7 +248,7 @@ because Alembic requires the models importable; documented, not accidental.
 | Phase | Deliverable | Exit criteria (spec §37) | Status |
 | ----- | ----------- | ------------------------ | ------ |
 | 0 | Architecture foundation | Repo, CI, schemas, local services, observability skeleton | **COMPLETE** |
-| 1 | Conventional editor | Project open/edit/search/terminal/Git/toolchain basics | NOT_STARTED |
+| 1 | Conventional editor | Project open/edit/search/terminal/Git/toolchain basics | **COMPLETE** (web UI; Tauri shell in Phase 10) |
 | 2 | Durable core | PG schemas, projects/tasks/agents/events, artifacts | NOT_STARTED |
 | 3 | Agent runtime + durable orchestration | Lifecycle, tools, context broker, Temporal, pause/resume | NOT_STARTED |
 | 4 | Multi-agent team | Dynamic spawn, scheduler, messaging, worktrees, leases | NOT_STARTED |
