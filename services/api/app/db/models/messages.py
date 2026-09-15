@@ -50,3 +50,7 @@ class Message(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # Delivery bookkeeping (FR-010): PG is the source of truth; NATS JetStream is an
+    # at-least-once transport. ``delivered_at`` stays NULL until a broker ack.
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    delivery_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

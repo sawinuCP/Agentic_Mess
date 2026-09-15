@@ -26,6 +26,12 @@ class Worktree(Base):
     branch: Mapped[str] = mapped_column(String(200))
     path: Mapped[str] = mapped_column(String(1024))
     status: Mapped[str] = mapped_column(String(30), default="active")  # active|merged|abandoned
+    # Integration queue (FR-012, spec §17): controlled, ordered integration; conflicts
+    # become explicit tasks instead of silent canonical-branch writes.
+    integration_status: Mapped[str] = mapped_column(
+        String(30), default="none", server_default="none"
+    )  # none|queued|integrating|merged|conflict
+    integration_position: Mapped[int | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

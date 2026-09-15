@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,10 +11,16 @@ from app.runtime.runner import run_process
 
 
 class GitError(DomainError):
-    """kind: missing | not_a_repo | not_found | failed"""
+    """kind: missing | not_a_repo | not_found | failed | conflict"""
 
     def __init__(self, kind: str, message: str) -> None:
-        status = {"missing": 503, "not_a_repo": 409, "not_found": 404, "failed": 400}[kind]
+        status = {
+            "missing": 503,
+            "not_a_repo": 409,
+            "not_found": 404,
+            "failed": 400,
+            "conflict": 409,
+        }[kind]
         super().__init__(message, status)
         self.kind = kind
 
@@ -40,6 +47,22 @@ class GitCommit:
     author: str
     date_iso: str
     message: str
+
+
+@dataclass(slots=True)
+class GitWorktree:
+    path: str
+    head: str | None
+    branch: str | None
+
+
+def _worktree_from(block: dict[str, str]) -> GitWorktree:
+    branch = block.get("branch")
+    return GitWorktree(
+        path=block.get("worktree", ""),
+        head=block.get("head"),
+        branch=branch.removeprefix("refs/heads/") if branch else None,
+    )
 
 
 class GitClient:
@@ -170,3 +193,80 @@ class GitClient:
 
     async def init(self) -> None:
         await self._run("init")
+
+    async def ensure_local_exclude(self, pattern: str) -> None:
+        """Add ``pattern`` to ``.git/info/exclude`` (local, never committed).
+
+        Tool-managed paths (worktrees under ``.harness/``) must not pollute the
+        user's ``git status`` — and this belongs in the local exclude rather than
+        the tracked ``.gitignore`` because it is harness plumbing, not project code.
+        """
+        info_dir = self.root / ".git" / "info"
+        info_dir.mkdir(parents=True, exist_ok=True)
+        exclude_path = info_dir / "exclude"
+        try:
+            existing = exclude_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            existing = ""
+        lines = {line.strip() for line in existing.splitlines()}
+        if pattern not in lines:
+            separator = "" if not existing or existing.endswith("\n") else "\n"
+            exclude_path.write_text(
+                f"{existing}{separator}# managed by AI Harness\n{pattern}\n",
+                encoding="utf-8",
+            )
+
+    async def commit_all(self, message: str) -> str:
+        """Stage everything and commit — test/setup convenience for empty repos."""
+        await self._run("add", "-A")
+        return (await self._run("commit", "-m", message)).strip()
+
+    # --- Worktrees (spec §17: parallel agents work in isolated worktrees) ---
+
+    async def worktree_add(self, path: str, branch: str, *, create_branch: bool = True) -> None:
+        """Create a worktree at ``path`` on ``branch`` (new branch from HEAD by default)."""
+        args = ["worktree", "add"]
+        if create_branch:
+            args += ["-b", branch]
+        args.append(str(path))
+        if not create_branch:
+            args.append(branch)
+        await self._run(*args)
+
+    async def worktree_remove(self, path: str, *, force: bool = False) -> None:
+        """Remove a worktree. Non-force refuses dirty trees — failed attempts must
+        remain inspectable (spec §17)."""
+        await self._run("worktree", "remove", *(["--force"] if force else []), str(path))
+
+    async def worktree_list(self) -> list[GitWorktree]:
+        out = await self._run("worktree", "list", "--porcelain")
+        entries: list[GitWorktree] = []
+        current: dict[str, str] = {}
+        for line in out.splitlines():
+            if not line.strip():
+                if current:
+                    entries.append(_worktree_from(current))
+                    current = {}
+                continue
+            key, _, value = line.partition(" ")
+            current[key] = value.strip()
+        if current:
+            entries.append(_worktree_from(current))
+        return entries
+
+    async def merge_no_ff(self, branch: str, message: str) -> str:
+        """Merge ``branch`` into the current branch with a merge commit (integration
+        queue, spec §17). Conflicts abort cleanly and surface as GitError("conflict")
+        so the caller can record an explicit conflict task — never a dirty canonical
+        workspace."""
+        branch = branch.strip()
+        if not branch or any(c.isspace() or c == ":" for c in branch):
+            raise GitError("failed", f"Invalid branch name: {branch!r}")
+        try:
+            await self._run("merge", "--no-ff", "--no-commit", branch, timeout=60.0)
+        except GitError as exc:
+            with contextlib.suppress(GitError):
+                await self._run("merge", "--abort")  # nothing to abort is fine; surface the cause
+            raise GitError("conflict", f"merge of {branch!r} conflicts: {exc}") from None
+        await self._run("commit", "-m", message)
+        return (await self._run("rev-parse", "HEAD")).strip()

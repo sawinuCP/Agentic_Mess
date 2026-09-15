@@ -35,3 +35,14 @@ class MessageOut(BaseModel):
     reply_to: UUID | None
     created_at: datetime
     expires_at: datetime | None
+    delivered_at: datetime | None = None
+    delivery_attempts: int = 0
+
+
+class DeliveryOut(BaseModel):
+    """Result of one delivery fan-out pass (at-least-once; failures stay pending)."""
+
+    pending_count: int
+    delivered_count: int
+    failed_count: int
+    errors: dict[str, str] = {}

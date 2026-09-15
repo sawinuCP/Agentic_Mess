@@ -58,6 +58,21 @@ class Settings(BaseSettings):
     # Session supervision: heartbeats older than this mark a session "lost".
     session_stale_seconds: int = 300
 
+    # Scheduler (Phase 4, FR-011/PERF-003): global cap on concurrently running tasks
+    # plus optional per-role caps (JSON string, e.g. '{"implementer": 2, "tester": 1}').
+    scheduler_enabled: bool = True
+    scheduler_max_concurrency: int = 4
+    scheduler_role_limits: str = ""
+
+    # Dynamic spawn policy (FR-007): bounded recursion depth for spawned agents/tasks.
+    spawn_max_depth: int = 2
+
+    # Message delivery fan-out (FR-010): NATS JetStream transport is opt-in; the
+    # durable `messages` table remains the source of truth either way (spec §14).
+    nats_delivery_enabled: bool = False
+    nats_delivery_stream: str = "harness-messages"
+    nats_delivery_subject_prefix: str = "harness.msg"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

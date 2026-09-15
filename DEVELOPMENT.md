@@ -38,6 +38,13 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_TEMPORAL_ENABLED` | `false` | Durable task execution via Temporal |
 | `HARNESS_TEMPORAL_ADDRESS` | `localhost:7233` | Temporal frontend gRPC address |
 | `HARNESS_TEMPORAL_TASK_QUEUE` | `ai-harness-tasks` | Task queue for the durable worker |
+| `HARNESS_SCHEDULER_ENABLED` | `true` | Enable the bounded scheduling pass endpoint |
+| `HARNESS_SCHEDULER_MAX_CONCURRENCY` | `4` | Global cap on concurrently running tasks |
+| `HARNESS_SCHEDULER_ROLE_LIMITS` | *(empty)* | JSON per-role caps, e.g. `{"implementer": 2}` |
+| `HARNESS_SPAWN_MAX_DEPTH` | `2` | Bounded recursion depth for spawned agents/tasks |
+| `HARNESS_NATS_DELIVERY_ENABLED` | `false` | NATS JetStream fan-out for durable messages |
+| `HARNESS_NATS_DELIVERY_STREAM` | `harness-messages` | JetStream stream name |
+| `HARNESS_NATS_DELIVERY_SUBJECT_PREFIX` | `harness.msg` | Subject prefix (`.agent.*` / `.broadcast`) |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run
@@ -59,6 +66,9 @@ npm run dev          # http://localhost:5173 — proxies /api → localhost:8000
 # the worker running, and the API started with HARNESS_TEMPORAL_ENABLED=true:
 #   .venv\Scripts\python -m app.durable.worker    # cwd: services/api
 ..\.venv\Scripts\python scripts\smoke_durable.py
+
+# Scheduler smoke (Phase 4): bounded scheduling → live Temporal, leases honored:
+..\.venv\Scripts\python scripts\smoke_scheduler.py
 
 # Optional heavy infra
 docker compose --profile temporal up -d          # Temporal + UI (http://localhost:8088)

@@ -5,10 +5,10 @@ Users describe a software requirement; the harness plans work, dynamically creat
 executes them in isolated workspaces with controlled tools, verifies results with evidence,
 and keeps humans in control — all inside a professional code editor.
 
-> **Status:** Phase 3 in progress — agent runtime core implemented (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
+> **Status:** Phase 4 complete — agent runtime + multi-agent orchestration (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
 > The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
 
-## What works today (Phase 1)
+## What works today (Phases 1–4)
 
 - Open local projects (registered in PostgreSQL), browse with the file explorer
 - Edit with Monaco (tabs, dirty tracking, Ctrl+S, quick-open Ctrl+P) — fully usable without AI
@@ -17,6 +17,13 @@ and keeps humans in control — all inside a professional code editor.
 - Language toolchains: auto-detection (Python, JS/TS, Go, Rust, C#), per-project overrides
   (`.ai-harness/toolchains.json`), format/run/test/build with missing-tool diagnostics
 - Integrated terminals: real PTY (PowerShell on Windows) over WebSocket with xterm.js
+- Agent runtime: 14-state lifecycle, rehearsal/offline + OpenAI-compatible model providers with
+  fallback escalation, tool gateway (allowlists, deny + approval-required patterns → HITL),
+  RTK-style observation compression, tiered context broker with token budgets
+- Durable orchestration: Temporal task execution with bounded attempts + evidence artifacts,
+  pause/resume signals, bounded scheduler (global/role concurrency, lease-aware), dynamic spawn policy
+- Multi-agent plumbing: TTL resource leases with renewal, NATS JetStream message fan-out
+  (opt-in), git worktree isolation with a controlled integration queue (conflicts → explicit tasks)
 - Health/readiness endpoints, durable event stream, structured JSON logs, opt-in OpenTelemetry
 
 ## Quickstart (local development)

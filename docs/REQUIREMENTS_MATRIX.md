@@ -19,14 +19,14 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-004 | Configure compilers/interpreters/formatters/linters/test runners/debuggers/package managers/LSP | toolchain registry | 1 | IN_PROGRESS | app/toolchains/registry.py, app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | M |
 | FR-005 | Accept NL requirements + desired outcomes | requirement-engine | 2 | IN_PROGRESS | services/api/app/api/routes/requirements.py | tests/integration/test_durable_core_api.py | FR-006 | M |
 | FR-006 | Decompose requirements into durable tasks | planner/orchestrator | 2 | IMPLEMENTED | app/api/routes/plans.py, app/tasks/graph.py, app/durable/ | tests/integration/test_durable_core_api.py | FR-005 | H |
-| FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | IN_PROGRESS | app/durable/activities.py (agent per attempt) | tests/integration/test_durable_activities.py | FR-006 | H |
+| FR-007 | Dynamically spawn agents per task needs | orchestrator | 4 | IMPLEMENTED | app/agents_runtime/spawn_policy.py, app/services/scheduler.py, app/durable/activities.py | tests/unit/test_spawn_policy.py, tests/integration/test_phase4_orchestration.py, scripts/smoke_scheduler.py | FR-006 | H |
 | FR-008 | Agents disposable/replaceable, task identity preserved | agent-runtime, db | 3 | IMPLEMENTED | app/db/models/agents.py, app/agents_runtime/lifecycle.py, app/durable/ | tests/unit/test_agent_lifecycle.py, tests/integration/test_durable_activities.py | FR-006 | H |
-| FR-009 | Multiple concurrent instances of same role | scheduler | 4 | NOT_STARTED | — | — | FR-008 | M |
-| FR-010 | Async durable structured inter-agent messaging | messaging (NATS+PG) | 4 | IN_PROGRESS | app/db/models/messages.py, app/api/routes/messages.py | tests/integration/test_durable_core_api.py | FR-006 | M |
-| FR-011 | Configurable concurrency/resource limits | scheduler | 4 | NOT_STARTED | — | — | FR-011-b | M |
-| FR-012 | Isolated workspaces/worktrees for conflicting work | integration-manager | 4 | NOT_STARTED | — | — | FR-001 | M |
+| FR-009 | Multiple concurrent instances of same role | scheduler | 4 | IMPLEMENTED | app/services/scheduler.py (role caps + shared global pool) | tests/integration/test_phase4_orchestration.py | FR-008 | M |
+| FR-010 | Async durable structured inter-agent messaging | messaging (NATS+PG) | 4 | IMPLEMENTED | app/db/models/messages.py, app/messaging/broker.py, app/services/messages.py, app/api/routes/messages.py | tests/unit/test_messaging_broker.py, tests/integration/test_phase4_orchestration.py | FR-006 | M |
+| FR-011 | Configurable concurrency/resource limits | scheduler | 4 | IMPLEMENTED | app/services/scheduler.py (global + per-role caps), app/services/leases.py | tests/integration/test_phase4_orchestration.py | FR-011-b | M |
+| FR-012 | Isolated workspaces/worktrees for conflicting work | integration-manager | 4 | IMPLEMENTED | app/services/worktrees.py, app/api/routes/worktrees.py, app/gitops/client.py | tests/integration/test_worktrees.py | FR-001 | M |
 | FR-013 | Requirement→task→code→test traceability | requirement-engine, db | 2/8 | NOT_STARTED | — | — | FR-006 | H |
-| FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | IN_PROGRESS | app/db/models/oversight.py, gateway approval hooks | — | — | M |
+| FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | IMPLEMENTED (API+gates; UI in Phase 9) | app/services/hitl.py, app/api/routes/hitl.py, app/durable/activities.py (gate) | tests/integration/test_phase3_runtime.py | — | M |
 | FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (signals+checkpoints) | scripts/smoke_durable.py (live) | FR-008 | H |
 | FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
@@ -86,11 +86,11 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
 | PERF-001 | UI responsive while agents/runtimes execute | web-ui, api | 9 | NOT_STARTED | — | — | FR-025 | M |
 | PERF-002 | Live event streaming incremental + backpressure-aware | api, nats | 9 | NOT_STARTED | — | — | FR-024 | M |
-| PERF-003 | Scheduler concurrency bounded by config | scheduler | 4 | NOT_STARTED | — | — | FR-011 | L |
+| PERF-003 | Scheduler concurrency bounded by config | scheduler | 4 | IMPLEMENTED | app/services/scheduler.py (HARNESS_SCHEDULER_* limits) | tests/integration/test_phase4_orchestration.py | FR-011 | L |
 | PERF-004 | Large logs never injected wholesale into context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | FR-023 | H |
 | PERF-005 | Recovery operations idempotent where possible | recovery-manager | 3 | NOT_STARTED | — | — | REC-001 | M |
 | PERF-006 | Durable state survives application restart | db, temporal | 2/3 | IN_PROGRESS | app/durable/workflows.py (durable timers/state) | scripts/smoke_durable.py | FR-024 | H |
-| PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | NOT_STARTED | — | — | TASK-002 | H |
+| PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | IMPLEMENTED | app/services/agents.py (supervise_sessions), app/durable/workflows.py | tests/integration/test_phase3_runtime.py | TASK-002 | H |
 | PERF-008 | Index updates incremental after file changes | code-intelligence | 5 | NOT_STARTED | — | — | FR-013 | M |
 
 ## Product acceptance criteria (spec §44)
@@ -99,17 +99,17 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 |----|----------------------|--------------|-------|--------|
 | AC-001 | Open real repo, edit/format/build/test without AI | E2E suite + manual | 1 | IN_PROGRESS (works today; scripts/smoke_editor.py covers the API path) |
 | AC-002 | Submit requirement → structured execution plan | E2E | 2 | IN_PROGRESS (API flow live; planner UI lands later) |
-| AC-003 | Dynamic multi-agent concurrent execution | Agent-protocol + concurrency tests | 4 | NOT_STARTED |
-| AC-004 | Async communication + durable shared artifacts | Contract tests | 4 | NOT_STARTED |
-| AC-005 | Parallel changes isolated + safely integrated | Worktree/integration tests | 4 | NOT_STARTED |
+| AC-003 | Dynamic multi-agent concurrent execution | Agent-protocol + concurrency tests | 4 | IN_PROGRESS (scheduler + concurrency live; full protocol in later phases) |
+| AC-004 | Async communication + durable shared artifacts | Contract tests | 4 | IN_PROGRESS (durable messages + JetStream fan-out live; artifact-payload refs live) |
+| AC-005 | Parallel changes isolated + safely integrated | Worktree/integration tests | 4 | IN_PROGRESS (worktrees + integration queue live; review gates land Phase 8) |
 | AC-006 | Agents use compilers/formatters/linters/test runners | Toolchain adapter tests | 1/6 | NOT_STARTED |
-| AC-007 | Pause/resume + worker-failure recovery | Recovery tests | 3 | NOT_STARTED |
+| AC-007 | Pause/resume + worker-failure recovery | Recovery tests | 3 | IN_PROGRESS (pause/resume live; supervision live) |
 | AC-008 | Semantic/structural repo inspection | Code-intelligence tests | 5 | NOT_STARTED |
-| AC-009 | Tool output compressed before context injection | Context tests | 3 | NOT_STARTED |
+| AC-009 | Tool output compressed before context injection | Context tests | 3 | IMPLEMENTED (FR-023 observation compression) |
 | AC-010 | Web/MCP/browser permission-controlled + observable | Security tests | 7 | NOT_STARTED |
 | AC-011 | Requirement coverage continuously tracked | Overseer tests | 8 | NOT_STARTED |
 | AC-012 | High-risk decisions independently reviewed/adjudicated | Review tests | 8 | NOT_STARTED |
-| AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | NOT_STARTED |
+| AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | IN_PROGRESS (fail-closed gates live; UI Phase 9) |
 | AC-014 | Office UI reflects live execution state | UI tests | 9 | NOT_STARTED |
 | AC-015 | Completion evidence-backed, blocked by unmet criteria | Overseer tests | 8 | NOT_STARTED |
 | AC-016 | Restart preserves durable execution state | Restart-recovery tests | 2/3 | NOT_STARTED |

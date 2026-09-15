@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-14 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 1 — Conventional editor (complete)
+**Generated:** 2026-09-15 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 4 — Multi-agent orchestration (complete)
 
 ## Phase overview
 
@@ -9,8 +9,8 @@
 | 0 | Architecture foundation | **COMPLETE** | Repo, CI, service scaffold, migrations, tests, compose, observability skeleton, docs |
 | 1 | Conventional editor (no AI required) | **COMPLETE** | Projects, explorer, Monaco editor+tabs, search, Git panel, terminals (real PTY), toolchain registry/detection/run, quick-open |
 | 2 | Durable core (PostgreSQL entities + artifacts) | **COMPLETE** | Full spec §29 schema (21 entities, migrations 0002-0006), artifacts store, durable Temporal task execution with attempts/evidence |
-| 3 | Agent runtime + durable orchestration | NOT_STARTED | Lifecycle, model adapter, tool gateway, context broker, pause/resume |
-| 4 | Multi-agent orchestration | NOT_STARTED | Spawn policy, scheduler, messaging, worktrees, leases |
+| 3 | Agent runtime + durable orchestration | **COMPLETE** | Lifecycle, model routing + escalation, tool gateway + HITL gates, context broker, pause/resume, supervision, agent replacement |
+| 4 | Multi-agent orchestration | **COMPLETE** | Resource leases, scheduler + spawn policy, NATS message fan-out, worktrees + integration queue |
 | 5 | Code intelligence | NOT_STARTED | Tree-sitter, LSP, SCIP, retrieval |
 | 6 | Execution plane | NOT_STARTED | Containers, quotas, port manager |
 | 7 | Browser / MCP / web research | NOT_STARTED | Playwright, MCP registry, evidence packets |
@@ -53,9 +53,50 @@ The Phase-3 increment delivers the agent execution core inside the durable harne
 | `scripts/smoke_durable.py` — agent-driven execution (rehearsal provider → gateway → evidence) | **PASS** |
 | web-ui lint + build | pass |
 
-Remaining Phase-3 work (tracked): HITL approval-gate polling loop on `hitl_requests` (policy
-hooks are in the gateway), model budget escalation policies, heartbeat-based agent session
-supervision, and agent replacement semantics.
+Phase-3 follow-ups were completed inside the Phase-3 commit: HITL fail-closed approval gates
+(polling activity on `hitl_requests`, timeout = rejection), heartbeat-based session supervision
+(stale sessions → `lost`, agents → `failed`), agent replacement with `replaces_agent_id` provenance,
+and per-route model fallback escalation. Remaining deferrals are tracked in the honesty list below
+and in the requirements matrix.
+
+## Phase 4 — COMPLETE (2026-09-15)
+
+Multi-agent orchestration on top of the durable core:
+
+- **Resource leases (spec §18)** — `app/services/leases.py` + `/api/leases*`: TTL leases with
+  computed (never stored) expiry, holder-checked heartbeat renewal and release, deterministic
+  all-or-nothing batch acquisition (deadlock avoidance), idempotent stale-expiry pass, and
+  `LEASE_*` audit events written in the lease transaction. Expired leases re-acquire cleanly.
+- **Scheduler (FR-009/011, PERF-003)** — `app/services/scheduler.py` + `POST /api/projects/{id}/
+  scheduler/tick` and `GET .../scheduler/state`: read-only planning pass + durable commit
+  (`TASK_SCHEDULED` events); global concurrency cap, per-role caps
+  (`HARNESS_SCHEDULER_ROLE_LIMITS` JSON), priority ordering, dependency-aware ready set, and
+  honor of task-declared `resource_requirements` against active leases. Fail-closed 503 without
+  Temporal — the scheduler never schedules work it cannot durably start.
+- **Spawn policy (FR-007)** — `app/agents_runtime/spawn_policy.py`: pure bounded-recursion policy
+  (`HARNESS_SPAWN_MAX_DEPTH`), spawning-role gating, non-clamping child depth inheritance
+  (bounds are enforced by evaluation, never hidden by clamping).
+- **Message delivery (FR-010)** — `app/messaging/broker.py`: `MessageBroker` protocol with a NATS
+  JetStream adapter (`Nats-Msg-Id` dedup; direct `harness.msg.agent.*` + broadcast subjects) and a
+  fail-loud `NullBroker`; `POST /api/messages/deliver-pending` performs an at-least-once fan-out
+  over undelivered durable messages (opt-in `HARNESS_NATS_DELIVERY_ENABLED`); migration `0007`
+  adds `delivered_at`/`delivery_attempts` bookkeeping — PG stays the source of truth.
+- **Worktrees + integration queue (FR-012, spec §17)** — `app/services/worktrees.py` +
+  `app/api/routes/worktrees.py`: isolated `agent/task-*` worktrees (active-branch takeover
+  refused; dirty release requires explicit force so failed attempts stay inspectable), FIFO
+  integration queue (`integration_status`/`integration_position`), conflict-safe `--no-ff` merge
+  that aborts cleanly and records an **explicit conflict task** (parent-linked, role
+  `integration`) instead of dirtying the canonical workspace. Harness worktree paths are kept out
+  of `git status` via local `.git/info/exclude`.
+
+### Phase 4 validation log (2026-09-15)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff / mypy (135 files) | pass |
+| pytest — **123 passed** (+33: leases, scheduler, messaging, worktrees, spawn policy) | pass |
+| `scripts/smoke_scheduler.py` — scheduler → live Temporal; lease-skip → release → re-schedule | **PASS** |
+| `scripts/smoke_durable.py` — full agent loop through live Temporal (unchanged) | PASS |
 
 ## 2026-09-14 — Industry-standard restructure (v0.3.0, pre-Phase-3)
 
@@ -234,8 +275,9 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Requirements/plan/task/agent/message/context/memory/artifact/tool/review/HITL data model
   (Phase 2; only `projects` + `events` exist now)
 - Temporal workflows, checkpoints, pause/resume (Phase 3)
-- Agent lifecycle engine, model adapters/routing, tool gateway, observation compression (Phase 3)
-- Dynamic spawning, scheduler, leases, worktree integration (Phase 4)
+- Agent lifecycle engine, model adapters/routing, tool gateway, observation compression (Phase 3) — **delivered**
+- Dynamic spawning, scheduler, leases, worktree integration (Phase 4) — **delivered**
+- Model cost/token budget accounting ledger (deferred; tracked for Phase 5+)
 - Tree-sitter/LSP/SCIP indexing, pgvector retrieval (Phase 5)
 - Sandbox runtime manager, quotas, port manager (Phase 6)
 - Playwright browser debugging, MCP gateway, web research evidence (Phase 7)
@@ -243,16 +285,22 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 3)
+## Next phase entry criteria (Phase 5)
 
-Phase 2 gates green → begin Phase 3 agent runtime + durable orchestration:
-agent lifecycle state machine (spec §12) driven by the runtime, model registry/routing
-(config-driven, no hard-coded models), tool gateway with policy enforcement (SEC-001..002),
-context broker consuming `context_items`/`memories` tiers, observation compression (FR-023)
-plugged into `execute_work_activity`, pause/resume via Temporal signals, HITL approval gates
-(`hitl_requests`), and `agent_sessions` heartbeats wired to the lifecycle.
+Phase 4 gates green → begin Phase 5 code intelligence:
+tree-sitter structural parsing, LSP/SCIP symbol infrastructure, hybrid retrieval (lexical/AST/LSP
+first, pgvector as one ranker), incremental index updates after file changes (PERF-008), and the
+model cost/token budget accounting ledger deferred from Phase 4.
 
 ## Change log
+
+- 2026-09-15 — Phase 4 COMPLETE: resource leases (TTL + renewal + deterministic batch), bounded
+  scheduler (global/role caps, lease-aware, fail-closed), spawn policy, NATS JetStream message
+  fan-out, worktree isolation + controlled integration queue with explicit conflict tasks —
+  scheduler smoke green through live Temporal.
+- 2026-09-15 — Phase 3 COMPLETE: agent runtime (lifecycle, model routing with fallback, tool
+  gateway + HITL fail-closed gates, context broker, observation compression, pause/resume,
+  supervision, agent replacement) — live Temporal smoke green.
 
 - 2026-09-14 — Phase 2 durable core implemented and validated (full §29 schema, artifacts,
   requirement→plan→task graph, Temporal task execution with attempts/evidence; durable smoke green).

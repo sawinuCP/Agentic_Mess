@@ -20,13 +20,16 @@ from app.api.routes import (
     health,
     hitl,
     knowledge,
+    leases,
     messages,
     plans,
     projects,
     requirements,
+    scheduler,
     tasks,
     terminal,
     toolchains,
+    worktrees,
 )
 from app.artifacts.store import ArtifactStore
 from app.core.config import Settings, get_settings
@@ -79,6 +82,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(knowledge.router)
     app.include_router(events.router)
     app.include_router(hitl.router)
+    app.include_router(leases.router)
+    app.include_router(scheduler.router)
+    app.include_router(worktrees.router)
     app.add_middleware(RequestIDMiddleware)
     # DomainError is the shared base (FileServiceError/ToolchainError/GitError subclass it).
     app.add_exception_handler(DomainError, _domain_error_handler)

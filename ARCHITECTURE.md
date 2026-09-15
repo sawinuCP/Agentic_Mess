@@ -1,7 +1,7 @@
 # AI Harness Code Editor — Architecture
 
 **Spec version:** `AI_Harness_Code_Editor_Complete_Implementation_Specification.md` v1.0 (14 Sep 2026)
-**Status:** Phase 0 (architecture foundation implemented; AI subsystems NOT_IMPLEMENTED)
+**Status:** Phase 4 complete — agent runtime + multi-agent orchestration (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
 **Companion documents:** [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), [`DEVELOPMENT.md`](DEVELOPMENT.md), [`docs/REQUIREMENTS_MATRIX.md`](docs/REQUIREMENTS_MATRIX.md)
 
 ---
@@ -271,8 +271,8 @@ because Alembic requires the models importable; documented, not accidental.
 | 0 | Architecture foundation | Repo, CI, schemas, local services, observability skeleton | **COMPLETE** |
 | 1 | Conventional editor | Project open/edit/search/terminal/Git/toolchain basics | **COMPLETE** (web UI; Tauri shell in Phase 10) |
 | 2 | Durable core | PG schemas, projects/tasks/agents/events, artifacts | **COMPLETE** (Temporal opt-in via `HARNESS_TEMPORAL_ENABLED`) |
-| 3 | Agent runtime + durable orchestration | Lifecycle, tools, context broker, Temporal, pause/resume | NOT_STARTED |
-| 4 | Multi-agent team | Dynamic spawn, scheduler, messaging, worktrees, leases | NOT_STARTED |
+| 3 | Agent runtime + durable orchestration | Lifecycle, tools, context broker, Temporal, pause/resume | **COMPLETE** (HITL gates, supervision, replacement, escalation) |
+| 4 | Multi-agent team | Dynamic spawn, scheduler, messaging, worktrees, leases | **COMPLETE** (leases, scheduler, NATS fan-out, integration queue) |
 | 5 | Code intelligence | Tree-sitter + LSP/SCIP + retrieval/ranking | NOT_STARTED |
 | 6 | Execution plane | Containers, quotas, ports, supervision | NOT_STARTED |
 | 7 | Browser/MCP/web | Playwright, MCP gateway, research evidence | NOT_STARTED |

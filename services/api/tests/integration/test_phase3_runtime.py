@@ -154,9 +154,7 @@ def test_supervision_marks_stale_sessions_lost(wired: tuple[FastAPI, str, Path])
         session.commit()
         session_id = lost_session.id
 
-    result = asyncio.run(
-        asyncio.to_thread(_supervise, app, 300)
-    )
+    result = asyncio.run(asyncio.to_thread(_supervise, app, 300))
     assert result["marked_lost"] >= 1
     with app.state.session_factory() as session:
         assert session.get(AgentSession, session_id).status == "lost"
