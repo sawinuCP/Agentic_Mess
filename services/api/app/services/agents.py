@@ -1,9 +1,9 @@
-"""Agent registry and session service (FR-008; runtime wiring lands in Phase 3)."""
+"""Agent registry and session service (FR-008): durable registry + heartbeats + supervision."""
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -104,8 +104,6 @@ def supervise_sessions(db: Session, stale_seconds: int) -> dict[str, int]:
     Agent process loss must not destroy task state (PERF-007) — supervision only
     records reality; recovery decisions belong to the runtime.
     """
-    from datetime import timedelta
-
     cutoff = datetime.now(UTC) - timedelta(seconds=stale_seconds)
     stale = db.scalars(
         select(AgentSession).where(

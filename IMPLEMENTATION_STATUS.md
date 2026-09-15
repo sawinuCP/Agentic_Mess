@@ -294,6 +294,15 @@ model cost/token budget accounting ledger deferred from Phase 4.
 
 ## Change log
 
+- 2026-09-15 — Maintainability restructure: the 585-line `durable/activities.py` monolith split
+  into an `app/durable/activities/` package by concern (context/tasks/agents/execution/hitl, with
+  the public activity surface re-exported); the 19 flat route modules grouped into four domain
+  subpackages (`core/`, `workspace/`, `planning/`, `orchestration/`) exposing `routers`; tests
+  renamed/split by domain (`test_leases`, `test_scheduler`, `test_message_delivery`,
+  `test_agent_runtime` — no more phase-named files) with a shared `project` fixture; web-ui
+  components grouped into `editor/`, `panels/`, `shell/`; scheduler/agents service cleanups
+  (closure-in-loop removed, imports hoisted). All gates green and all three live smokes
+  (editor/durable/scheduler) pass after the restructure.
 - 2026-09-15 — Phase 4 COMPLETE: resource leases (TTL + renewal + deterministic batch), bounded
   scheduler (global/role caps, lease-aware, fail-closed), spawn policy, NATS JetStream message
   fan-out, worktree isolation + controlled integration queue with explicit conflict tasks —

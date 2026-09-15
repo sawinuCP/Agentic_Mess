@@ -1,7 +1,7 @@
 import { useState } from "react";
-import * as api from "../api/client";
-import type { TreeNode } from "../types";
-import { useStore } from "../state/store";
+import * as api from "../../api/client";
+import type { TreeNode } from "../../types";
+import { useStore } from "../../state/store";
 
 function InputDialog(props: { title: string; onSubmit: (value: string) => void; onClose: () => void }) {
   const [value, setValue] = useState("");

@@ -148,4 +148,4 @@ def test_work_without_command_fails_honestly(wired: tuple[FastAPI, str, Path]) -
     )
     assert result["outcome"] == "failed"
     assert result["failure_class"] == "TASK_FAILURE"
-    assert "Phase 3" in result["failure_detail"]
+    assert "payload.command is missing" in result["failure_detail"]

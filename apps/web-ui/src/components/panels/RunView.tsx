@@ -1,4 +1,4 @@
-import { useStore } from "../state/store";
+import { useStore } from "../../state/store";
 
 export default function RunView() {
   const project = useStore((s) => s.project);

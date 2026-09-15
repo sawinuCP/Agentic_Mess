@@ -12,24 +12,16 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api.middleware import RequestIDMiddleware
 from app.api.routes import (
-    agents,
-    artifacts,
-    events,
-    files,
-    git,
-    health,
-    hitl,
-    knowledge,
-    leases,
-    messages,
-    plans,
-    projects,
-    requirements,
-    scheduler,
-    tasks,
-    terminal,
-    toolchains,
-    worktrees,
+    core as core_routes,
+)
+from app.api.routes import (
+    orchestration as orchestration_routes,
+)
+from app.api.routes import (
+    planning as planning_routes,
+)
+from app.api.routes import (
+    workspace as workspace_routes,
 )
 from app.artifacts.store import ArtifactStore
 from app.core.config import Settings, get_settings
@@ -67,24 +59,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     app.state.settings = settings
-    app.include_router(health.router)
-    app.include_router(projects.router)
-    app.include_router(files.router)
-    app.include_router(git.router)
-    app.include_router(toolchains.router)
-    app.include_router(terminal.router)
-    app.include_router(requirements.router)
-    app.include_router(plans.router)
-    app.include_router(tasks.router)
-    app.include_router(agents.router)
-    app.include_router(messages.router)
-    app.include_router(artifacts.router)
-    app.include_router(knowledge.router)
-    app.include_router(events.router)
-    app.include_router(hitl.router)
-    app.include_router(leases.router)
-    app.include_router(scheduler.router)
-    app.include_router(worktrees.router)
+    for router in (
+        *core_routes.routers,
+        *workspace_routes.routers,
+        *planning_routes.routers,
+        *orchestration_routes.routers,
+    ):
+        app.include_router(router)
     app.add_middleware(RequestIDMiddleware)
     # DomainError is the shared base (FileServiceError/ToolchainError/GitError subclass it).
     app.add_exception_handler(DomainError, _domain_error_handler)

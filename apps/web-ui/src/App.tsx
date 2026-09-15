@@ -1,15 +1,15 @@
 import { useEffect, type JSX } from "react";
 
-import ActivityBar from "./components/ActivityBar";
-import BottomPanel from "./components/BottomPanel";
-import EditorArea from "./components/EditorArea";
-import ExplorerView from "./components/ExplorerView";
-import GitView from "./components/GitView";
-import OpenProjectDialog from "./components/OpenProjectDialog";
-import QuickOpen from "./components/QuickOpen";
-import RunView from "./components/RunView";
-import SearchView from "./components/SearchView";
-import StatusBar from "./components/StatusBar";
+import EditorArea from "./components/editor/EditorArea";
+import BottomPanel from "./components/panels/BottomPanel";
+import ExplorerView from "./components/panels/ExplorerView";
+import GitView from "./components/panels/GitView";
+import RunView from "./components/panels/RunView";
+import SearchView from "./components/panels/SearchView";
+import ActivityBar from "./components/shell/ActivityBar";
+import OpenProjectDialog from "./components/shell/OpenProjectDialog";
+import QuickOpen from "./components/shell/QuickOpen";
+import StatusBar from "./components/shell/StatusBar";
 import { useStore, type ViewId } from "./state/store";
 
 const SIDEBARS: Record<ViewId, () => JSX.Element> = {

@@ -1,7 +1,7 @@
 import Editor from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
-import { monaco } from "../state/monacoSetup";
-import { isDirty, useStore, type FileTab } from "../state/store";
+import { monaco } from "../../state/monacoSetup";
+import { isDirty, useStore, type FileTab } from "../../state/store";
 
 export default function CodeEditor({ tab }: { tab: FileTab }) {
   const updateContent = useStore((s) => s.updateContent);

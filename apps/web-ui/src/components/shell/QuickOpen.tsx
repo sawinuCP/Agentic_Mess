@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as api from "../api/client";
-import { useStore } from "../state/store";
+import * as api from "../../api/client";
+import { useStore } from "../../state/store";
 
 export default function QuickOpen() {
   const project = useStore((s) => s.project);

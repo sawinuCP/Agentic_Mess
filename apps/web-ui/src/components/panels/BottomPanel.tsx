@@ -1,4 +1,4 @@
-import { useStore } from "../state/store";
+import { useStore } from "../../state/store";
 import TerminalPane from "./TerminalPane";
 
 export default function BottomPanel() {

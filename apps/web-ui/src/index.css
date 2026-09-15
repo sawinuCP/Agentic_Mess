@@ -1,3 +1,16 @@
+/*
+ * Design system + global styles for the editor UI.
+ *
+ * Organization (search for the `--- name ---` markers):
+ *   1. tokens        — design tokens (colors) on :root
+ *   2. base          — element defaults + shared utility classes (.pad/.stack/.muted/…)
+ *   3. IDE layout    — the app grid: activity bar / sidebar / main / status bar
+ *   4. tree          — file explorer + search results
+ *   5. editor        — tab strip + Monaco host
+ *   6. bottom panel  — terminal/output panel + terminal chips
+ *   7. status bar
+ *   8. dialogs/inputs— overlay, dialogs, buttons, inputs
+ */
 :root {
   color-scheme: dark;
   --bg: #0f1117;

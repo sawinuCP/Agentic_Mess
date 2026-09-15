@@ -157,6 +157,16 @@ def plan_schedule(db: Session, project_id: uuid.UUID, limits: SchedulingLimits) 
         .order_by(Task.priority, Task.created_at)
     ).all()
 
+    def _entry(task: Task, role: str, priority: int, decision: str, reason: str) -> ScheduleEntry:
+        return ScheduleEntry(
+            task_id=task.id,
+            title=task.title,
+            role=role,
+            priority=priority,
+            decision=decision,
+            reason=reason,
+        )
+
     entries: list[ScheduleEntry] = []
     slots = limits.max_concurrency - running
     scheduled_roles: dict[str, int] = {}
@@ -165,32 +175,33 @@ def plan_schedule(db: Session, project_id: uuid.UUID, limits: SchedulingLimits) 
         depth = _task_depth(task)
         priority = int(task.priority)
 
-        def _skip(
-            reason: str, *, task: Task = task, role: str = role, priority: int = priority
-        ) -> None:
+        if slots <= 0:
             entries.append(
-                ScheduleEntry(
-                    task_id=task.id,
-                    title=task.title,
-                    role=role,
-                    priority=priority,
-                    decision="skipped",
-                    reason=reason,
+                _entry(
+                    task,
+                    role,
+                    priority,
+                    "skipped",
+                    f"global concurrency limit reached ({limits.max_concurrency})",
                 )
             )
-
-        if slots <= 0:
-            _skip(f"global concurrency limit reached ({limits.max_concurrency})")
             continue
         role_cap = limits.role_limits.get(role)
         if (
             role_cap is not None
             and running_by_role.get(role, 0) + scheduled_roles.get(role, 0) >= role_cap
         ):
-            _skip(f"role limit reached for {role!r} ({role_cap})")
+            entries.append(
+                _entry(
+                    task, role, priority, "skipped", f"role limit reached for {role!r} ({role_cap})"
+                )
+            )
             continue
         if not may_schedule_depth(depth, limits.spawn_max_depth):
-            _skip(f"spawn depth {depth} exceeds the configured maximum ({limits.spawn_max_depth})")
+            reason = (
+                f"spawn depth {depth} exceeds the configured maximum ({limits.spawn_max_depth})"
+            )
+            entries.append(_entry(task, role, priority, "skipped", reason))
             continue
         required = _required_resources(task)
         if required:
@@ -201,19 +212,18 @@ def plan_schedule(db: Session, project_id: uuid.UUID, limits: SchedulingLimits) 
             ]
             if conflicts:
                 pretty = ", ".join(f"{kind}/{key}" for kind, key in conflicts)
-                _skip(f"required resources are actively leased: {pretty}")
+                entries.append(
+                    _entry(
+                        task,
+                        role,
+                        priority,
+                        "skipped",
+                        f"required resources are actively leased: {pretty}",
+                    )
+                )
                 continue
 
-        entries.append(
-            ScheduleEntry(
-                task_id=task.id,
-                title=task.title,
-                role=role,
-                priority=priority,
-                decision="scheduled",
-                reason="within limits",
-            )
-        )
+        entries.append(_entry(task, role, priority, "scheduled", "within limits"))
         scheduled_roles[role] = scheduled_roles.get(role, 0) + 1
         slots -= 1
 

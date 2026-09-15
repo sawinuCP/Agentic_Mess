@@ -1,7 +1,7 @@
 import { useState } from "react";
-import * as api from "../api/client";
-import type { SearchMatch } from "../types";
-import { useStore } from "../state/store";
+import * as api from "../../api/client";
+import type { SearchMatch } from "../../types";
+import { useStore } from "../../state/store";
 
 export default function SearchView() {
   const project = useStore((s) => s.project);

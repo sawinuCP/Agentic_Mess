@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -49,3 +50,11 @@ def app() -> FastAPI:
         temporal_enabled=False,
     )
     return create_app(settings)
+
+
+@pytest.fixture()
+def project(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient, str, Path]]:
+    """A registered project rooted at a throwaway directory, plus a live test client."""
+    with TestClient(app) as client:
+        response = client.post("/api/projects/open", json={"root_path": str(tmp_path)})
+        yield app, client, response.json()["id"], tmp_path

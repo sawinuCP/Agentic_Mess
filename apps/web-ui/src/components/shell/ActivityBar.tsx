@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useStore, type ViewId } from "../state/store";
+import { useStore, type ViewId } from "../../state/store";
 
 const ICONS: Record<string, JSX.Element> = {
   explorer: (

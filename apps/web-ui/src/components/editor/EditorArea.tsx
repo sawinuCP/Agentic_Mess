@@ -1,5 +1,5 @@
 import { DiffEditor } from "@monaco-editor/react";
-import { isDirty, useStore, type FileTab } from "../state/store";
+import { isDirty, useStore, type FileTab } from "../../state/store";
 import CodeEditor from "./CodeEditor";
 
 export default function EditorArea() {

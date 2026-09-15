@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getLiveness, type Liveness } from "../health";
-import { useStore } from "../state/store";
+import { getLiveness, type Liveness } from "../../health";
+import { useStore } from "../../state/store";
 
 export default function StatusBar() {
   const project = useStore((s) => s.project);
