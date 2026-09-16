@@ -1,4 +1,9 @@
-"""Browser debugging integration (FR-020): real chromium against a local page."""
+"""Browser debugging integration (FR-020): real chromium against a local page.
+
+Skips honestly when the Playwright browser runtime is unavailable (e.g. a CI
+image without ``playwright install chromium``) — the API's own fail-closed
+behavior for missing browsers is covered by the manager/route contract tests.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
+
+def _chromium_available() -> bool:
+    """Probe whether a real chromium can actually launch (binary + deps present)."""
+    try:
+        from playwright.sync_api import sync_playwright  # noqa: PLC0415
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            browser.close()
+        return True
+    except Exception:  # noqa: BLE001 — any launch failure means "not available here"
+        return False
 
 
 class _PageHandler(BaseHTTPRequestHandler):
@@ -43,13 +61,22 @@ def page_server() -> Iterator[str]:
     server.shutdown()
 
 
+@pytest.fixture(scope="module")
+def chromium() -> None:
+    if not _chromium_available():
+        pytest.skip("playwright chromium runtime not available on this machine")
+
+
 @pytest.fixture()
 def browser_client(app: FastAPI) -> TestClient:
     return TestClient(app)
 
 
 def test_browser_session_captures_evidence(
-    browser_client: TestClient, project: tuple, page_server: str
+    browser_client: TestClient,
+    project: tuple,
+    page_server: str,
+    chromium: None,
 ) -> None:
     _app, client, project_id, _tmp = project
     opened = client.post(
