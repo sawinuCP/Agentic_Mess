@@ -27,7 +27,7 @@ from app.durable.activities._context import current_settings, load_task_row, ref
 from app.durable.activities.agents import heartbeat_session
 from app.durable.activities.hitl import hitl_gate
 from app.runtime.runtimes import resolve_spec
-from app.schemas.leases import LeaseOut
+from app.schemas.orchestration.leases import LeaseOut
 
 
 def _run_markers(payload: dict[str, Any]) -> str:
@@ -87,7 +87,7 @@ async def _retrieve_code(factory, project_id: str | None, query: str, settings) 
 
 
 def _within_budget(factory, task_id: uuid.UUID, budget: int) -> bool:  # type: ignore[no-untyped-def]
-    from app.services import costs as cost_service  # noqa: PLC0415
+    from app.services.intelligence import costs as cost_service  # noqa: PLC0415
 
     with factory() as session:
         return cost_service.tokens_for_task(session, task_id) < budget
@@ -112,7 +112,7 @@ async def _record_budget_exceeded(factory, project_id: str | None, task_id: uuid
 
 async def _record_invocation(factory, *, project_id, task_id, agent_id, role, response) -> None:  # type: ignore[no-untyped-def]
     def _write() -> None:
-        from app.services import costs as cost_service  # noqa: PLC0415
+        from app.services.intelligence import costs as cost_service  # noqa: PLC0415
 
         with factory() as session:
             cost_service.record_invocation(
@@ -246,7 +246,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     max_concurrent = int(getattr(settings, "exec_max_concurrent_per_project", 2) or 2)
 
     def _acquire_slot() -> LeaseOut | None:
-        from app.services import executions as execution_service  # noqa: PLC0415
+        from app.services.execution import executions as execution_service  # noqa: PLC0415
 
         with factory() as session:
             return execution_service.acquire_slot(
@@ -257,7 +257,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
             )
 
     def _release_slot(slot: LeaseOut) -> None:
-        from app.services import executions as execution_service  # noqa: PLC0415
+        from app.services.execution import executions as execution_service  # noqa: PLC0415
 
         with factory() as session:
             execution_service.release_slot(session, slot.id)

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
 from app.db.models import ContextItem, Memory, Project
-from app.schemas.knowledge import ContextItemIn, ContextItemOut, MemoryIn, MemoryOut
-from app.services import knowledge as knowledge_service
+from app.schemas.orchestration.knowledge import ContextItemIn, ContextItemOut, MemoryIn, MemoryOut
+from app.services.orchestration import knowledge as knowledge_service
 
 router = APIRouter(tags=["knowledge"])
 

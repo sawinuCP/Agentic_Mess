@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from app.runtime.runtimes import BACKENDS
-from app.schemas.execution import RuntimeStatusOut
+from app.schemas.execution.execution import RuntimeStatusOut
 
 router = APIRouter(tags=["runtime"])
 

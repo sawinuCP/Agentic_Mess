@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.schemas.intelligence import CostsOut
-from app.services import costs as cost_service
+from app.schemas.intelligence.intelligence import CostsOut
+from app.services.intelligence import costs as cost_service
 
 router = APIRouter(tags=["costs"])
 

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Event, Resource
-from app.schemas.leases import LeaseIn, LeaseOut, LeaseRenewIn
+from app.schemas.orchestration.leases import LeaseIn, LeaseOut, LeaseRenewIn
 
 STATUS_ACTIVE = "active"
 STATUS_EXPIRED = "expired"

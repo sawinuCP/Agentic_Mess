@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Plan, Requirement, Task, TaskDependency
-from app.schemas.requirements import PlanIn, PlanOut
+from app.schemas.planning.requirements import PlanIn, PlanOut
 from app.tasks.graph import find_cycle
 
 

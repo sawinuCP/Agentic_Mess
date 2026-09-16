@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.schemas.leases import LeaseBatchIn, LeaseIn, LeaseOut, LeaseRenewIn
-from app.services import leases as lease_service
+from app.schemas.orchestration.leases import LeaseBatchIn, LeaseIn, LeaseOut, LeaseRenewIn
+from app.services.orchestration import leases as lease_service
 
 router = APIRouter(tags=["leases"])
 

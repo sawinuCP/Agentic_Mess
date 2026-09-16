@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_project
 from app.codeintel import indexer, parser
 from app.db.models import Project, Symbol, SymbolFile
-from app.schemas.intelligence import IndexRequestIn, IndexStatsOut, IntelligenceStatusOut
+from app.schemas.intelligence.intelligence import (
+    IndexRequestIn,
+    IndexStatsOut,
+    IntelligenceStatusOut,
+)
 
 router = APIRouter(tags=["intelligence"])
 

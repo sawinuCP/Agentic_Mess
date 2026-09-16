@@ -14,7 +14,7 @@ from app.api.deps import get_db, get_project
 from app.codeintel.retrieval import retrieve
 from app.codeintel.scip import build_scip_index
 from app.db.models import Project, Symbol, SymbolFile
-from app.schemas.intelligence import RetrievalHitOut, RetrievalOut, SymbolOut
+from app.schemas.intelligence.intelligence import RetrievalHitOut, RetrievalOut, SymbolOut
 
 router = APIRouter(tags=["symbols"])
 

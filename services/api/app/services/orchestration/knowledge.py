@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import ContextItem, Memory
-from app.schemas.knowledge import ContextItemIn, MemoryIn
+from app.schemas.orchestration.knowledge import ContextItemIn, MemoryIn
 
 MEMORY_KINDS = ("FACT", "EVIDENCE", "DECISION", "OPINION", "APPROVAL")
 

@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
 from app.db.models import Project
-from app.schemas.projects import ProjectOpenRequest, ProjectOut
-from app.services import events as event_service
-from app.services import projects as project_service
+from app.schemas.workspace.projects import ProjectOpenRequest, ProjectOut
+from app.services.core import events as event_service
+from app.services.workspace import projects as project_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 

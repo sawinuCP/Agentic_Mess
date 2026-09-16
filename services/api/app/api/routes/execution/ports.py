@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
 from app.db.models import Project
-from app.schemas.execution import PortAllocateIn, PortOut, PortRenewIn
-from app.services import ports as port_service
+from app.schemas.execution.execution import PortAllocateIn, PortOut, PortRenewIn
+from app.services.execution import ports as port_service
 
 router = APIRouter(tags=["ports"])
 

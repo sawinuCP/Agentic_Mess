@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
 from app.db.models import Project
-from app.schemas.requirements import RequirementIn, RequirementOut
-from app.services import events as event_service
-from app.services import requirements as requirement_service
+from app.schemas.planning.requirements import RequirementIn, RequirementOut
+from app.services.core import events as event_service
+from app.services.planning import requirements as requirement_service
 
 router = APIRouter(tags=["requirements"])
 

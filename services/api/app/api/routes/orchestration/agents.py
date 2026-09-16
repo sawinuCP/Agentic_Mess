@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
 from app.db.models import Project
-from app.schemas.agents import AgentIn, AgentOut, SessionOut
-from app.services import agents as agent_service
+from app.schemas.orchestration.agents import AgentIn, AgentOut, SessionOut
+from app.services.orchestration import agents as agent_service
 
 router = APIRouter(tags=["agents"])
 

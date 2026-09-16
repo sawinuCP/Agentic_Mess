@@ -6,8 +6,8 @@ import uuid
 
 import pytest
 
-from app.services import executions as execution_service
-from app.services import ports as port_service
+from app.services.execution import executions as execution_service
+from app.services.execution import ports as port_service
 
 pytestmark = pytest.mark.integration
 

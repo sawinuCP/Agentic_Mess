@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Task, TaskAttempt, TaskDependency
-from app.schemas.tasks import AttemptOut, TaskOut
+from app.schemas.planning.tasks import AttemptOut, TaskOut
 
 
 def _task_or_404(task_id: uuid.UUID, db: Session) -> Task:

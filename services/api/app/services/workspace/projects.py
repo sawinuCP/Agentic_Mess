@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Project
-from app.schemas.projects import ProjectOut
+from app.schemas.workspace.projects import ProjectOut
 
 
 def project_out(project: Project) -> ProjectOut:

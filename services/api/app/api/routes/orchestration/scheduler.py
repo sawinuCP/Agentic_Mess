@@ -17,9 +17,13 @@ from app.api.deps import get_db, get_project
 from app.core.errors import DomainError
 from app.db.models import Project
 from app.durable.client import DurableTasks
-from app.schemas.scheduler import ScheduleEntryOut, SchedulerStateOut, SchedulerTickOut
-from app.services import scheduler as scheduler_service
-from app.services.scheduler import SchedulingLimits
+from app.schemas.orchestration.scheduler import (
+    ScheduleEntryOut,
+    SchedulerStateOut,
+    SchedulerTickOut,
+)
+from app.services.orchestration import scheduler as scheduler_service
+from app.services.orchestration.scheduler import SchedulingLimits
 
 router = APIRouter(tags=["scheduler"])
 

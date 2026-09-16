@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Event, Task, Worktree
-from app.schemas.worktrees import WorktreeOut
+from app.schemas.orchestration.worktrees import WorktreeOut
 
 VALID_BRANCH_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-")
 

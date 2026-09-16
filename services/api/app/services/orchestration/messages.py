@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Message
 from app.messaging.broker import MessageEnvelope
-from app.schemas.messages import MessageIn, MessageOut
+from app.schemas.orchestration.messages import MessageIn, MessageOut
 
 
 def message_out(message: Message) -> MessageOut:

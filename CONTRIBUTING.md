@@ -18,13 +18,19 @@ conventions so that it can scale to a team without a rewrite. The rules below ar
                                     scheduler, worktrees), intelligence/ (index, symbols,
                                     retrieval, SCIP, costs), execution/ (ports, runtime status).
                                     Each subpackage exposes `routers`.
-   schemas (app/schemas)            Pydantic request/response contracts, shared by routes+services.
-   services (app/services)          one module per domain; business logic + persistence. No FastAPI
-                                    imports; sync functions called via asyncio.to_thread.
+   schemas (app/schemas/<area>/)    Pydantic request/response contracts, same area split as
+                                    routes, shared by routes+services.
+   services (app/services/<area>/)  one module per domain in the same area split; business
+                                    logic + persistence. No FastAPI imports; sync functions
+                                    called via asyncio.to_thread.
+   models (app/db/models/<area>/)   SQLAlchemy entities in the same area split; the package
+                                    __init__ is the flat registry every consumer imports from
+                                    (`from app.db.models import X`) — internal layout may
+                                    change without touching consumers.
    adapters/domains                 well-bounded packages wrapping external tools:
                                     app/files, app/gitops, app/toolchains, app/terminal,
                                     app/runtime, app/durable, app/artifacts, app/messaging,
-                                    app/agents_runtime
+                                    app/agents_runtime, app/codeintel
    durable activities               app/durable/activities/ is a package split by concern
                                     (_context, tasks, agents, execution, hitl); the public
                                     activity names are re-exported from the package __init__.
@@ -36,7 +42,7 @@ conventions so that it can scale to a team without a rewrite. The rules below ar
 3. **Errors**: raise `DomainError` (or a subclass) with an HTTP status — never return raw dicts,
    never swallow exceptions.
 4. **Durable state lives in PostgreSQL**; never keep authoritative task/agent state only in
-   memory. Events for consequential actions go through `app/services/events.record_event`.
+   memory. Events for consequential actions go through `app/services/core/events.record_event`.
 5. **Security**: every client-supplied path passes through `ProjectFiles.resolve`; commands run
    through `app/runtime.runner`; secrets never enter logs or prompts.
 6. **Types everywhere**: full annotations (mypy passes with `disallow_untyped_defs`).

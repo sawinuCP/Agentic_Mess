@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.artifacts.store import ArtifactStore
 from app.files.service import ProjectFiles
-from app.schemas.toolchains import LanguageOut, ProjectToolchainsOut, ToolRunOut
-from app.services.artifacts import record_blob
+from app.schemas.workspace.toolchains import LanguageOut, ProjectToolchainsOut, ToolRunOut
+from app.services.core.artifacts import record_blob
 from app.toolchains.detection import detect_languages
 from app.toolchains.errors import ToolchainError
 from app.toolchains.overrides import OVERRIDE_REL, load_definition

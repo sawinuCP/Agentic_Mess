@@ -10,14 +10,14 @@ from app.api.deps import get_files_service, get_project
 from app.db.models import Project
 from app.files.service import ProjectFiles
 from app.gitops.client import GitClient, GitStatus
-from app.schemas.git import (
+from app.schemas.workspace.git import (
     CheckoutRequest,
     CommitRequest,
     GitStatusEntryOut,
     GitStatusOut,
     PathsRequest,
 )
-from app.services import events as event_service
+from app.services.core import events as event_service
 
 router = APIRouter(prefix="/api/projects/{project_id}/git", tags=["git"])
 

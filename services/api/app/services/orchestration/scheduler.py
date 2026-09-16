@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.agents_runtime.spawn_policy import may_schedule_depth
 from app.core.errors import DomainError
 from app.db.models import Event, Task
-from app.services import leases as lease_service
+from app.services.orchestration import leases as lease_service
 
 DEFAULT_ROLE = "implementer"
 SCHEDULABLE_STATUSES = ("pending", "ready")  # "blocked" waits for its dependencies

@@ -14,9 +14,9 @@ from app.artifacts.store import ArtifactStore
 from app.core.errors import DomainError
 from app.db.models import Project
 from app.files.service import ProjectFiles
-from app.schemas.toolchains import ProjectToolchainsOut, ToolRunOut, ToolRunRequest
-from app.services import events as event_service
-from app.services import toolchains as toolchain_service
+from app.schemas.workspace.toolchains import ProjectToolchainsOut, ToolRunOut, ToolRunRequest
+from app.services.core import events as event_service
+from app.services.workspace import toolchains as toolchain_service
 
 router = APIRouter(tags=["toolchains"])
 

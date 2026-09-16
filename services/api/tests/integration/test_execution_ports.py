@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.db.models import PortAllocation
-from app.services import ports as port_service
+from app.services.execution import ports as port_service
 
 pytestmark = pytest.mark.integration
 

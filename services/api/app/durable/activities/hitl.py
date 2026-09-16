@@ -24,7 +24,9 @@ async def hitl_gate(
     poll_seconds: float,
 ) -> dict[str, Any]:
     """Create a durable HITL request and wait (fail-closed) for the decision."""
-    from app.services import hitl as hitl_service  # noqa: PLC0415 — avoids an import cycle
+    from app.services.orchestration import (
+        hitl as hitl_service,  # noqa: PLC0415 — avoids an import cycle
+    )
 
     factory, _store = refs()
 

@@ -13,8 +13,8 @@ from app.api.deps import get_db, get_project
 from app.artifacts.store import ArtifactStore
 from app.core.errors import DomainError
 from app.db.models import Project
-from app.schemas.artifacts import ArtifactOut
-from app.services import artifacts as artifact_service
+from app.schemas.core.artifacts import ArtifactOut
+from app.services.core import artifacts as artifact_service
 
 router = APIRouter(tags=["artifacts"])
 

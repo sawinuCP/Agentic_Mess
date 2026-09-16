@@ -372,6 +372,14 @@ graphs, external embedding providers.
 
 ## Change log
 
+- 2026-09-16 — Structure audit round: `db/models/`, `services/`, and `schemas/` grouped into the
+  same six domain subpackages as the routes (core/workspace/planning/orchestration/intelligence/
+  execution). The models registry (`db/models/__init__`) keeps a flat re-export surface, so
+  `from app.db.models import X` consumers are untouched; service/schema imports were rewritten
+  to their new paths (43 files). Also: Windows-safe smoke output (ASCII) and docs updated.
+  Verified: ruff/mypy clean, pytest 158 passed, and all five live smokes green
+  (editor/durable/scheduler/intelligence/runtime).
+
 - 2026-09-16 — Phase 6 execution plane: runtime manager (local + docker backends with
   network-none/memory/CPU/no-new-privileges isolation — docker verified live), per-project
   execution quota slots built on runtime-kind leases, and the central port allocator with

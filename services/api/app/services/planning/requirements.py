@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import AcceptanceCriterion, Requirement
-from app.schemas.requirements import CriterionOut, RequirementIn, RequirementOut
+from app.schemas.planning.requirements import CriterionOut, RequirementIn, RequirementOut
 
 
 def _requirement_or_404(requirement_id: uuid.UUID, db: Session) -> Requirement:

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Agent, AgentSession
-from app.schemas.agents import AgentIn, AgentOut, SessionOut
+from app.schemas.orchestration.agents import AgentIn, AgentOut, SessionOut
 
 
 def _agent_or_404(agent_id: uuid.UUID, db: Session) -> Agent:

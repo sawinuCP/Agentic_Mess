@@ -12,9 +12,9 @@ from app.api.deps import get_db, get_project
 from app.core.errors import DomainError
 from app.db.models import Project
 from app.durable.client import DurableTasks
-from app.schemas.tasks import ExecuteOut, TaskOut
-from app.services import events as event_service
-from app.services import tasks as task_service
+from app.schemas.planning.tasks import ExecuteOut, TaskOut
+from app.services.core import events as event_service
+from app.services.planning import tasks as task_service
 
 router = APIRouter(tags=["tasks"])
 

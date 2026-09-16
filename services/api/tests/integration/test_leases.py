@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db.models import Resource
-from app.schemas.leases import LeaseIn
-from app.services import leases as lease_service
+from app.schemas.orchestration.leases import LeaseIn
+from app.services.orchestration import leases as lease_service
 
 pytestmark = pytest.mark.integration
 

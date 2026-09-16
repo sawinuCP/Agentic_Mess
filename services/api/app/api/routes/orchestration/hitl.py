@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.schemas.hitl import DecideIn
-from app.services import hitl as hitl_service
+from app.schemas.orchestration.hitl import DecideIn
+from app.services.orchestration import hitl as hitl_service
 
 router = APIRouter(tags=["hitl"])
 

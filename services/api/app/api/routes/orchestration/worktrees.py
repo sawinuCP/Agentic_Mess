@@ -14,8 +14,8 @@ from app.core.errors import DomainError
 from app.db.models import Project
 from app.files.service import ProjectFiles
 from app.gitops.client import GitClient, GitError
-from app.schemas.worktrees import IntegrationOut, WorktreeCreateIn, WorktreeOut
-from app.services import worktrees as worktree_service
+from app.schemas.orchestration.worktrees import IntegrationOut, WorktreeCreateIn, WorktreeOut
+from app.services.orchestration import worktrees as worktree_service
 
 router = APIRouter(tags=["worktrees"])
 

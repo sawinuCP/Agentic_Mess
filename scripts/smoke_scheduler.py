@@ -99,7 +99,7 @@ def main() -> int:
     tick2 = client.post(f"/api/projects/{project_id}/scheduler/tick").json()
     assert tick2["started_count"] == 1, f"expected the blocked task to start: {tick2}"
     _wait_task(client, blocked_id)
-    print("[6] lease released → second tick scheduled and completed the blocked task")
+    print("[6] lease released -> second tick scheduled and completed the blocked task")
 
     state = client.get(f"/api/projects/{project_id}/scheduler/state").json()
     assert state["running"] == 0

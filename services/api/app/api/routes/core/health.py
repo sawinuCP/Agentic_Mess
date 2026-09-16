@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 from app import __version__
 from app.core.config import Settings
-from app.schemas.health import ComponentHealth, LivenessReport, ReadinessReport
+from app.schemas.core.health import ComponentHealth, LivenessReport, ReadinessReport
 
 router = APIRouter(tags=["health"])
 

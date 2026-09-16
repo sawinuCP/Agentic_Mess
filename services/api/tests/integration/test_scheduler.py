@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.db.models import Event, Task
-from app.services.scheduler import SchedulingLimits, commit_scheduled, plan_schedule
+from app.services.orchestration.scheduler import SchedulingLimits, commit_scheduled, plan_schedule
 
 pytestmark = pytest.mark.integration
 
@@ -95,8 +95,8 @@ def test_spawn_depth_bound_skips_over_deep_tasks(project: tuple) -> None:
 
 def test_actively_leased_resource_skips_task(project: tuple) -> None:
     app, client, project_id, _tmp = project
-    from app.schemas.leases import LeaseIn
-    from app.services import leases as lease_service
+    from app.schemas.orchestration.leases import LeaseIn
+    from app.services.orchestration import leases as lease_service
 
     lease_key = f"res-{uuid.uuid4().hex[:8]}"
     _add_task(

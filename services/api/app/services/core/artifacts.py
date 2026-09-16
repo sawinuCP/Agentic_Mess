@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.artifacts.store import ArtifactStore, mime_for_name
 from app.core.errors import DomainError
 from app.db.models import Artifact
-from app.schemas.artifacts import ArtifactOut
+from app.schemas.core.artifacts import ArtifactOut
 
 
 def artifact_out(artifact: Artifact) -> ArtifactOut:

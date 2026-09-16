@@ -16,8 +16,8 @@ from sqlalchemy import select
 
 from app.db.models import AgentSession, HitlRequest
 from app.durable.activities import agent_execute_activity, init_refs, start_agent_activity
-from app.services import agents as agent_service
-from app.services import hitl as hitl_service
+from app.services.orchestration import agents as agent_service
+from app.services.orchestration import hitl as hitl_service
 
 pytestmark = pytest.mark.integration
 

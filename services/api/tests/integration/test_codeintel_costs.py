@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 from app.durable.activities import agent_execute_activity, init_refs, start_agent_activity
-from app.services import costs as cost_service
+from app.services.intelligence import costs as cost_service
 
 pytestmark = pytest.mark.integration
 

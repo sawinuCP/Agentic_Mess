@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import get_files_service
 from app.files.search import ProjectSearch
 from app.files.service import FileContent, ProjectFiles, TreeEntry
-from app.schemas.files import (
+from app.schemas.workspace.files import (
     EntryCreateRequest,
     EntryRenameRequest,
     FileContentOut,

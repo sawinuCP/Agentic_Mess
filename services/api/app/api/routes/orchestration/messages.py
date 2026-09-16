@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.core.errors import DomainError
 from app.messaging.broker import BrokerUnavailable, build_broker
-from app.schemas.messages import DeliveryOut, MessageIn, MessageOut
-from app.services import messages as message_service
+from app.schemas.orchestration.messages import DeliveryOut, MessageIn, MessageOut
+from app.services.orchestration import messages as message_service
 
 router = APIRouter(tags=["messages"])
 

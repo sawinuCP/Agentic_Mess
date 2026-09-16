@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from app.messaging.broker import MessageEnvelope, subject_for
-from app.schemas.messages import MessageIn
-from app.services import messages as message_service
+from app.schemas.orchestration.messages import MessageIn
+from app.services.orchestration import messages as message_service
 
 pytestmark = pytest.mark.integration
 

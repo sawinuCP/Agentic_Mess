@@ -13,8 +13,8 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
-from app.schemas.leases import LeaseIn, LeaseOut
-from app.services import leases as lease_service
+from app.schemas.orchestration.leases import LeaseIn, LeaseOut
+from app.services.orchestration import leases as lease_service
 
 RUNTIME_LEASE_KIND = "runtime"
 
