@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { glue } from "@typehug/en";
 import { getLiveness, type Liveness } from "../../health";
+import { runningAgents, useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 
 export default function StatusBar() {
@@ -33,6 +35,10 @@ export default function StatusBar() {
 
   const dirtyCount = useStore((s) => s.tabs.filter((t) => t.kind === "file" && t.content !== t.savedContent).length);
   const languages = toolchains?.languages.map((l) => l.name).slice(0, 3) ?? [];
+  const agents = useOffice((s) => s.agents);
+  const pendingHitl = useOffice((s) => s.hitl.length);
+  const running = runningAgents(agents).length;
+  const setFnOffice = useOffice((s) => s.set);
 
   return (
     <footer className="status-bar">
@@ -45,6 +51,23 @@ export default function StatusBar() {
         </button>
       )}
       {dirtyCount > 0 && <span className="status-item warn">{dirtyCount} unsaved</span>}
+      {(running > 0 || pendingHitl > 0) && (
+        <button
+          className="status-item clickable office-status"
+          onClick={() => {
+            setFn({ view: "office" });
+            setFnOffice({ tab: "team" });
+          }}
+          title="Open the engineering office"
+        >
+          {running > 0 && (
+            <span className="row gap4">
+              <span className="live-dot on" /> {running} agent{running === 1 ? "" : "s"} working
+            </span>
+          )}
+          {pendingHitl > 0 && <span className="warn">{glue(`${pendingHitl} approval${pendingHitl === 1 ? "" : "s"} needed`)}</span>}
+        </button>
+      )}
       <div className="status-spacer" />
       {languages.map((name) => (
         <span key={name} className="status-item muted">

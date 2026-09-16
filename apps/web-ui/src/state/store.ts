@@ -6,7 +6,7 @@ import * as api from "../api/client";
 import type { GitStatus, ProjectInfo, ProjectToolchains, ToolRunResult, TreeNode } from "../types";
 import { monacoLanguageFor } from "../util/languages";
 
-export type ViewId = "explorer" | "search" | "git" | "run";
+export type ViewId = "explorer" | "search" | "git" | "run" | "office";
 
 export interface FileTab {
   kind: "file";

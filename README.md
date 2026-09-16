@@ -5,7 +5,7 @@ Users describe a software requirement; the harness plans work, dynamically creat
 executes them in isolated workspaces with controlled tools, verifies results with evidence,
 and keeps humans in control — all inside a professional code editor.
 
-> **Status:** Phase 8 complete — agent runtime + orchestration + code intelligence + execution plane + integrations + quality oversight (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
+> **Status:** Phase 9 complete — agent runtime + orchestration + code intelligence + execution plane + integrations + quality oversight + engineering-office UI (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
 > The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
 
 ## What works today (Phases 1–4)
@@ -35,6 +35,9 @@ and keeps humans in control — all inside a professional code editor.
 - Quality oversight: requirement overseer with machine-checked traceability and an
   evidence-only completion gate (no self-reported completion), 5-role review/debate/
   adjudication pipeline with per-role model routing, credential-scanner security gate
+- Engineering office (Phase 9): live agent/team view with morphing state pills, durable
+  event timeline with filters, oversight gate with blockers + report generation, HITL
+  approval cards — verified end to end with a Playwright-driven UI smoke
 - Health/readiness endpoints, durable event stream, structured JSON logs, opt-in OpenTelemetry
 
 ## Quickstart (local development)

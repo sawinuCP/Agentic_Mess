@@ -25,6 +25,14 @@ const ICONS: Record<string, JSX.Element> = {
       <path d="M4 2.8v10.4L13 8 4 2.8z" />
     </svg>
   ),
+  office: (
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="5.5" cy="5" r="2.2" />
+      <path d="M1.8 13.5c.4-2.6 1.9-4 3.7-4s3.3 1.4 3.7 4" strokeLinecap="round" />
+      <circle cx="11.5" cy="4.2" r="1.8" />
+      <path d="M9.6 8.6c.6-.7 1.2-1 1.9-1 1.5 0 2.7 1.2 3 3.4" strokeLinecap="round" />
+    </svg>
+  ),
   terminal: (
     <svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6">
       <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
@@ -38,6 +46,7 @@ const MAIN_VIEWS: { id: ViewId; title: string }[] = [
   { id: "search", title: "Search" },
   { id: "git", title: "Source Control" },
   { id: "run", title: "Run & Toolchains" },
+  { id: "office", title: "Engineering Office" },
 ];
 
 export default function ActivityBar() {

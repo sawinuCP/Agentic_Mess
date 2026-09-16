@@ -87,3 +87,122 @@ export interface GitCommit {
   date_iso: string;
   message: string;
 }
+
+// --- office (Phase 9, FR-025) ---------------------------------------------
+
+export interface AgentInfo {
+  id: string;
+  project_id: string | null;
+  name: string;
+  role: string;
+  model: string | null;
+  capabilities: string[];
+  state: string;
+}
+
+export interface TaskInfo {
+  id: string;
+  project_id: string;
+  requirement_id: string | null;
+  title: string;
+  request: string;
+  status: string;
+  priority: number;
+  depends_on: string[];
+  attempts: {
+    attempt_number: number;
+    outcome: string | null;
+    evidence_artifact_ids: string[];
+  }[];
+}
+
+export interface CriterionInfo {
+  id: string;
+  description: string;
+  kind: string;
+  mandatory: boolean;
+  status: string;
+}
+
+export interface RequirementInfo {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  criteria: CriterionInfo[];
+}
+
+export interface HitlRequestInfo {
+  id: string;
+  task_id: string | null;
+  kind: string;
+  question: string;
+  choices: string[];
+  risk: string;
+  status: string;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface EventEntry {
+  id: string;
+  occurred_at: string;
+  event_type: string;
+  source: string | null;
+  project_id: string | null;
+  task_id: string | null;
+  agent_id: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface TraceabilityCriterion {
+  id: string;
+  description: string;
+  kind: string;
+  mandatory: boolean;
+  state: string;
+}
+
+export interface TraceabilityRequirement {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  implemented: boolean;
+  task_ids: string[];
+  criteria: TraceabilityCriterion[];
+  evidence_artifact_ids: string[];
+  validation_evidence_artifact_ids: string[];
+}
+
+export interface TraceabilityReport {
+  project_id: string;
+  generated_at: string;
+  requirements: TraceabilityRequirement[];
+  coverage: { total: number; verified: number; failed: number; unknown: number };
+  orphan_task_ids: string[];
+  scope_drift: boolean;
+  completion_allowed?: boolean;
+  blockers?: string[];
+  warnings?: string[];
+  artifact_id?: string;
+}
+
+export interface ReviewEntry {
+  id: string;
+  role: string;
+  verdict: string;
+  summary: string;
+  model: string;
+  rounds: number;
+}
+
+export interface ReviewOutcome {
+  decision_id: string;
+  verdict: string;
+  rationale: string;
+  reviews: ReviewEntry[];
+  findings: { reviewer: string; severity: string; claim: string; evidence: string }[];
+}

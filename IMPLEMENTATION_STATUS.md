@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 8 — Quality & oversight (complete)
+**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 9 — Office UI (complete)
 
 ## Phase overview
 
@@ -15,7 +15,7 @@
 | 6 | Execution plane | **COMPLETE** | Port allocator (TTL/bind-probe), runtime manager (local + docker isolation), execution quotas via leases |
 | 7 | Browser / MCP / web research | **COMPLETE** | Playwright browser sessions + evidence artifacts, MCP stdio gateway with permission controls, research evidence packets |
 | 8 | Quality & oversight | **COMPLETE** | Requirement overseer (traceability + evidence-backed completion gate), review/debate/adjudication pipeline, credential-scanner security gate |
-| 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
+| 9 | Office UI | **COMPLETE** | Engineering-office sidebar (team, timeline, oversight), HITL approval cards, live polling, AI-agent UI theme (Torph/Typehug) |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
 
 ## Phase 3 — agent runtime core (implemented 2026-09-14)
@@ -366,7 +366,10 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
   pipeline over the `decisions`/`reviews` tables; bounded credential-scanner security gate.
   Deferred: overseer as a continuous durable workflow (currently API-invoked), debate
   round concurrency policy per model family, secret-scan allowlist UX)
-- Office/graph/timeline/diff UIs (Phase 9)
+- Office/graph/timeline/diff UIs (Phase 9) — **delivered** (engineering-office sidebar with
+  live team/timeline/oversight tabs, HITL approval cards, morphing state pills + non-breaking
+  typography via Torph/Typehug; Playwright-driven UI smoke. Deferred: requirement-graph
+  canvas visualization, per-agent chat threads, office websocket push (polled every 2.5 s))
 - Packaging, diagnostics screen, export/import (Phase 10)
 
 ## Phase 7 — browser / MCP / web research (implemented 2026-09-16)
@@ -458,15 +461,58 @@ Per spec §23/§24, on top of the Phase-2 oversight schema (`decisions`, `review
 | `scripts/smoke_oversight.py` — full §23/§24 chain live (block → scan → verify → review → complete) | **PASS** |
 | regression smokes: editor / durable / scheduler / runtime / integrations | PASS |
 
-## Next phase entry criteria (Phase 9)
+## Phase 9 — office UI (implemented 2026-09-16)
 
-Phase 8 gates green → begin Phase 9 office UI: live agent/team view, requirement-graph and
-timeline UIs, evidence/diff review screens, HITL approval UI, completion-report rendering
-(FR-025, AC-014). Deferred from earlier phases: LSP daemon + call/dependency graphs,
-external embedding providers, gVisor/Firecracker-class isolation, browser video capture,
-remote/HTTP MCP transports, overseer as a continuous durable workflow.
+Per spec FR-025/AC-014, the engineering-office sidebar in the web UI — no backend changes
+needed (the Phase-8 oversight + existing list/event/HITL endpoints were already sufficient):
+
+- **Engineering-office view** (`apps/web-ui/src/components/office/`): a fifth activity-bar
+  view with three live tabs. *Team*: agent cards (name, role, model, lifecycle state as a
+  Torph-morphing state pill) and a task board with requirement linkage, evidence badges and
+  a "request review" action wired to the Phase-8 pipeline. *Timeline*: the durable event
+  stream as a color-coded live feed with kind filters (agent/task/review/HITL/security).
+  *Oversight*: the completion-gate card (allowed/blocked, coverage counters, explicit
+  blockers/warnings, "generate completion report" → durable artifact), the requirements
+  traceability tree with per-criterion states, and the review pipeline visualization
+  (reviewers → critic → evidence verifier → adjudicator with verdict pills + findings).
+- **HITL approval cards** (spec §25): pending requests render as aicss-style decision
+  cards — risk badge, question, choices, note input, approve/reject — driving the durable
+  `POST /api/hitl/{id}/decide` endpoint; the status bar surfaces "N approvals needed".
+- **Live polling** (`state/officeStore.ts`): a dedicated zustand store refreshes agents,
+  tasks, HITL, events and traceability every 2.5 s, with honest error surfacing.
+- **AI-agent UI theme**: interaction patterns follow the aicss.dev block conventions
+  (state pills, live dots, verdict pills, decision cards); Torph (`torph/react`) morphs
+  state transitions and the sync footer; Typehug (`@typehug/en`) keeps label text
+  typographically intact.
+- **Fixed a real pre-existing bug**: the vite dev proxy stripped the `/api` prefix while
+  FastAPI serves routes *with* it — every proxied UI call 404'd. The prefix is preserved
+  now; the Playwright smoke exercises the UI through the proxy end to end.
+
+### Phase 9 validation log (2026-09-16)
+
+| Gate | Result |
+| ---- | ------ |
+| web-ui `npm run build` (tsc + vite) | pass |
+| ruff format/check + mypy + pytest — **190 passed** | pass |
+| `scripts/smoke_office.py` — Playwright-driven live UI: project open → office tabs → fail-closed gate + blockers → timeline events → HITL approve | **PASS** |
+| regression smokes: editor / durable / scheduler / runtime / integrations | PASS |
+
+## Next phase entry criteria (Phase 10)
+
+Phase 9 gates green → begin Phase 10 hardening & packaging: recovery/security testing,
+Tauri packaging, diagnostics screen, export/import. Deferred from earlier phases: LSP
+daemon + call/dependency graphs, external embedding providers, gVisor/Firecracker-class
+isolation, browser video capture, remote/HTTP MCP transports, overseer as a continuous
+durable workflow, requirement-graph canvas visualization, office websocket push.
 
 ## Change log
+
+- 2026-09-16 — Phase 9 office UI: engineering-office sidebar with live team/timeline/
+  oversight tabs, HITL approval cards, Torph/Typehug-powered interactive typography, and
+  a Playwright-driven live UI smoke (`scripts/smoke_office.py`) plus a short runner
+  (`scripts/run-office-smoke.ps1`). Fixed the vite dev proxy prefix bug that 404'd every
+  proxied UI call. New web-ui deps: `torph`, `@typehug/en`. Verified: web-ui build, ruff/
+  mypy clean, pytest 190 passed, office UI smoke green with all regression smokes.
 
 - 2026-09-16 — Phase 8 quality & oversight: requirement overseer with machine-checked
   traceability and an evidence-only, fail-closed completion gate (FR-026/027, AC-011/015),

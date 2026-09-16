@@ -4,6 +4,7 @@ import EditorArea from "./components/editor/EditorArea";
 import BottomPanel from "./components/panels/BottomPanel";
 import ExplorerView from "./components/panels/ExplorerView";
 import GitView from "./components/panels/GitView";
+import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
 import ActivityBar from "./components/shell/ActivityBar";
@@ -17,6 +18,7 @@ const SIDEBARS: Record<ViewId, () => JSX.Element> = {
   search: SearchView,
   git: GitView,
   run: RunView,
+  office: OfficeView,
 };
 
 export default function App() {

@@ -37,9 +37,9 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | IMPLEMENTED | app/research/service.py, routes/research | tests/integration/test_research.py, scripts/smoke_integrations.py | — | L |
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
 | FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IMPLEMENTED | app/db/models/events.py, app/services/events.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
-| FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
+| FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | IMPLEMENTED | apps/web-ui/src/components/office/ (team, timeline, oversight, HITL approval card), apps/web-ui/src/state/officeStore.ts | scripts/smoke_office.py (Playwright, live) | FR-024 | M |
 | FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | IMPLEMENTED | app/services/quality/overseer.py (completion gate), app/services/quality/gates.py (task gate), routes/quality | tests/integration/test_quality_overseer.py, scripts/smoke_oversight.py | FR-013 | H |
-| FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | IMPLEMENTED (report + durable artifact; office UI Phase 9) | app/services/quality/overseer.py, routes/quality/oversight.py | tests/integration/test_quality_overseer.py, scripts/smoke_oversight.py | FR-026 | M |
+| FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | IMPLEMENTED (report + durable artifact + office gate card) | app/services/quality/overseer.py, routes/quality/oversight.py, apps/web-ui/src/components/office/OversightTab.tsx | tests/integration/test_quality_overseer.py, scripts/smoke_oversight.py | FR-026 | M |
 | FR-028 | Editor usable for conventional workflows without AI | editor | 1 | IMPLEMENTED | apps/web-ui/src/ | scripts/smoke_editor.py (live) | — | M |
 | FR-029 | Project-level config, no hard-coded framework | config, toolchain registry | 1 | IMPLEMENTED | app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | L |
 | FR-030 | Security boundaries independent of model instructions | policy engine, gateway | 3+ | IN_PROGRESS | app/agents_runtime/gateway.py (deny/allow/approval outside model) | tests/unit/test_agent_gateway.py | — | H |
@@ -109,8 +109,8 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | AC-010 | Web/MCP/browser permission-controlled + observable | Security tests | 7 | NOT_STARTED |
 | AC-011 | Requirement coverage continuously tracked | Overseer tests | 8 | IMPLEMENTED (traceability report + coverage stats) |
 | AC-012 | High-risk decisions independently reviewed/adjudicated | Review tests | 8 | IMPLEMENTED (5-role pipeline, bounded rounds, fail-closed) |
-| AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | IN_PROGRESS (fail-closed gates live; UI Phase 9) |
-| AC-014 | Office UI reflects live execution state | UI tests | 9 | NOT_STARTED |
+| AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | IMPLEMENTED (fail-closed gates + office approval card; Playwright-verified) |
+| AC-014 | Office UI reflects live execution state | UI tests | 9 | IMPLEMENTED (polled agents/tasks/events/oversight; Playwright smoke) |
 | AC-015 | Completion evidence-backed, blocked by unmet criteria | Overseer tests | 8 | IMPLEMENTED (409 + blockers; VERIFIED only with evidence) |
 | AC-016 | Restart preserves durable execution state | Restart-recovery tests | 2/3 | NOT_STARTED |
 | AC-017 | Multi-language via configurable toolchains | Multi-language suite | 1/6 | NOT_STARTED |

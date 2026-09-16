@@ -2,13 +2,20 @@
 // /api proxy (see vite.config.ts).
 
 import type {
+  AgentInfo,
+  EventEntry,
   FileContent,
   GitCommit,
   GitStatus,
+  HitlRequestInfo,
   ProjectInfo,
   ProjectToolchains,
+  RequirementInfo,
+  ReviewOutcome,
   SearchMatch,
+  TaskInfo,
   ToolRunResult,
+  TraceabilityReport,
   TreeNode,
 } from "../types";
 
@@ -174,3 +181,64 @@ export function terminalWebSocketUrl(sessionId: string): string {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   return `${scheme}://${location.host}/api/ws/terminal/${sessionId}`;
 }
+
+// --- office (Phase 9, FR-025) ---------------------------------------------
+
+export const listAgents = (projectId: string) =>
+  request<AgentInfo[]>(`/api/projects/${projectId}/agents`);
+
+export const listTasks = (projectId: string) =>
+  request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);
+
+export const listRequirements = (projectId: string) =>
+  request<RequirementInfo[]>(`/api/projects/${projectId}/requirements`);
+
+export const listEvents = (projectId: string, limit = 120) =>
+  request<EventEntry[]>(`/api/events?project_id=${enc(projectId)}&limit=${limit}`);
+
+export const listHitl = (projectId: string, status?: string) => {
+  const query = new URLSearchParams({ project_id: projectId });
+  if (status) query.set("status", status);
+  return request<HitlRequestInfo[]>(`/api/hitl?${query.toString()}`);
+};
+
+export const decideHitl = (
+  projectId: string,
+  requestId: string,
+  body: { decision: "approved" | "rejected"; decided_by: string; note?: string },
+) =>
+  request<HitlRequestInfo>(
+    `/api/projects/${projectId}/hitl/${requestId}/decide`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const getTraceability = (projectId: string) =>
+  request<TraceabilityReport>(`/api/projects/${projectId}/oversight/traceability`);
+
+export const requestCompletion = async (projectId: string) => {
+  // 409 means "blocked" — the body still carries the freshest report with
+  // blockers, which is exactly what the oversight UI wants to show.
+  const response = await fetch(`/api/projects/${projectId}/oversight/completion`, {
+    method: "POST",
+  });
+  const body = (await response.json()) as
+    | TraceabilityReport
+    | { detail: string; report: TraceabilityReport };
+  if (response.status === 409 && "report" in body) {
+    return body.report;
+  }
+  if (!response.ok) {
+    const detail = "detail" in body ? body.detail : `HTTP ${response.status}`;
+    throw new ApiError(response.status, detail);
+  }
+  return body as TraceabilityReport;
+};
+
+export const runReview = (
+  taskId: string,
+  body: { title: string; proposal: string; evidence?: string[] },
+) =>
+  request<ReviewOutcome>(`/api/tasks/${taskId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
