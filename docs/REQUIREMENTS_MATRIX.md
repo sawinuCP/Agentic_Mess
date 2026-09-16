@@ -29,7 +29,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | IMPLEMENTED (API+gates; UI in Phase 9) | app/services/hitl.py, app/api/routes/hitl.py, app/durable/activities.py (gate) | tests/integration/test_phase3_runtime.py | — | M |
 | FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (signals+checkpoints) | scripts/smoke_durable.py (live) | FR-008 | H |
 | FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
-| FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
+| FR-017 | Independent validation of high-risk decisions | review/debate | 8 | IMPLEMENTED | app/services/quality/review.py (independent reviewers -> critic -> evidence verifier -> adjudicator), routes/quality | tests/integration/test_quality_review.py, scripts/smoke_oversight.py | FR-013 | M |
 | FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | IMPLEMENTED | app/runtime/runtimes.py (local + docker backends), app/agents_runtime/gateway.py | tests/unit/test_runtime_manager.py, scripts/smoke_runtime.py | — | H |
 | FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | IMPLEMENTED | app/toolchains/service.py, app/runtime/runner.py | tests/unit/test_toolchains.py, tests/unit/test_runner.py | FR-004 | M |
 | FR-020 | Browser-based debugging for web apps | playwright worker | 7 | IMPLEMENTED | app/browser/session.py, app/browser/manager.py, routes/browser | tests/integration/test_browser.py, scripts/smoke_integrations.py | FR-018 | M |
@@ -38,8 +38,8 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
 | FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IMPLEMENTED | app/db/models/events.py, app/services/events.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
-| FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | NOT_STARTED | — | — | FR-013 | H |
-| FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | NOT_STARTED | — | — | FR-026 | M |
+| FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | IMPLEMENTED | app/services/quality/overseer.py (completion gate), app/services/quality/gates.py (task gate), routes/quality | tests/integration/test_quality_overseer.py, scripts/smoke_oversight.py | FR-013 | H |
+| FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | IMPLEMENTED (report + durable artifact; office UI Phase 9) | app/services/quality/overseer.py, routes/quality/oversight.py | tests/integration/test_quality_overseer.py, scripts/smoke_oversight.py | FR-026 | M |
 | FR-028 | Editor usable for conventional workflows without AI | editor | 1 | IMPLEMENTED | apps/web-ui/src/ | scripts/smoke_editor.py (live) | — | M |
 | FR-029 | Project-level config, no hard-coded framework | config, toolchain registry | 1 | IMPLEMENTED | app/toolchains/overrides.py | tests/unit/test_toolchains.py | — | L |
 | FR-030 | Security boundaries independent of model instructions | policy engine, gateway | 3+ | IN_PROGRESS | app/agents_runtime/gateway.py (deny/allow/approval outside model) | tests/unit/test_agent_gateway.py | — | H |
@@ -107,11 +107,11 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | AC-008 | Semantic/structural repo inspection | Code-intelligence tests | 5 | IN_PROGRESS (symbol index + hybrid retrieval + SCIP-JSON export live; LSP daemon + call/dependency graphs deferred) |
 | AC-009 | Tool output compressed before context injection | Context tests | 3 | IMPLEMENTED (FR-023 observation compression) |
 | AC-010 | Web/MCP/browser permission-controlled + observable | Security tests | 7 | NOT_STARTED |
-| AC-011 | Requirement coverage continuously tracked | Overseer tests | 8 | NOT_STARTED |
-| AC-012 | High-risk decisions independently reviewed/adjudicated | Review tests | 8 | NOT_STARTED |
+| AC-011 | Requirement coverage continuously tracked | Overseer tests | 8 | IMPLEMENTED (traceability report + coverage stats) |
+| AC-012 | High-risk decisions independently reviewed/adjudicated | Review tests | 8 | IMPLEMENTED (5-role pipeline, bounded rounds, fail-closed) |
 | AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | IN_PROGRESS (fail-closed gates live; UI Phase 9) |
 | AC-014 | Office UI reflects live execution state | UI tests | 9 | NOT_STARTED |
-| AC-015 | Completion evidence-backed, blocked by unmet criteria | Overseer tests | 8 | NOT_STARTED |
+| AC-015 | Completion evidence-backed, blocked by unmet criteria | Overseer tests | 8 | IMPLEMENTED (409 + blockers; VERIFIED only with evidence) |
 | AC-016 | Restart preserves durable execution state | Restart-recovery tests | 2/3 | NOT_STARTED |
 | AC-017 | Multi-language via configurable toolchains | Multi-language suite | 1/6 | NOT_STARTED |
 

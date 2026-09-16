@@ -33,6 +33,9 @@ from app.api.routes import (
     planning as planning_routes,
 )
 from app.api.routes import (
+    quality as quality_routes,
+)
+from app.api.routes import (
     research as research_routes,
 )
 from app.api.routes import (
@@ -87,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         *browser_routes.routers,
         *mcp_routes.routers,
         *research_routes.routers,
+        *quality_routes.routers,
     ):
         app.include_router(router)
     app.add_middleware(RequestIDMiddleware)

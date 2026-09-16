@@ -16,7 +16,9 @@ conventions so that it can scale to a team without a rewrite. The rules below ar
                                     planning/ (requirements, plans, tasks),
                                     orchestration/ (agents, messages, knowledge, hitl, leases,
                                     scheduler, worktrees), intelligence/ (index, symbols,
-                                    retrieval, SCIP, costs), execution/ (ports, runtime status).
+                                    retrieval, SCIP, costs), execution/ (ports, runtime status),
+                                    browser/, mcp/, research/ (Phase 7),
+                                    quality/ (oversight, reviews, gates — Phase 8).
                                     Each subpackage exposes `routers`.
    schemas (app/schemas/<area>/)    Pydantic request/response contracts, same area split as
                                     routes, shared by routes+services.

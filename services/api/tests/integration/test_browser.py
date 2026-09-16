@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
@@ -43,7 +44,7 @@ def page_server() -> Iterator[str]:
 
 
 @pytest.fixture()
-def browser_client(app) -> TestClient:
+def browser_client(app: FastAPI) -> TestClient:
     return TestClient(app)
 
 

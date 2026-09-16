@@ -8,6 +8,7 @@ storage — raw evidence is durable, model-facing summaries stay compact.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
 from collections import deque
@@ -134,7 +135,5 @@ class BrowserSession:
     async def close(self) -> None:
         if not self.closed:
             self.closed = True
-            try:
+            with contextlib.suppress(Exception):  # closing must never raise
                 await self.context.close()
-            except Exception:  # noqa: BLE001 — closing must never raise
-                pass

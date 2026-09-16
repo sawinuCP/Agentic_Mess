@@ -9,6 +9,7 @@ actionable 503.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import Any
 
@@ -78,14 +79,10 @@ class BrowserManager:
             await session.close()
         self._sessions.clear()
         if self._browser is not None:
-            try:
+            with contextlib.suppress(Exception):  # shutdown must never raise
                 await self._browser.close()
-            except Exception:  # noqa: BLE001 — shutdown must never raise
-                pass
             self._browser = None
         if self._playwright is not None:
-            try:
+            with contextlib.suppress(Exception):  # shutdown must never raise
                 await self._playwright.stop()
-            except Exception:  # noqa: BLE001
-                pass
             self._playwright = None

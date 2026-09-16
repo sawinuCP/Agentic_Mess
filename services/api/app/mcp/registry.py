@@ -132,7 +132,7 @@ async def call_tool(
     try:
         await client.start()
         tools = await client.list_tools()
-        schema = next(
+        schema: dict[str, Any] = next(
             (tool.get("inputSchema", {}) for tool in tools if tool.get("name") == tool_name), {}
         )
         validate_arguments(schema, arguments)

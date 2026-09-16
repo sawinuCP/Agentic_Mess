@@ -54,6 +54,7 @@ are replaceable; requirements, tasks, code, artifacts, evidence and history are 
 │   app/browser/      Playwright debugging sessions — Phase 7 (FR-020)│
 │   app/mcp/          MCP stdio client + tool registry — Phase 7      │
 │   app/research/     web fetch/search evidence packets — Phase 7     │
+│   services/quality/ overseer, review pipeline, gates — Phase 8      │
 │   app/terminal/     PTY sessions over WebSocket (pywinpty/POSIX)    │
 │   app/artifacts/    content-addressed artifact store (sha256)       │
 │   app/tasks/        task-graph integrity (cycle detection)          │
@@ -65,6 +66,7 @@ are replaceable; requirements, tasks, code, artifacts, evidence and history are 
 │   app/tools/        Phase 3/7: tool gateway, MCP, web research      │
 │   app/integration/  Phase 4/6: worktrees, merge queue               │
 │   app/requirements/ Phase 8: requirement overseer, traceability     │
+│                     (implemented as services/quality/)              │
 └───────┬──────────────┬───────────────┬──────────────┬──────────────┘
         ▼              ▼               ▼              ▼
   PostgreSQL      Redis            NATS          Temporal (profile,
@@ -277,9 +279,9 @@ because Alembic requires the models importable; documented, not accidental.
 | 3 | Agent runtime + durable orchestration | Lifecycle, tools, context broker, Temporal, pause/resume | **COMPLETE** (HITL gates, supervision, replacement, escalation) |
 | 4 | Multi-agent team | Dynamic spawn, scheduler, messaging, worktrees, leases | **COMPLETE** (leases, scheduler, NATS fan-out, integration queue) |
 | 5 | Code intelligence | Tree-sitter + LSP/SCIP + retrieval/ranking | NOT_STARTED |
-| 6 | Execution plane | Containers, quotas, ports, supervision | NOT_STARTED |
-| 7 | Browser/MCP/web | Playwright, MCP gateway, research evidence | NOT_STARTED |
-| 8 | Quality/oversight | Requirement graph, reviewers, adjudication, security | NOT_STARTED |
+| 6 | Execution plane | Containers, quotas, ports, supervision | COMPLETE (2026-09-16) |
+| 7 | Browser/MCP/web | Playwright, MCP gateway, research evidence | COMPLETE (2026-09-16) |
+| 8 | Quality/oversight | Requirement graph, reviewers, adjudication, security | COMPLETE (2026-09-16) |
 | 9 | Office UI | Live team view, graph, timeline, evidence | NOT_STARTED |
 | 10 | Hardening | Security/recovery/performance, packaging, docs | NOT_STARTED |
 

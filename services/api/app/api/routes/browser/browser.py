@@ -47,7 +47,7 @@ def _session(manager: Any, project_id: uuid.UUID, session_id: str) -> Any:
     return session
 
 
-def _evidence_persister(request: Request, project_id: uuid.UUID):
+def _evidence_persister(request: Request, project_id: uuid.UUID) -> Any:
     """Persist browser evidence (screenshots/logs) as durable artifacts."""
     store = request.app.state.artifacts
     factory = request.app.state.session_factory

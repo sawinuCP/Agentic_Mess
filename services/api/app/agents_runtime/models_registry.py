@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents_runtime.providers import (
+    ModelProvider,
     ModelProviderError,
     ModelRequest,
     ModelResponse,
@@ -24,15 +25,35 @@ logger = logging.getLogger("harness.models")
 
 DEFAULT_ROUTES: dict[str, dict[str, Any]] = {
     role: {"provider": "rehearsal", "model": f"rehearsal-{role}", "max_output_tokens": 2048}
-    for role in ("worker", "planner", "reviewer", "adjudicator", "supervisor", "security")
+    for role in (
+        "worker",
+        "planner",
+        "reviewer",
+        "critic",
+        "evidence_verifier",
+        "adjudicator",
+        "supervisor",
+        "security",
+    )
 }
 
 
 class ModelRegistry:
-    """Loads role routes from JSON (or builtin defaults) and dispatches completions."""
+    """Loads role routes from JSON (or builtin defaults) and dispatches completions.
 
-    def __init__(self, routes: dict[str, dict[str, Any]]) -> None:
+    ``provider_override`` replaces the provider for every route while keeping the
+    configured models/temperatures — used by deterministic tests and smokes of
+    model-driven pipelines (e.g. the Phase-8 review flow).
+    """
+
+    def __init__(
+        self,
+        routes: dict[str, dict[str, Any]],
+        *,
+        provider_override: ModelProvider | None = None,
+    ) -> None:
         self._routes = {role: self._route(role, spec) for role, spec in routes.items()}
+        self._provider_override = provider_override
 
     @staticmethod
     def _route(role: str, spec: dict[str, Any]) -> ModelRoute:
@@ -60,18 +81,21 @@ class ModelRegistry:
             raise ModelProviderError(f"No model route for role {role!r}")
         return route
 
+    def _provider_for(self, route: ModelRoute) -> ModelProvider:
+        return self._provider_override or get_provider(route.provider)
+
     async def complete(self, request: ModelRequest) -> ModelResponse:
         """Complete with bounded escalation (spec §32): on provider failure, retry
         via the route's ``fallback_role`` once, recording that the fallback ran."""
         route = self.route_for(request.role)
         try:
-            return await get_provider(route.provider).complete(request, route)
+            return await self._provider_for(route).complete(request, route)
         except ModelProviderError:
             fallback_role = str(getattr(route, "fallback_role", "") or "")
             if not fallback_role or fallback_role == request.role:
                 raise
             fallback = self.route_for(fallback_role)
-            response = await get_provider(fallback.provider).complete(request, fallback)
+            response = await self._provider_for(fallback).complete(request, fallback)
             response.fell_back_to = fallback.role
             return response
 

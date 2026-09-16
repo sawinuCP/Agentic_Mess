@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 7 — Browser/MCP/web research (complete)
+**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 8 — Quality & oversight (complete)
 
 ## Phase overview
 
@@ -14,7 +14,7 @@
 | 5 | Code intelligence | **COMPLETE** | Symbol index (tree-sitter/ast), incremental reindex, hybrid retrieval, SCIP-JSON export, model cost ledger |
 | 6 | Execution plane | **COMPLETE** | Port allocator (TTL/bind-probe), runtime manager (local + docker isolation), execution quotas via leases |
 | 7 | Browser / MCP / web research | **COMPLETE** | Playwright browser sessions + evidence artifacts, MCP stdio gateway with permission controls, research evidence packets |
-| 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
+| 8 | Quality & oversight | **COMPLETE** | Requirement overseer (traceability + evidence-backed completion gate), review/debate/adjudication pipeline, credential-scanner security gate |
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
 
@@ -361,7 +361,11 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
   (headless chromium sessions with console/network capture + screenshot artifacts; MCP stdio
   client + config-driven registry with per-server tool allowlists; fetch/search evidence
   packets. Deferred: video capture, remote/HTTP MCP transports, external search API providers)
-- Requirement overseer, review/debate/adjudication (Phase 8)
+- Requirement overseer, review/debate/adjudication (Phase 8) — **delivered** (traceability
+  chain with evidence-only verification and fail-closed completion gate; 5-role review
+  pipeline over the `decisions`/`reviews` tables; bounded credential-scanner security gate.
+  Deferred: overseer as a continuous durable workflow (currently API-invoked), debate
+  round concurrency policy per model family, secret-scan allowlist UX)
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
@@ -409,15 +413,67 @@ research evidence rides on the existing artifacts + context_items tables.
 | `scripts/smoke_integrations.py` — chromium session + screenshot artifact + evidence packet + MCP fail-closed | **PASS** |
 | regression smokes: editor / durable / scheduler / runtime | PASS |
 
-## Next phase entry criteria (Phase 8)
+## Phase 8 — quality & oversight (implemented 2026-09-16)
 
-Phase 7 gates green → begin Phase 8 quality & oversight: requirement overseer with
-traceability (spec §23), multi-reviewer debate + adjudication flow (spec §24), and security
-validation gates. Deferred from earlier phases: LSP daemon + call/dependency graphs,
-external embedding providers, gVisor/Firecracker-class isolation, video capture for browser
-evidence, remote/HTTP MCP transports.
+Per spec §23/§24, on top of the Phase-2 oversight schema (`decisions`, `reviews`,
+`validations` — no migration needed) and the Phase-3 model registry:
+
+- **Requirement overseer (FR-026/027, AC-011/015)** — `app/services/quality/overseer.py`:
+  the full spec §23 chain (Requirement → AcceptanceCriterion → Task → Attempt → Evidence →
+  VERIFIED/FAILED/UNKNOWN) computed from durable rows. A criterion is VERIFIED **only with
+  evidence**: `verify_criterion` writes a `requirement`-kind Validation referencing an
+  existing artifact — missing evidence is a 404, so the gate can never be satisfied by a
+  claim. `completion_report` fails closed (409 + explicit blockers) when any mandatory
+  requirement is unimplemented or any mandatory criterion is unverified; scope drift
+  (tasks without requirement linkage) produces warnings plus a `SCOPE_DRIFT_ALERT` event.
+  The allowed completion persists the report as a durable artifact (FR-027).
+- **Review / debate / adjudication (FR-017, AC-012)** — `app/services/quality/review.py`:
+  the spec §24 pipeline — independent reviewers (parallel, isolated contexts: proposal +
+  evidence only, never each other's output) → adversarial critic (consolidated findings
+  only) → evidence verifier → adjudicator. Every participant's verdict, summary, model and
+  rounds persist to `reviews`; the `decisions` row flips to `accepted` only on
+  evidence-backed approval. Model calls route through `ModelRegistry` with new default
+  roles (`critic`, `evidence_verifier`) — config-driven, so different model families per
+  role are a config change. Defensive JSON parsing maps unparsable output to
+  `needs_evidence`; provider failure leaves the decision `proposed` (fail-closed) with a
+  `REVIEW_FAILED_CLOSED` audit event. Rounds (≤3) and output tokens are bounded.
+- **Security validation gate** — `app/services/quality/secrets.py` + `gates.py`: a bounded,
+  dependency-free credential scanner (AWS/GitHub/Slack/Google/OpenAI-style keys, private
+  keys, generic `api_key=...` assignments, bearer literals) with **redacted** findings —
+  secrets are never copied into events or model context (SEC-003 spirit). Scans persist as
+  `security`-kind Validations; the task completion gate (`POST /api/tasks/{id}/completion-gate`)
+  requires a successful attempt with evidence artifacts, requirement linkage, and no failed
+  security validation — explicit blockers, never silent passes (FR-026 enforcement point).
+- New `quality` route area (`routes/quality/`: oversight, reviews, gates) + `schemas/quality/`
+  + `services/quality/`, following the established layering; the API can run review
+  pipelines with a deterministic scripted provider (`provider_override`) for tests/smokes.
+
+### Phase 8 validation log (2026-09-16)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff format/check | clean |
+| mypy (228 files) | clean |
+| pytest — **190 passed** (17 new: overseer, review, gates, secrets) | pass |
+| `scripts/smoke_oversight.py` — full §23/§24 chain live (block → scan → verify → review → complete) | **PASS** |
+| regression smokes: editor / durable / scheduler / runtime / integrations | PASS |
+
+## Next phase entry criteria (Phase 9)
+
+Phase 8 gates green → begin Phase 9 office UI: live agent/team view, requirement-graph and
+timeline UIs, evidence/diff review screens, HITL approval UI, completion-report rendering
+(FR-025, AC-014). Deferred from earlier phases: LSP daemon + call/dependency graphs,
+external embedding providers, gVisor/Firecracker-class isolation, browser video capture,
+remote/HTTP MCP transports, overseer as a continuous durable workflow.
 
 ## Change log
+
+- 2026-09-16 — Phase 8 quality & oversight: requirement overseer with machine-checked
+  traceability and an evidence-only, fail-closed completion gate (FR-026/027, AC-011/015),
+  the 5-role review/debate/adjudication pipeline persisted to decisions/reviews with
+  config-driven per-role models (FR-017, AC-012), and a credential-scanner security gate
+  with redacted findings. New `quality` route/service/schema area. Verified: ruff/mypy
+  clean, pytest 190 passed, oversight smoke green live with all regression smokes.
 
 - 2026-09-16 — Phase 7 integrations: Playwright browser debugging (headless chromium
   sessions, console/network capture, screenshot/evidence artifacts), an MCP stdio gateway
