@@ -29,10 +29,42 @@ export class ApiError extends Error {
   }
 }
 
+// --- API token (Wave 1 security) ---------------------------------------------
+// The bearer token is OPTIONAL: unset on the API means auth is disabled
+// (loopback-only local mode). The browser keeps it in localStorage — never in
+// source or the repo. WebSockets cannot carry headers from browsers, so the
+// token travels as a `bearer.<token>` subprotocol (see app/api/security.py).
+const TOKEN_STORAGE_KEY = "harness.api_token";
+
+export function getApiToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  } catch {
+    return ""; // storage unavailable (e.g. privacy mode) — anonymous local mode
+  }
+}
+
+export function setApiToken(token: string): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // storage unavailable — auth simply stays off
+  }
+}
+
+export function webSocketProtocols(): string[] {
+  const token = getApiToken();
+  return token ? [`bearer.${token}`] : [];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getApiToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
   });
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;

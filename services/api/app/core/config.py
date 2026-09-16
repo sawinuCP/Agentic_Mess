@@ -105,9 +105,30 @@ class Settings(BaseSettings):
     mcp_config_path: str = ""
     mcp_timeout_seconds: float = 60.0
 
-    # Web research (Phase 7, FR-022): bounded fetches; private hosts allowed in dev.
+    # --- Security (Wave 1) ---------------------------------------------------
+    # API bearer token (HARNESS_API_TOKEN). Empty = auth disabled, which is only
+    # acceptable for the local desktop posture (host defaults to loopback and
+    # startup refuses non-loopback binding without a token). Never commit a
+    # real token; never log or return it.
+    api_token: str = ""
+    # Server bind host for launchers (uvicorn --host). Non-loopback binding
+    # without an API token fails at startup (fail-closed misconfiguration).
+    host: str = "127.0.0.1"
+    # CORS allow-list (comma-separated origins). No wildcard: browsers talk to
+    # the API through the vite dev proxy or these explicit origins.
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,tauri://localhost,https://tauri.localhost"
+    )
+    # Extra environment variable names agents may inherit (comma-separated),
+    # on top of the built-in safe baseline. Sensitive-named variables are never
+    # inherited; scoped secrets go through explicit per-call overrides instead.
+    agent_env_allow: str = ""
+
+    # Web research (Phase 7, FR-022): bounded fetches. Private/internal network
+    # destinations are DENIED by default (SSRF posture, spec §31); local research
+    # against the dev API opts back in explicitly (tests, smokes).
     research_enabled: bool = True
-    research_private_hosts_allowed: bool = True
+    research_private_hosts_allowed: bool = False
     research_max_bytes: int = 2_000_000
     research_timeout_seconds: float = 30.0
 

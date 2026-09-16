@@ -14,6 +14,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.conftest import unique_repo_root
+
 pytestmark = pytest.mark.integration
 
 REQUIREMENT_BODY = {
@@ -49,7 +51,9 @@ def client(app: FastAPI) -> TestClient:
 
 
 def _open_project(client: TestClient, tmp_path: Path) -> str:
-    response = client.post("/api/projects/open", json={"root_path": str(tmp_path)})
+    response = client.post(
+        "/api/projects/open", json={"root_path": str(unique_repo_root(tmp_path))}
+    )
     assert response.status_code == 200
     return response.json()["id"]
 

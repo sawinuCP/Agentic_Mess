@@ -37,8 +37,13 @@ def page_server() -> Iterator[str]:
     server.shutdown()
 
 
-def test_fetch_creates_evidence_packet_with_provenance(project: tuple, page_server: str) -> None:
+def test_fetch_creates_evidence_packet_with_provenance(
+    project: tuple, page_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _app, client, project_id, _tmp = project
+    # Local targets require the EXPLICIT dev opt-in (Wave 1 SSRF posture):
+    # private/loopback destinations are denied by default.
+    monkeypatch.setattr(_app.state.settings, "research_private_hosts_allowed", True)
 
     result = client.post(f"/api/projects/{project_id}/research/fetch", json={"url": page_server})
     assert result.status_code == 200, result.text
@@ -58,6 +63,15 @@ def test_fetch_creates_evidence_packet_with_provenance(project: tuple, page_serv
     assert items.status_code == 200
     refs = {item["ref"] for item in items.json()}
     assert page_server in refs
+
+
+def test_fetch_denies_private_destinations_by_default(project: tuple, page_server: str) -> None:
+    """Wave 1 security contract: loopback/private destinations are blocked unless
+    ``research_private_hosts_allowed`` is explicitly opted in."""
+    _app, client, project_id, _tmp = project
+    result = client.post(f"/api/projects/{project_id}/research/fetch", json={"url": page_server})
+    assert result.status_code == 403, result.text
+    assert "SSRF policy" in result.json()["detail"]
 
 
 def test_fetch_rejects_non_http_schemes(project: tuple) -> None:

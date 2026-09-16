@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { terminalWebSocketUrl } from "../../api/client";
+import { getApiToken, terminalWebSocketUrl, webSocketProtocols } from "../../api/client";
 
 export default function TerminalPane({ sessionId }: { sessionId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -30,7 +30,16 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
       // container not measured yet; next resize will fit
     }
 
-    const socket = new WebSocket(terminalWebSocketUrl(sessionId));
+    const socket = new WebSocket(terminalWebSocketUrl(sessionId), webSocketProtocols());
+    socket.onclose = (event) => {
+      // 4401 = WS handshake rejected by the auth middleware (Wave 1 security).
+      if (event.code === 4401) {
+        terminal.write("\r\n\x1b[31m[terminal rejected: API authentication required]\x1b[0m\r\n");
+        if (!getApiToken()) {
+          terminal.write("\x1b[90m(hint: configure the API token to connect)\x1b[0m\r\n");
+        }
+      }
+    };
     socket.onopen = () => {
       terminal.onData((data) => socket.send(JSON.stringify({ type: "input", data })));
       terminal.onResize(({ cols, rows }) =>

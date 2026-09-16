@@ -11,6 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.conftest import unique_repo_root
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(shutil.which("git") is None, reason="git not installed"),
@@ -20,19 +22,20 @@ pytestmark = [
 @pytest.fixture()
 def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient, str, Path]]:
     """A project whose root is a real git repository with one commit."""
+    root = unique_repo_root(tmp_path)
     for args in (
         ["init"],
         ["config", "user.email", "test@example.com"],
         ["config", "user.name", "Test"],
     ):
-        subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, check=True)
-    (tmp_path / "README.md").write_text("canonical\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True, check=True)
-    subprocess.run(["git", "commit", "-m", "seed"], cwd=tmp_path, capture_output=True, check=True)
+        subprocess.run(["git", *args], cwd=root, capture_output=True, check=True)
+    (root / "README.md").write_text("canonical\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=root, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "seed"], cwd=root, capture_output=True, check=True)
 
     with TestClient(app) as client:
-        response = client.post("/api/projects/open", json={"root_path": str(tmp_path)})
-        yield app, client, response.json()["id"], tmp_path
+        response = client.post("/api/projects/open", json={"root_path": str(root)})
+        yield app, client, response.json()["id"], root
 
 
 def _commit_in(repo: Path, filename: str, content: str, message: str) -> None:

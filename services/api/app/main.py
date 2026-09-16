@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
@@ -41,6 +42,7 @@ from app.api.routes import (
 from app.api.routes import (
     workspace as workspace_routes,
 )
+from app.api.security import AuthMiddleware
 from app.artifacts.store import ArtifactStore
 from app.browser.manager import BrowserManager
 from app.core.config import Settings, get_settings
@@ -48,6 +50,7 @@ from app.core.errors import DomainError
 from app.core.logging import configure_logging
 from app.core.observability import setup_tracing
 from app.db.base import build_engine, build_session_factory
+from app.runtime.env_sandbox import configure_agent_env, parse_name_list
 from app.terminal.manager import TerminalManager
 
 
@@ -62,9 +65,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the API app. Tests pass explicit Settings; production uses get_settings()."""
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    configure_agent_env(parse_name_list(settings.agent_env_allow))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Fail-closed security posture (Wave 1): a networked bind without an API
+        # token is a misconfiguration, not a warning.
+        host = settings.host.strip()
+        loopback = host in ("127.0.0.1", "::1", "localhost")
+        if not loopback and not settings.api_token:
+            raise RuntimeError(
+                "Refusing to start: HARNESS_HOST is non-loopback "
+                f"({host}) but HARNESS_API_TOKEN is empty. Set a token or bind to 127.0.0.1."
+            )
         engine = build_engine(
             settings.database_url, connect_timeout_seconds=settings.readiness_timeout_seconds
         )
@@ -93,6 +106,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         *quality_routes.routers,
     ):
         app.include_router(router)
+    app.add_middleware(AuthMiddleware, token=settings.api_token)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
+        ],
+        allow_credentials=False,  # bearer tokens, not cookies
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
+    )
     app.add_middleware(RequestIDMiddleware)
     # DomainError is the shared base (FileServiceError/ToolchainError/GitError subclass it).
     app.add_exception_handler(DomainError, _domain_error_handler)

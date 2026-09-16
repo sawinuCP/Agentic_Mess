@@ -29,6 +29,7 @@ from app.durable.activities import (
     set_task_status_activity,
     start_attempt_activity,
 )
+from tests.conftest import unique_repo_root
 
 pytestmark = pytest.mark.integration
 
@@ -42,12 +43,13 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
 @pytest.fixture()
 def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, str, Path]]:
     """App with lifespan run, activity refs initialised, project registered."""
-    (tmp_path / "script.py").write_text("print('x' * 600)\n", encoding="utf-8")
+    root = unique_repo_root(tmp_path)
+    (root / "script.py").write_text("print('x' * 600)\n", encoding="utf-8")
     with TestClient(app):
         init_refs(app.state.session_factory, app.state.artifacts)
-        response = TestClient(app).post("/api/projects/open", json={"root_path": str(tmp_path)})
+        response = TestClient(app).post("/api/projects/open", json={"root_path": str(root)})
         project_id = response.json()["id"]
-        yield app, project_id, tmp_path
+        yield app, project_id, root
 
 
 def _create_task(app: FastAPI, project_id: str, payload: dict) -> str:

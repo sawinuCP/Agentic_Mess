@@ -64,9 +64,13 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_MCP_CONFIG_PATH` | *(empty)* | JSON config: `{"servers": [{name, command, args, env, allowed_tools}]}` |
 | `HARNESS_MCP_TIMEOUT_SECONDS` | `60` | Per-request MCP timeout |
 | `HARNESS_RESEARCH_ENABLED` | `true` | Web research fetch/search (FR-022) |
-| `HARNESS_RESEARCH_PRIVATE_HOSTS_ALLOWED` | `true` | Allow localhost/private IPs in fetches (dev convenience; tighten in prod) |
+| `HARNESS_RESEARCH_PRIVATE_HOSTS_ALLOWED` | `false` | SSRF posture: deny private/loopback fetch destinations by default (Wave 1) |
 | `HARNESS_RESEARCH_MAX_BYTES` | `2000000` | Fetch size cap |
 | `HARNESS_RESEARCH_TIMEOUT_SECONDS` | `30` | Fetch/search timeout |
+| `HARNESS_API_TOKEN` | *(empty)* | API bearer token; empty = auth disabled (loopback-only local mode only) |
+| `HARNESS_HOST` | `127.0.0.1` | Server bind host; non-loopback without a token refuses to start |
+| `HARNESS_CORS_ORIGINS` | `localhost:5173` + Tauri origins | Explicit CORS allow-list (comma-separated; no wildcard) |
+| `HARNESS_AGENT_ENV_ALLOW` | *(empty)* | Extra env var names agent subprocesses may inherit (deny-by-default; sensitive names never) |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run

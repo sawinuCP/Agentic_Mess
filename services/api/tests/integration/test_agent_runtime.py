@@ -18,17 +18,19 @@ from app.db.models import AgentSession, HitlRequest
 from app.durable.activities import agent_execute_activity, init_refs, start_agent_activity
 from app.services.orchestration import agents as agent_service
 from app.services.orchestration import hitl as hitl_service
+from tests.conftest import unique_repo_root
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture()
 def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, str, Path]]:
-    (tmp_path / "work.py").write_text("print('x' * 700)\n", encoding="utf-8")
+    root = unique_repo_root(tmp_path)
+    (root / "work.py").write_text("print('x' * 700)\n", encoding="utf-8")
     with TestClient(app):
         init_refs(app.state.session_factory, app.state.artifacts, app.state.settings)
-        response = TestClient(app).post("/api/projects/open", json={"root_path": str(tmp_path)})
-        yield app, response.json()["id"], tmp_path
+        response = TestClient(app).post("/api/projects/open", json={"root_path": str(root)})
+        yield app, response.json()["id"], root
 
 
 def _create_task(app: FastAPI, project_id: str, payload: dict) -> str:

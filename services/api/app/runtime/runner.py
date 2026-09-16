@@ -43,11 +43,20 @@ async def run_process(
 ) -> ExecResult:
     """Run ``argv`` and capture output. Never raises for non-zero exit codes.
 
+    The child environment is SANITIZED (default-deny inheritance, see
+    ``app.runtime.env_sandbox``): agent/tool subprocesses never see host
+    credentials such as the model API key. ``env_extra`` values are explicit
+    scoped injections applied verbatim on top of the sanitized baseline.
+
     Raises ``FileNotFoundError`` when the executable itself is missing (callers turn
     that into actionable diagnostics, LANG-003).
     """
     started = time.perf_counter()
-    env = {**os.environ, **env_extra} if env_extra else None
+    from app.runtime.env_sandbox import (
+        build_agent_environment,  # noqa: PLC0415 — no import cycle at load
+    )
+
+    env = build_agent_environment(overrides=env_extra)
     proc = await asyncio.create_subprocess_exec(
         *argv,
         cwd=os.fspath(cwd),

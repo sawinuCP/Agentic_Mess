@@ -75,4 +75,5 @@ testpaths = ["tests"]
 addopts = "-ra"
 markers = [
     "integration: tests that require live infrastructure (PostgreSQL/Redis/NATS)",
+    "unit: fast tests with no live infrastructure",
 ]

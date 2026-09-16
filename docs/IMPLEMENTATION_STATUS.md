@@ -598,6 +598,22 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
   Verified: ruff/mypy clean, pytest 158 passed, and all five live smokes green
   (editor/durable/scheduler/intelligence/runtime).
 
+- 2026-09-16 — **Wave 1 security hardening** (post-spec production plan, W1): optional
+  bearer-token auth covering every `/api/*` route AND WebSocket handshakes (`app/api/security.py`
+  — constant-time compare, subprotocol transport for browsers, 4401 close code, no secrets in
+  logs; token empty = loopback-only local mode, and startup now **refuses a non-loopback bind
+  without a token**); deny-by-default agent environment sanitizer (`app/runtime/env_sandbox.py`)
+  wired into `run_process` — agent/tool subprocesses no longer inherit host secrets
+  (`HARNESS_OPENAI_API_KEY` etc.); a DNS-aware SSRF guard (`app/research/ssrf.py`) validating
+  scheme/host/resolved IPs (v4+v6, mapped, link-local, metadata) with **per-hop redirect
+  validation** replacing blind `follow_redirects`, private destinations denied by default
+  (`HARNESS_RESEARCH_PRIVATE_HOSTS_ALLOWED=false`); explicit CORS allow-list (no wildcard).
+  Web UI: token transport (`localStorage` + `Authorization` header + WS subprotocol, terminal
+  4401 hint). Tests: 47 new (env/SSRF units + auth/CORS/WS/fail-closed-bind integration);
+  also fixed a latent test-isolation bug (pytest tmp-dir numbering can repeat across sessions;
+  project fixtures now open unique repo roots). Verified: ruff/mypy clean, **pytest 262
+  passed**, web-ui lint+build green.
+
 - 2026-09-16 — Phase 6 execution plane: runtime manager (local + docker backends with
   network-none/memory/CPU/no-new-privileges isolation — docker verified live), per-project
   execution quota slots built on runtime-kind leases, and the central port allocator with

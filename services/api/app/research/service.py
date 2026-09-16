@@ -15,13 +15,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.db.models import Artifact, ContextItem
+from app.research.ssrf import MAX_REDIRECTS, Resolver, assert_url_allowed
 
 MAX_TEXT_CHARS = 20_000
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
@@ -77,26 +78,36 @@ def extract_page(html: str) -> dict[str, str]:
     return {"title": title, "text": text}
 
 
-def _guard_url(url: str, *, private_hosts_allowed: bool) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise DomainError("only http/https URLs can be researched", 422)
-    host = parsed.hostname or ""
-    private = (
-        host in ("localhost", "::1")
-        or host.startswith("127.")
-        or host.startswith("192.168.")
-        or host.startswith("10.")
-    )
-    if not private_hosts_allowed and private:
-        raise DomainError(f"private host is not allowed by research policy: {host}", 422)
+async def fetch_page(
+    url: str,
+    *,
+    timeout: float,
+    max_bytes: int,
+    allow_private: bool = False,
+    resolver: Resolver | None = None,
+) -> dict[str, Any]:
+    """Fetch a page (bounded) with per-hop SSRF validation.
 
-
-async def fetch_page(url: str, *, timeout: float, max_bytes: int) -> dict[str, Any]:
-    """Fetch a page (bounded); returns raw html + metadata for the packet."""
+    Redirects are followed MANUALLY so every destination — including each
+    redirect target — is subject to the same SSRF policy (hostname + resolved
+    addresses). Blind ``follow_redirects=True`` would validate only the initial
+    URL and is exactly the rebinding/redirect bypass the guard exists to stop.
+    ``resolver`` is injectable for deterministic tests.
+    """
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-            response = await client.get(url)
+        async with httpx.AsyncClient(follow_redirects=False, timeout=timeout) as client:
+            current_url = url
+            for _hop in range(MAX_REDIRECTS + 1):
+                assert_url_allowed(current_url, allow_private=allow_private, resolver=resolver)
+                response = await client.get(current_url)
+                if not response.is_redirect:
+                    break
+                location = response.headers.get("location")
+                if not location:
+                    break  # 3xx without Location: treat as terminal response
+                current_url = urljoin(current_url, location)
+            else:
+                raise DomainError(f"too many redirects fetching {url}", 502)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise DomainError(f"fetch failed for {url}: {exc}", 502) from None
@@ -125,8 +136,9 @@ async def fetch_and_record(
     private_hosts_allowed: bool,
 ) -> EvidencePacket:
     """Fetch a URL and record the durable evidence packet (artifact + T5 context item)."""
-    _guard_url(url, private_hosts_allowed=private_hosts_allowed)
-    fetched = await fetch_page(url, timeout=timeout, max_bytes=max_bytes)
+    fetched = await fetch_page(
+        url, timeout=timeout, max_bytes=max_bytes, allow_private=private_hosts_allowed
+    )
     page = extract_page(fetched["html"])
     excerpt = page["text"][:500]
 
@@ -182,7 +194,7 @@ async def search_web(query: str, *, max_results: int, timeout: float) -> list[di
         r'<a[^>]*class="result__a"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>',
         re.IGNORECASE | re.DOTALL,
     )
-    from urllib.parse import parse_qs, urlparse  # noqa: PLC0415
+    from urllib.parse import parse_qs  # noqa: PLC0415
 
     for match in pattern.finditer(response.text):
         url = match.group("url")
