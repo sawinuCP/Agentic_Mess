@@ -26,6 +26,8 @@ from app.db.models import Artifact, Event, Memory, Project, TaskAttempt
 from app.durable.activities._context import current_settings, load_task_row, refs
 from app.durable.activities.agents import heartbeat_session
 from app.durable.activities.hitl import hitl_gate
+from app.runtime.runtimes import resolve_spec
+from app.schemas.leases import LeaseOut
 
 
 def _run_markers(payload: dict[str, Any]) -> str:
@@ -216,6 +218,8 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     commands = _decide_commands(payload, model_response.text)
 
     allowed = frozenset(context_data["allowed_tools"]) or frozenset({"shell"})
+    runtime = resolve_spec(settings, payload)
+    timeout_cap = float(getattr(settings, "exec_timeout_cap_seconds", 900.0) or 900.0)
     observations: list[dict[str, Any]] = []
     evidence_ids: list[str] = []
     overall, failure_class, failure_detail = "success", None, None
@@ -239,57 +243,99 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
 
         return await asyncio.to_thread(_persist)
 
-    for index, command in enumerate(commands):
-        argv = command.split() if isinstance(command, str) else [str(c) for c in command]
-        invocation = ToolInvocation(
-            tool="shell",
-            command=argv,
-            cwd=str(payload.get("cwd") or context_data["project_root"]),
-            timeout_seconds=float(payload.get("timeout_seconds", 120)),
-            allowed_tools=allowed,
-        )
-        try:
-            observation = await gateway_invoke(
-                invocation, invocation.command, store_evidence=_store_evidence
+    max_concurrent = int(getattr(settings, "exec_max_concurrent_per_project", 2) or 2)
+
+    def _acquire_slot() -> LeaseOut | None:
+        from app.services import executions as execution_service  # noqa: PLC0415
+
+        with factory() as session:
+            return execution_service.acquire_slot(
+                session,
+                uuid.UUID(project_id),
+                max_concurrent=max_concurrent,
+                holder_session=session_id or None,
             )
-        except PolicyViolation as exc:
-            if not exc.needs_approval:
-                raise DomainError(exc.reason, 422) from None
-            # HITL gate (SEC-004): create a durable request and fail closed on timeout.
-            gate = await hitl_gate(
-                project_id=project_id,
-                task_id=task_id,
+
+    def _release_slot(slot: LeaseOut) -> None:
+        from app.services import executions as execution_service  # noqa: PLC0415
+
+        with factory() as session:
+            execution_service.release_slot(session, slot.id)
+
+    if project_id:
+        slot = await asyncio.to_thread(_acquire_slot)
+        if slot is None:
+            return {
+                "outcome": "failed",
+                "failure_class": "QUOTA_EXCEEDED",
+                "failure_detail": (
+                    f"Execution quota exhausted: {max_concurrent} concurrent runs per project "
+                    "(spec §19). Retry when a running task finishes."
+                ),
+                "evidence_artifact_ids": [],
+            }
+    else:
+        slot = None  # project-less executions are not quota-tracked
+
+    try:
+        for index, command in enumerate(commands):
+            argv = command.split() if isinstance(command, str) else [str(c) for c in command]
+            requested_timeout = float(payload.get("timeout_seconds", 120))
+            invocation = ToolInvocation(
+                tool="shell",
                 command=argv,
-                timeout_seconds=float(getattr(settings, "hitl_timeout_seconds", 300.0) or 300.0),
-                poll_seconds=float(getattr(settings, "hitl_poll_seconds", 1.0) or 1.0),
+                cwd=str(payload.get("cwd") or context_data["project_root"]),
+                timeout_seconds=min(requested_timeout, timeout_cap),
+                allowed_tools=allowed,
+                runtime=runtime,
             )
-            if not gate["approved"]:
-                return {
-                    "outcome": "failed",
-                    "failure_class": "SECURITY_BLOCK",
-                    "failure_detail": f"HITL {gate['status']}: {exc.reason}",
-                    "evidence_artifact_ids": evidence_ids,
-                    "observation": {
-                        "tool": "shell",
-                        "status": "blocked",
-                        "hitl": gate["status"],
-                    },
-                }
-            observation = await gateway_invoke(
-                replace(invocation, pre_approved=True),
-                invocation.command,
-                store_evidence=_store_evidence,
-            )
-        await heartbeat_session(session_id)
-        if activity.in_activity():
-            activity.heartbeat()
-        observations.append(observation.to_json())
-        evidence_ids.extend(observation.artifact_ids)
-        if observation.status != "success":
-            overall = "timeout" if observation.status == "timeout" else "failed"
-            failure_class = "TIMEOUT" if observation.status == "timeout" else "TASK_FAILURE"
-            failure_detail = f"command {index} failed: {observation.summary[:200]}"
-            break
+            try:
+                observation = await gateway_invoke(
+                    invocation, invocation.command, store_evidence=_store_evidence
+                )
+            except PolicyViolation as exc:
+                if not exc.needs_approval:
+                    raise DomainError(exc.reason, 422) from None
+                # HITL gate (SEC-004): create a durable request and fail closed on timeout.
+                gate = await hitl_gate(
+                    project_id=project_id,
+                    task_id=task_id,
+                    command=argv,
+                    timeout_seconds=float(
+                        getattr(settings, "hitl_timeout_seconds", 300.0) or 300.0
+                    ),
+                    poll_seconds=float(getattr(settings, "hitl_poll_seconds", 1.0) or 1.0),
+                )
+                if not gate["approved"]:
+                    return {
+                        "outcome": "failed",
+                        "failure_class": "SECURITY_BLOCK",
+                        "failure_detail": f"HITL {gate['status']}: {exc.reason}",
+                        "evidence_artifact_ids": evidence_ids,
+                        "observation": {
+                            "tool": "shell",
+                            "status": "blocked",
+                            "hitl": gate["status"],
+                        },
+                    }
+                observation = await gateway_invoke(
+                    replace(invocation, pre_approved=True),
+                    invocation.command,
+                    store_evidence=_store_evidence,
+                )
+            await heartbeat_session(session_id)
+            if activity.in_activity():
+                activity.heartbeat()
+            observations.append(observation.to_json())
+            evidence_ids.extend(observation.artifact_ids)
+            if observation.status != "success":
+                overall = "timeout" if observation.status == "timeout" else "failed"
+                failure_class = "TIMEOUT" if observation.status == "timeout" else "TASK_FAILURE"
+                failure_detail = f"command {index} failed: {observation.summary[:200]}"
+                break
+    finally:
+        if slot is not None:
+            await asyncio.to_thread(_release_slot, slot)
 
     return {
         "outcome": overall,

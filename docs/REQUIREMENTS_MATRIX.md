@@ -30,7 +30,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (signals+checkpoints) | scripts/smoke_durable.py (live) | FR-008 | H |
 | FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
-| FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | NOT_STARTED | — | — | — | H |
+| FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | IMPLEMENTED | app/runtime/runtimes.py (local + docker backends), app/agents_runtime/gateway.py | tests/unit/test_runtime_manager.py, scripts/smoke_runtime.py | — | H |
 | FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | IMPLEMENTED | app/toolchains/service.py, app/runtime/runner.py | tests/unit/test_toolchains.py, tests/unit/test_runner.py | FR-004 | M |
 | FR-020 | Browser-based debugging for web apps | playwright worker | 7 | NOT_STARTED | — | — | FR-018 | M |
 | FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
@@ -73,7 +73,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | SEC-002 | Least-privilege files/network/secrets/tools per agent | policy engine | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (allowlists) | tests/unit/test_agent_gateway.py | SEC-001 | H |
 | SEC-003 | Secrets never in prompts or normal logs | secret store, logging | 3 | NOT_STARTED | — | — | SEC-001 | H |
 | SEC-004 | Sensitive actions support HITL approval | hitl, gateway | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (APPROVAL_PATTERNS) | tests/unit/test_agent_gateway.py | SEC-001 | M |
-| SEC-005 | Untrusted code runs in stronger isolation when configured | runtime-manager | 6 | NOT_STARTED | — | — | FR-018 | H |
+| SEC-005 | Untrusted code runs in stronger isolation when configured | runtime-manager | 6 | IN_PROGRESS (docker backend live: workspace-only mount, network-none, memory/CPU caps, no-new-privileges; gVisor/Firecracker deferred) | app/runtime/runtimes.py | tests/unit/test_runtime_manager.py | FR-018 | H |
 | SEC-006 | Tool outputs treated as untrusted input | context-engine | 3 | IN_PROGRESS | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | SEC-001 | M |
 | SEC-007 | Prompt injection cannot override system policy | policy engine, context | 3+ | NOT_STARTED | — | — | SEC-006 | H |
 | SEC-008 | Audit events for security-sensitive actions | events | 3 | NOT_STARTED | — | — | FR-024 | L |

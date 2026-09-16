@@ -57,6 +57,7 @@ class ToolInvocation:
     timeout_seconds: float = 120.0
     allowed_tools: frozenset[str] = frozenset()
     pre_approved: bool = False  # HITL gate approved this exact command (SEC-004)
+    runtime: object | None = None  # RuntimeSpec | None (None = local runner, Phase 1-3 path)
 
 
 @dataclass(slots=True)
@@ -114,11 +115,21 @@ async def invoke(
     check_policy(invocation, command)
     if not command:
         raise DomainError("Empty tool command", 422)
-    result = await run_process(
-        [str(arg) for arg in command],
-        invocation.cwd,
-        timeout_seconds=invocation.timeout_seconds,
-    )
+    if invocation.runtime is not None:
+        from app.runtime.runtimes import execute  # noqa: PLC0415 — Phase 6 runtime manager
+
+        result = await execute(
+            invocation.runtime,  # type: ignore[arg-type]
+            [str(arg) for arg in command],
+            invocation.cwd,
+            timeout_seconds=invocation.timeout_seconds,
+        )
+    else:
+        result = await run_process(
+            [str(arg) for arg in command],
+            invocation.cwd,
+            timeout_seconds=invocation.timeout_seconds,
+        )
     evidence_ids: list[str] = []
     for name, text in (("stdout.log", result.stdout), ("stderr.log", result.stderr)):
         if len(text.encode("utf-8")) >= _EVIDENCE_MIN_BYTES:

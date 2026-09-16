@@ -15,7 +15,9 @@ conventions so that it can scale to a team without a rewrite. The rules below ar
                                     workspace/ (projects, files, git, terminal, toolchains),
                                     planning/ (requirements, plans, tasks),
                                     orchestration/ (agents, messages, knowledge, hitl, leases,
-                                    scheduler, worktrees). Each subpackage exposes `routers`.
+                                    scheduler, worktrees), intelligence/ (index, symbols,
+                                    retrieval, SCIP, costs), execution/ (ports, runtime status).
+                                    Each subpackage exposes `routers`.
    schemas (app/schemas)            Pydantic request/response contracts, shared by routes+services.
    services (app/services)          one module per domain; business logic + persistence. No FastAPI
                                     imports; sync functions called via asyncio.to_thread.

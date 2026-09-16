@@ -50,6 +50,14 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_CONTEXT_RETRIEVAL_ENABLED` | `true` | Hybrid code retrieval in the agent context (T3) |
 | `HARNESS_RETRIEVAL_K` | `6` | Code symbols injected into the agent context |
 | `HARNESS_MODEL_BUDGET_TOKENS_PER_TASK` | `0` | Per-task token budget; 0 = unlimited (spec §32) |
+| `HARNESS_RUNTIME_BACKEND` | `local` | Execution backend: `local` or `docker` (spec §19) |
+| `HARNESS_DOCKER_IMAGE` | `python:3.11-slim` | Image for the docker runtime backend |
+| `HARNESS_DOCKER_NETWORK` | `none` | Container network policy (SEC-005: none by default) |
+| `HARNESS_DOCKER_MEMORY` / `HARNESS_DOCKER_CPUS` | `512m` / `1.0` | Container resource caps |
+| `HARNESS_EXEC_TIMEOUT_CAP_SECONDS` | `900` | Wall-clock clamp on agent command timeouts |
+| `HARNESS_EXEC_MAX_CONCURRENT_PER_PROJECT` | `2` | Concurrent execution slots per project |
+| `HARNESS_PORT_RANGE_LOW` / `HARNESS_PORT_RANGE_HIGH` | `21000` / `21999` | Port allocator range |
+| `HARNESS_PORT_TTL_SECONDS` | `3600` | Port allocation TTL (spec §19.1) |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run
@@ -77,6 +85,9 @@ npm run dev          # http://localhost:5173 — proxies /api → localhost:8000
 
 # Code-intelligence smoke (Phase 5): index → incremental → retrieval → SCIP export:
 ..\.venv\Scripts\python scripts\smoke_intelligence.py
+
+# Execution-plane smoke (Phase 6): runtime status → port allocator → quota slots:
+..\.venv\Scripts\python scripts\smoke_runtime.py
 
 # Optional heavy infra
 docker compose --profile temporal up -d          # Temporal + UI (http://localhost:8088)

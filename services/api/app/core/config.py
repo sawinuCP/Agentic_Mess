@@ -82,6 +82,20 @@ class Settings(BaseSettings):
     # Model budget gate (spec §32): cumulative tokens per task; 0 = unlimited.
     model_budget_tokens_per_task: int = 0
 
+    # Execution plane (Phase 6, spec §19): runtime backend + isolation defaults.
+    runtime_backend: str = "local"  # local | docker
+    docker_image: str = "python:3.11-slim"
+    docker_network: str = "none"  # untrusted code gets no network by default (SEC-005)
+    docker_memory: str = "512m"
+    docker_cpus: str = "1.0"
+    exec_timeout_cap_seconds: float = 900.0
+    exec_max_concurrent_per_project: int = 2
+
+    # Port allocator (spec §19.1): agents request ports; allocations carry a TTL.
+    port_range_low: int = 21000
+    port_range_high: int = 21999
+    port_ttl_seconds: int = 3600
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

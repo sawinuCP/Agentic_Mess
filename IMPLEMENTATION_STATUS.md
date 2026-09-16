@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-15 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 5 — Code intelligence (complete)
+**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 6 — Execution plane (complete)
 
 ## Phase overview
 
@@ -12,7 +12,7 @@
 | 3 | Agent runtime + durable orchestration | **COMPLETE** | Lifecycle, model routing + escalation, tool gateway + HITL gates, context broker, pause/resume, supervision, agent replacement |
 | 4 | Multi-agent orchestration | **COMPLETE** | Resource leases, scheduler + spawn policy, NATS message fan-out, worktrees + integration queue |
 | 5 | Code intelligence | **COMPLETE** | Symbol index (tree-sitter/ast), incremental reindex, hybrid retrieval, SCIP-JSON export, model cost ledger |
-| 6 | Execution plane | NOT_STARTED | Containers, quotas, port manager |
+| 6 | Execution plane | **COMPLETE** | Port allocator (TTL/bind-probe), runtime manager (local + docker isolation), execution quotas via leases |
 | 7 | Browser / MCP / web research | NOT_STARTED | Playwright, MCP registry, evidence packets |
 | 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
@@ -58,6 +58,41 @@ Phase-3 follow-ups were completed inside the Phase-3 commit: HITL fail-closed ap
 (stale sessions → `lost`, agents → `failed`), agent replacement with `replaces_agent_id` provenance,
 and per-route model fallback escalation. Remaining deferrals are tracked in the honesty list below
 and in the requirements matrix.
+
+## Phase 6 — execution plane (implemented 2026-09-16)
+
+Per spec §19/§19.1, on top of the Phase-4/5 foundations:
+
+- **Runtime manager (FR-018/SEC-005)** — `app/runtime/runtimes.py`: `RuntimeSpec` +
+  `execute()` normalizing two backends behind one `ExecResult` shape. `local` = the
+  existing subprocess runner (trusted work); `docker` = untrusted code in a container with
+  the workspace as the only bind-mount, **network disabled by default**, memory/CPU caps
+  (`--memory/--cpus`), and `no-new-privileges`. Backend is settings-driven
+  (`HARNESS_RUNTIME_BACKEND`) with per-task payload overrides; unknown backends fail
+  closed; docker daemon absence maps to a 503. **Verified live**: a real
+  `docker run` execution returned correct output through the shared contract.
+- **Execution quotas (spec §19)** — `app/services/executions.py`: per-project concurrent
+  execution slots implemented as `runtime`-kind resource leases (`<project>#exec-slot-n`),
+  reusing the Phase-4 TTL/expiry machinery. The execution activity acquires a slot before
+  running and releases it in a `finally` — exhaustion yields `QUOTA_EXCEEDED`, never an
+  invisible queue. Wall-clock timeouts are clamped to `HARNESS_EXEC_TIMEOUT_CAP_SECONDS`.
+- **Port allocator (spec §19.1)** — `app/services/ports.py` + `port_allocations` table
+  (migration `0009`): agents request ports in a configured range instead of guessing;
+  an allocation requires the port to be free in the ledger **and actually bindable on
+  loopback right now** (the Phase-0 lesson made the live bind probe mandatory); TTL expiry,
+  holder-checked release/renewal, and `PORT_*` audit events.
+- **API** — `routes/execution/`: `GET /runtime/status` (backend posture + limits),
+  `POST /projects/{id}/ports`, `GET /projects/{id}/ports`, `POST /ports/{id}/renew|release`,
+  `POST /ports/expire-stale`.
+
+### Phase 6 validation log (2026-09-16)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff / mypy (176 files) | pass |
+| pytest — **158 passed** (+15: port allocator, runtime manager, quotas) | pass |
+| Docker backend — real `docker run` execution verified (network-none, capped) | PASS |
+| Live smokes: durable (quota slots in path) · runtime · intelligence · editor (7/7) | PASS |
 
 ## Phase 5 — code intelligence (implemented 2026-09-15)
 
@@ -319,21 +354,28 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Model cost/token budget accounting ledger (deferred; tracked for Phase 5+)
 - Tree-sitter/LSP/SCIP indexing, pgvector retrieval (Phase 5) — **delivered** (tree-sitter + ast
   symbols, pgvector hybrid retrieval, SCIP-JSON subset; LSP daemon + call/dependency graphs deferred)
-- Sandbox runtime manager, quotas, port manager (Phase 6)
+- Sandbox runtime manager, quotas, port manager (Phase 6) — **delivered** (local + docker
+  runtimes with isolation limits, lease-based execution quotas, TTL port allocator;
+  gVisor/Firecracker-class isolation deferred)
 - Playwright browser debugging, MCP gateway, web research evidence (Phase 7)
 - Requirement overseer, review/debate/adjudication (Phase 8)
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 6)
+## Next phase entry criteria (Phase 7)
 
-Phase 5 gates green → begin Phase 6 execution plane:
-sandbox runtime manager (Docker/dev-container runtimes), CPU/memory/process quotas, network
-policy, port allocator with TTL, and process supervision (spec §19). Deferred from earlier
-phases: LSP daemon integration + call/dependency graphs (code intelligence deepening), and
-external embedding providers behind the retrieval interface.
+Phase 6 gates green → begin Phase 7 browser/MCP/web research:
+Playwright browser debugging with console/network inspection and screenshot artifacts (FR-020),
+MCP tool discovery/invocation/permission controls wired into the gateway policy (FR-021, SEC-001),
+and web research with evidence/provenance packets (FR-022). Deferred: LSP daemon + call/dependency
+graphs, external embedding providers.
 
 ## Change log
+
+- 2026-09-16 — Phase 6 execution plane: runtime manager (local + docker backends with
+  network-none/memory/CPU/no-new-privileges isolation — docker verified live), per-project
+  execution quota slots built on runtime-kind leases, and the central port allocator with
+  live bind-probe + TTL expiry (spec §19/§19.1) — all four live smokes green.
 
 - 2026-09-15 — Phase 5 code intelligence: tree-sitter/ast symbol index with hash-driven
   incremental reindexing (PERF-008), hybrid lexical+pgvector retrieval wired into the agent
