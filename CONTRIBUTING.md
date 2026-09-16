@@ -29,7 +29,8 @@ conventions so that it can scale to a team without a rewrite. The rules below ar
                                     change without touching consumers.
    adapters/domains                 well-bounded packages wrapping external tools:
                                     app/files, app/gitops, app/toolchains, app/terminal,
-                                    app/runtime, app/durable, app/artifacts, app/messaging,
+                                    app/runtime, app/browser, app/mcp, app/research,
+                                    app/durable, app/artifacts, app/messaging,
                                     app/agents_runtime, app/codeintel
    durable activities               app/durable/activities/ is a package split by concern
                                     (_context, tasks, agents, execution, hitl); the public

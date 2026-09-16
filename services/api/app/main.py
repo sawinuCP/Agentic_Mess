@@ -12,6 +12,9 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api.middleware import RequestIDMiddleware
 from app.api.routes import (
+    browser as browser_routes,
+)
+from app.api.routes import (
     core as core_routes,
 )
 from app.api.routes import (
@@ -21,15 +24,22 @@ from app.api.routes import (
     intelligence as intelligence_routes,
 )
 from app.api.routes import (
+    mcp as mcp_routes,
+)
+from app.api.routes import (
     orchestration as orchestration_routes,
 )
 from app.api.routes import (
     planning as planning_routes,
 )
 from app.api.routes import (
+    research as research_routes,
+)
+from app.api.routes import (
     workspace as workspace_routes,
 )
 from app.artifacts.store import ArtifactStore
+from app.browser.manager import BrowserManager
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
 from app.core.logging import configure_logging
@@ -59,8 +69,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = build_session_factory(engine)
         app.state.terminals = TerminalManager()
         app.state.artifacts = ArtifactStore(Path(settings.artifacts_dir))
+        app.state.browsers = BrowserManager(max_sessions=settings.browser_max_sessions)
         yield
         app.state.terminals.close_all()
+        await app.state.browsers.close_all()
         engine.dispose()
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
@@ -72,6 +84,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         *orchestration_routes.routers,
         *intelligence_routes.routers,
         *execution_routes.routers,
+        *browser_routes.routers,
+        *mcp_routes.routers,
+        *research_routes.routers,
     ):
         app.include_router(router)
     app.add_middleware(RequestIDMiddleware)

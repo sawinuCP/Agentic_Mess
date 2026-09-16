@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -58,3 +59,11 @@ def project(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient,
     with TestClient(app) as client:
         response = client.post("/api/projects/open", json={"root_path": str(tmp_path)})
         yield app, client, response.json()["id"], tmp_path
+
+
+@pytest.fixture()
+def port_range() -> tuple[int, int]:
+    """A run-unique 4-port window per test — the port ledger is global, so tests
+    must never share a range (cross-test interference otherwise)."""
+    base = 30000 + (int(uuid.uuid4().hex[:4], 16) % 20000)
+    return base, base + 3

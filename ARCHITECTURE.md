@@ -51,6 +51,9 @@ are replaceable; requirements, tasks, code, artifacts, evidence and history are 
 │   app/toolchains/   language registry, detection, tool execution    │
 │   app/runtime/      process runner (timeout/kill/caps) — Phase 6    │
 │                     grows this into sandboxed runtimes              │
+│   app/browser/      Playwright debugging sessions — Phase 7 (FR-020)│
+│   app/mcp/          MCP stdio client + tool registry — Phase 7      │
+│   app/research/     web fetch/search evidence packets — Phase 7     │
 │   app/terminal/     PTY sessions over WebSocket (pywinpty/POSIX)    │
 │   app/artifacts/    content-addressed artifact store (sha256)       │
 │   app/tasks/        task-graph integrity (cycle detection)          │

@@ -96,6 +96,21 @@ class Settings(BaseSettings):
     port_range_high: int = 21999
     port_ttl_seconds: int = 3600
 
+    # Browser debugging (Phase 7, FR-020): Playwright chromium, headless.
+    browser_enabled: bool = True
+    browser_max_sessions: int = 5
+
+    # MCP gateway (Phase 7, FR-021): opt-in — servers execute arbitrary commands.
+    mcp_enabled: bool = False
+    mcp_config_path: str = ""
+    mcp_timeout_seconds: float = 60.0
+
+    # Web research (Phase 7, FR-022): bounded fetches; private hosts allowed in dev.
+    research_enabled: bool = True
+    research_private_hosts_allowed: bool = True
+    research_max_bytes: int = 2_000_000
+    research_timeout_seconds: float = 30.0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

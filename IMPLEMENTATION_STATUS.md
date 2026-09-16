@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 6 — Execution plane (complete)
+**Generated:** 2026-09-16 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 7 — Browser/MCP/web research (complete)
 
 ## Phase overview
 
@@ -13,7 +13,7 @@
 | 4 | Multi-agent orchestration | **COMPLETE** | Resource leases, scheduler + spawn policy, NATS message fan-out, worktrees + integration queue |
 | 5 | Code intelligence | **COMPLETE** | Symbol index (tree-sitter/ast), incremental reindex, hybrid retrieval, SCIP-JSON export, model cost ledger |
 | 6 | Execution plane | **COMPLETE** | Port allocator (TTL/bind-probe), runtime manager (local + docker isolation), execution quotas via leases |
-| 7 | Browser / MCP / web research | NOT_STARTED | Playwright, MCP registry, evidence packets |
+| 7 | Browser / MCP / web research | **COMPLETE** | Playwright browser sessions + evidence artifacts, MCP stdio gateway with permission controls, research evidence packets |
 | 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
 | 9 | Office UI | NOT_STARTED | Live agents, graph, timeline, diff/review |
 | 10 | Hardening & packaging | NOT_STARTED | Recovery/security testing, Tauri packaging, diagnostics |
@@ -357,20 +357,75 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Sandbox runtime manager, quotas, port manager (Phase 6) — **delivered** (local + docker
   runtimes with isolation limits, lease-based execution quotas, TTL port allocator;
   gVisor/Firecracker-class isolation deferred)
-- Playwright browser debugging, MCP gateway, web research evidence (Phase 7)
+- Playwright browser debugging, MCP gateway, web research evidence (Phase 7) — **delivered**
+  (headless chromium sessions with console/network capture + screenshot artifacts; MCP stdio
+  client + config-driven registry with per-server tool allowlists; fetch/search evidence
+  packets. Deferred: video capture, remote/HTTP MCP transports, external search API providers)
 - Requirement overseer, review/debate/adjudication (Phase 8)
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 7)
+## Phase 7 — browser / MCP / web research (implemented 2026-09-16)
 
-Phase 6 gates green → begin Phase 7 browser/MCP/web research:
-Playwright browser debugging with console/network inspection and screenshot artifacts (FR-020),
-MCP tool discovery/invocation/permission controls wired into the gateway policy (FR-021, SEC-001),
-and web research with evidence/provenance packets (FR-022). Deferred: LSP daemon + call/dependency
-graphs, external embedding providers.
+Per spec §20/§21/§22, three integration surfaces with the same fail-closed posture:
+
+- **Browser debugging (FR-020)** — `app/browser/` (`session.py`, `manager.py`): headless
+  Playwright chromium sessions with bounded buffers of console messages and failed/error
+  network responses (`requestfailed` + status ≥ 400); screenshots and evidence persist as
+  durable artifacts (`browser_evidence` kind) with `BROWSER_SCREENSHOT` audit events.
+  Sessions are capped (5), manager shuts down with the app; routes fail closed with an
+  actionable 503 when Playwright/chromium is missing. **Verified live**: real chromium
+  loaded the running API's page, captured the 404 network failure, and produced a valid
+  PNG artifact (`scripts/smoke_integrations.py`).
+- **MCP gateway (FR-021)** — `app/mcp/` (`protocol.py`, `registry.py`): a minimal,
+  auditable MCP stdio client (newline-delimited JSON-RPC 2.0: `initialize` →
+  `notifications/initialized` → `tools/list` → `tools/call`, per-request timeouts, clean
+  shutdown). Servers are config-driven (`HARNESS_MCP_CONFIG_PATH` JSON) with per-server
+  tool allowlists; invocation enforces authorization → schema validation (object/required
+  subset) → harness gateway policy patterns over the qualified name + arguments →
+  `MCP_TOOL_CALLED` audit event; large raw results are stored as `mcp_result` artifacts and
+  responses stay compact. Disabled by default (servers execute arbitrary commands) —
+  503 fail-closed. **Verified live** against a real fake MCP server
+  (`tests/mcp_echo_server.py`) speaking the protocol.
+- **Web research (FR-022)** — `app/research/service.py`: `fetch_and_record` turns a page
+  into a durable evidence packet — raw HTML as a `web_content` artifact, provenance
+  (final URL, title, timestamp, sha256, excerpt, numeric confidence) and a T5 `evidence`
+  context item for retrieval. Facts only; interpretation stays with the agent (spec §22).
+  Fetches are bounded (scheme check, 2 MB cap, timeout) with a private-host guard
+  (`HARNESS_RESEARCH_PRIVATE_HOSTS_ALLOWED`). Search uses a DuckDuckGo HTML adapter with
+  provenance-marked results; it is network-dependent and fails loudly (502) rather than
+  fabricating results. **Verified live** against the running API.
+
+No migration needed this phase: sessions are runtime state (TerminalManager pattern) and
+research evidence rides on the existing artifacts + context_items tables.
+
+### Phase 7 validation log (2026-09-16)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff format/check | clean |
+| mypy | clean |
+| pytest — **173 passed** (6 MCP, 3 browser, 3 research new) | pass |
+| `scripts/smoke_integrations.py` — chromium session + screenshot artifact + evidence packet + MCP fail-closed | **PASS** |
+| regression smokes: editor / durable / scheduler / runtime | PASS |
+
+## Next phase entry criteria (Phase 8)
+
+Phase 7 gates green → begin Phase 8 quality & oversight: requirement overseer with
+traceability (spec §23), multi-reviewer debate + adjudication flow (spec §24), and security
+validation gates. Deferred from earlier phases: LSP daemon + call/dependency graphs,
+external embedding providers, gVisor/Firecracker-class isolation, video capture for browser
+evidence, remote/HTTP MCP transports.
 
 ## Change log
+
+- 2026-09-16 — Phase 7 integrations: Playwright browser debugging (headless chromium
+  sessions, console/network capture, screenshot/evidence artifacts), an MCP stdio gateway
+  (minimal JSON-RPC client, config-driven registry, per-server tool allowlists, schema
+  validation, audit events, fail-closed when disabled), and web research evidence packets
+  (fetch → artifact + T5 provenance context item; bounded; DDG search adapter). New deps:
+  `playwright`. Verified: ruff/mypy clean, pytest 173 passed, integrations smoke green
+  (real chromium + real fake MCP server) with all prior smokes still green.
 
 - 2026-09-16 — Structure audit round: `db/models/`, `services/`, and `schemas/` grouped into the
   same six domain subpackages as the routes (core/workspace/planning/orchestration/intelligence/

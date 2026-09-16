@@ -32,9 +32,9 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | NOT_STARTED | — | — | FR-013 | M |
 | FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | IMPLEMENTED | app/runtime/runtimes.py (local + docker backends), app/agents_runtime/gateway.py | tests/unit/test_runtime_manager.py, scripts/smoke_runtime.py | — | H |
 | FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | IMPLEMENTED | app/toolchains/service.py, app/runtime/runner.py | tests/unit/test_toolchains.py, tests/unit/test_runner.py | FR-004 | M |
-| FR-020 | Browser-based debugging for web apps | playwright worker | 7 | NOT_STARTED | — | — | FR-018 | M |
-| FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
-| FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | NOT_STARTED | — | — | — | L |
+| FR-020 | Browser-based debugging for web apps | playwright worker | 7 | IMPLEMENTED | app/browser/session.py, app/browser/manager.py, routes/browser | tests/integration/test_browser.py, scripts/smoke_integrations.py | FR-018 | M |
+| FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | IMPLEMENTED | app/mcp/protocol.py, app/mcp/registry.py, routes/mcp | tests/integration/test_mcp_gateway.py, tests/unit/test_mcp_registry.py | SEC-001 | M |
+| FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | IMPLEMENTED | app/research/service.py, routes/research | tests/integration/test_research.py, scripts/smoke_integrations.py | — | L |
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
 | FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IMPLEMENTED | app/db/models/events.py, app/services/events.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |

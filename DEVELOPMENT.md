@@ -58,6 +58,15 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_EXEC_MAX_CONCURRENT_PER_PROJECT` | `2` | Concurrent execution slots per project |
 | `HARNESS_PORT_RANGE_LOW` / `HARNESS_PORT_RANGE_HIGH` | `21000` / `21999` | Port allocator range |
 | `HARNESS_PORT_TTL_SECONDS` | `3600` | Port allocation TTL (spec §19.1) |
+| `HARNESS_BROWSER_ENABLED` | `true` | Playwright browser debugging (FR-020) |
+| `HARNESS_BROWSER_MAX_SESSIONS` | `5` | Concurrent headless chromium sessions |
+| `HARNESS_MCP_ENABLED` | `false` | MCP gateway (opt-in; servers run commands) |
+| `HARNESS_MCP_CONFIG_PATH` | *(empty)* | JSON config: `{"servers": [{name, command, args, env, allowed_tools}]}` |
+| `HARNESS_MCP_TIMEOUT_SECONDS` | `60` | Per-request MCP timeout |
+| `HARNESS_RESEARCH_ENABLED` | `true` | Web research fetch/search (FR-022) |
+| `HARNESS_RESEARCH_PRIVATE_HOSTS_ALLOWED` | `true` | Allow localhost/private IPs in fetches (dev convenience; tighten in prod) |
+| `HARNESS_RESEARCH_MAX_BYTES` | `2000000` | Fetch size cap |
+| `HARNESS_RESEARCH_TIMEOUT_SECONDS` | `30` | Fetch/search timeout |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run
@@ -174,8 +183,15 @@ See `ARCHITECTURE.md` §14 for the annotated tree and the module map (§2).
   (LANG-001..004).
 - **Add a tool (Phase 3, `services/api/app/tools/`):** declare schema + permissions in the tool
   registry; the gateway enforces policy, timeout, normalization and audit (SEC-001).
-- **Add an MCP server (Phase 7, `services/api/app/tools/mcp/`):** register server URL/transport +
-  tool schemas; every invocation passes the same gateway/permission path as native tools (FR-021).
+- **Add an MCP server (Phase 7, `services/api/app/mcp/`):** add an entry to the
+  `HARNESS_MCP_CONFIG_PATH` JSON (`{"servers": [{"name", "command", "args", "env",
+  "allowed_tools"}]}` — stdio servers speaking newline-delimited JSON-RPC); discovery,
+  authorization (per-server tool allowlists), schema validation and audit all run through
+  `app/mcp/registry.py` (FR-021). The gateway is opt-in (`HARNESS_MCP_ENABLED=true`).
+- **Add a web-research provider (Phase 7, `services/api/app/research/service.py`):** the
+  fetch pipeline (bounds → artifact → T5 provenance context item) is provider-agnostic;
+  `search_web` is the only network-dependent piece — swap the DDG HTML adapter for an API
+  provider without touching the evidence-packet path (FR-022).
 - **Add a model provider (Phase 3, `services/api/app/agents/models/`):** implement the provider
   adapter; map roles → models in routing config. No model names in code (spec §32).
 

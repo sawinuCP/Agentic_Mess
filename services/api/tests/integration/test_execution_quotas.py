@@ -45,7 +45,7 @@ def test_slots_never_leak_after_a_full_agent_run(project: tuple) -> None:
     assert all(lease["kind"] != "runtime" for lease in leases_before)
 
 
-def test_port_allocator_and_quotas_coexist(project: tuple) -> None:
+def test_port_allocator_and_quotas_coexist(project: tuple, port_range: tuple[int, int]) -> None:
     """Runtime-kind leases and port allocations are independent ledgers (spec §18+§19)."""
     app, client, project_id, _tmp = project
     factory = app.state.session_factory
@@ -55,16 +55,17 @@ def test_port_allocator_and_quotas_coexist(project: tuple) -> None:
         )
         assert slot is not None
 
+    low, high = port_range
     port = port_service.allocate(
         factory(),
         uuid.UUID(project_id),
         purpose="preview",
         holder=None,
         ttl_seconds=300,
-        port_low=21000,
-        port_high=21001,
+        port_low=low,
+        port_high=high,
     )
-    assert 21000 <= port["port"] <= 21001
+    assert low <= port["port"] <= high
 
     with factory() as session:
         execution_service.release_slot(session, slot.id)

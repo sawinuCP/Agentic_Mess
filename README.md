@@ -5,7 +5,7 @@ Users describe a software requirement; the harness plans work, dynamically creat
 executes them in isolated workspaces with controlled tools, verifies results with evidence,
 and keeps humans in control — all inside a professional code editor.
 
-> **Status:** Phase 6 complete — agent runtime + orchestration + code intelligence + execution plane (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
+> **Status:** Phase 7 complete — agent runtime + orchestration + code intelligence + execution plane + browser/MCP/web-research integrations (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
 > The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
 
 ## What works today (Phases 1–4)
@@ -28,6 +28,10 @@ and keeps humans in control — all inside a professional code editor.
   lexical+semantic retrieval feeding agent context, SCIP-JSON export, model cost ledger
 - Execution plane: runtime manager (local + docker isolation with network/memory/CPU caps),
   per-project execution quotas via leases, central port allocator with TTL
+- Integrations: Playwright browser debugging (headless chromium sessions, console/network
+  capture, screenshot artifacts), MCP tool gateway (stdio JSON-RPC client, config-driven
+  registry with per-server tool allowlists), web research (fetch → evidence packets with
+  provenance stored as artifacts + T5 context items)
 - Health/readiness endpoints, durable event stream, structured JSON logs, opt-in OpenTelemetry
 
 ## Quickstart (local development)

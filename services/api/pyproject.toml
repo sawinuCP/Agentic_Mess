@@ -32,6 +32,7 @@ dependencies = [
     "tree-sitter-rust>=0.23",
     "tree-sitter-c-sharp>=0.23",
     "pgvector>=0.3",
+    "playwright>=1.45",
 ]
 
 [project.optional-dependencies]
