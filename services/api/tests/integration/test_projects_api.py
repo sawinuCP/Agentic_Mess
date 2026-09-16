@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -67,8 +68,11 @@ def test_open_tree_read_write_search_flow(app: FastAPI, sample_project: Path) ->
 
 
 def test_project_root_must_exist(app: FastAPI) -> None:
+    # Absolute on every platform, guaranteed nonexistent — hits the 404 branch
+    # (a relative path would 422 before the existence check).
+    missing = Path(tempfile.gettempdir()) / "definitely-not-there-harness" / "deeper"
     with _client(app) as client:
-        resp = client.post("/api/projects/open", json={"root_path": "Z:/definitely/not/there"})
+        resp = client.post("/api/projects/open", json={"root_path": str(missing)})
         assert resp.status_code == 404
 
 
