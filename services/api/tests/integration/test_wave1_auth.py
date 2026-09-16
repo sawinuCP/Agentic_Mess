@@ -14,7 +14,6 @@ from starlette.websockets import WebSocketDisconnect
 from app.core.config import Settings
 from app.main import create_app
 from app.runtime.env_sandbox import build_agent_environment, configure_agent_env
-from tests.conftest import UNREACHABLE_SETTINGS
 
 pytestmark = pytest.mark.integration
 
@@ -170,5 +169,6 @@ def test_agent_env_allow_config_wiring(tmp_path: Path) -> None:
     assert env.get("HARNESS_TEST_EXTRA") == "yes"
 
 
-def test_unreachable_settings_never_enable_auth() -> None:
-    assert UNREACHABLE_SETTINGS.api_token == ""
+def test_settings_default_keeps_auth_disabled() -> None:
+    """The shipped default must be the loopback-only local posture (no token)."""
+    assert Settings(_env_file=None).api_token == ""

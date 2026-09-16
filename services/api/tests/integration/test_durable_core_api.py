@@ -1,7 +1,7 @@
 """Durable-core API flow against live PostgreSQL (integration).
 
-Requirement → acceptance criteria → plan with dependency tasks → task reads →
-agents/sessions → messages → artifacts → memories/context items. The Temporal
+Requirement â†’ acceptance criteria â†’ plan with dependency tasks â†’ task reads â†’
+agents/sessions â†’ messages â†’ artifacts â†’ memories/context items. The Temporal
 execute endpoint is exercised in its disabled (fail-closed 503) form here.
 """
 
@@ -13,8 +13,6 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from tests.conftest import unique_repo_root
 
 pytestmark = pytest.mark.integration
 
@@ -50,17 +48,15 @@ def client(app: FastAPI) -> TestClient:
     return TestClient(app)
 
 
-def _open_project(client: TestClient, tmp_path: Path) -> str:
-    response = client.post(
-        "/api/projects/open", json={"root_path": str(unique_repo_root(tmp_path))}
-    )
+def _open_project(client: TestClient, root: Path) -> str:
+    response = client.post("/api/projects/open", json={"root_path": str(root)})
     assert response.status_code == 200
     return response.json()["id"]
 
 
-def test_requirement_plan_task_flow(client: TestClient, tmp_path: Path) -> None:
+def test_requirement_plan_task_flow(client: TestClient, repo_root: Path) -> None:
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
 
         created = client.post(f"/api/projects/{project_id}/requirements", json=REQUIREMENT_BODY)
         assert created.status_code == 201, created.text
@@ -91,9 +87,9 @@ def test_requirement_plan_task_flow(client: TestClient, tmp_path: Path) -> None:
         assert missing_criteria.status_code == 422
 
 
-def test_unknown_plan_dependency_is_rejected(client: TestClient, tmp_path: Path) -> None:
+def test_unknown_plan_dependency_is_rejected(client: TestClient, repo_root: Path) -> None:
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
         requirement = client.post(
             f"/api/projects/{project_id}/requirements", json=REQUIREMENT_BODY
         ).json()
@@ -104,13 +100,13 @@ def test_unknown_plan_dependency_is_rejected(client: TestClient, tmp_path: Path)
         assert bad.status_code == 422
 
 
-def test_cycle_within_plan_is_rejected(client: TestClient, tmp_path: Path) -> None:
+def test_cycle_within_plan_is_rejected(client: TestClient, repo_root: Path) -> None:
     """A cycle is impossible with earlier-only deps, so this exercises the graph
-    checker via a task depending on a LATER title — which is 'unknown' at creation;
+    checker via a task depending on a LATER title â€” which is 'unknown' at creation;
     the graph checker itself is unit-tested in test_tasks_graph.py. Here we assert
     the API surfaces 422 for the impossible ordering too."""
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
         requirement = client.post(
             f"/api/projects/{project_id}/requirements", json=REQUIREMENT_BODY
         ).json()
@@ -127,9 +123,9 @@ def test_cycle_within_plan_is_rejected(client: TestClient, tmp_path: Path) -> No
         assert response.status_code == 201
 
 
-def test_agents_sessions_messages_flow(client: TestClient, tmp_path: Path) -> None:
+def test_agents_sessions_messages_flow(client: TestClient, repo_root: Path) -> None:
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
 
         agent = client.post(
             f"/api/projects/{project_id}/agents",
@@ -170,9 +166,9 @@ def test_agents_sessions_messages_flow(client: TestClient, tmp_path: Path) -> No
         assert ended.json()["status"] == "ended"
 
 
-def test_artifacts_and_knowledge_flow(client: TestClient, tmp_path: Path) -> None:
+def test_artifacts_and_knowledge_flow(client: TestClient, repo_root: Path) -> None:
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
 
         uploaded = client.post(
             f"/api/projects/{project_id}/artifacts",
@@ -216,9 +212,9 @@ def test_artifacts_and_knowledge_flow(client: TestClient, tmp_path: Path) -> Non
         assert len(items) == 1
 
 
-def test_execute_fails_closed_without_temporal(client: TestClient, tmp_path: Path) -> None:
+def test_execute_fails_closed_without_temporal(client: TestClient, repo_root: Path) -> None:
     with client:
-        project_id = _open_project(client, tmp_path)
+        project_id = _open_project(client, repo_root)
         requirement = client.post(
             f"/api/projects/{project_id}/requirements", json=REQUIREMENT_BODY
         ).json()

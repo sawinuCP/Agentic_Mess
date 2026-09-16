@@ -1,4 +1,4 @@
-"""Phase-4 worktree isolation + controlled integration queue (FR-012, spec §17)."""
+"""Phase-4 worktree isolation + controlled integration queue (FR-012, spec Â§17)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tests.conftest import unique_repo_root
-
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(shutil.which("git") is None, reason="git not installed"),
@@ -20,9 +18,9 @@ pytestmark = [
 
 
 @pytest.fixture()
-def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient, str, Path]]:
+def wired(app: FastAPI, repo_root: Path) -> Iterator[tuple[FastAPI, TestClient, str, Path]]:
     """A project whose root is a real git repository with one commit."""
-    root = unique_repo_root(tmp_path)
+    root = repo_root
     for args in (
         ["init"],
         ["config", "user.email", "test@example.com"],
@@ -125,7 +123,7 @@ def test_conflicting_worktree_becomes_an_explicit_task(wired: tuple) -> None:
     assert result["conflict_task_id"] is not None
     assert result["worktree"]["integration_status"] == "conflict"
     assert (root / "README.md").read_text(encoding="utf-8") == "canonical edited\n"
-    assert _status_clean(root)  # merge aborted cleanly — canonical never left dirty
+    assert _status_clean(root)  # merge aborted cleanly â€” canonical never left dirty
 
     task = client.get(f"/api/tasks/{result['conflict_task_id']}").json()
     assert task["payload"]["role"] == "integration"
@@ -146,7 +144,7 @@ def test_dirty_worktree_release_requires_explicit_force(wired: tuple) -> None:
     (Path(worktree["path"]) / "uncommitted.txt").write_text("draft", encoding="utf-8")
 
     refused = client.post(f"/api/worktrees/{worktree['id']}/release")
-    assert refused.status_code == 400  # failed attempts remain inspectable (spec §17)
+    assert refused.status_code == 400  # failed attempts remain inspectable (spec Â§17)
 
     forced = client.post(f"/api/worktrees/{worktree['id']}/release?force=true")
     assert forced.status_code == 200

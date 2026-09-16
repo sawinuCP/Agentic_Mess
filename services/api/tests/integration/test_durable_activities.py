@@ -1,7 +1,7 @@
 """Workflow activities against live PostgreSQL (integration).
 
 Activities are decorated plain async functions; they are invoked directly here
-with refs initialised against the integration database — no Temporal server
+with refs initialised against the integration database â€” no Temporal server
 required for this level.
 """
 
@@ -29,7 +29,6 @@ from app.durable.activities import (
     set_task_status_activity,
     start_attempt_activity,
 )
-from tests.conftest import unique_repo_root
 
 pytestmark = pytest.mark.integration
 
@@ -41,9 +40,9 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
 
 
 @pytest.fixture()
-def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, str, Path]]:
+def wired(app: FastAPI, repo_root: Path) -> Iterator[tuple[FastAPI, str, Path]]:
     """App with lifespan run, activity refs initialised, project registered."""
-    root = unique_repo_root(tmp_path)
+    root = repo_root
     (root / "script.py").write_text("print('x' * 600)\n", encoding="utf-8")
     with TestClient(app):
         init_refs(app.state.session_factory, app.state.artifacts)

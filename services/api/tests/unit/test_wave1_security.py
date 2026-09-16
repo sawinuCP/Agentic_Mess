@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -125,7 +126,7 @@ async def test_run_process_env_extra_is_scoped_injection(tmp_path: Path) -> None
 # --- SSRF guard (SR-03) -------------------------------------------------------
 
 
-def _resolve(mapping: dict[str, list[str]]):
+def _resolve(mapping: dict[str, list[str]]) -> Callable[[str], list[str]]:
     return lambda host: mapping.get(host, [])
 
 
@@ -201,7 +202,7 @@ def test_is_forbidden_ip(ip: str, forbidden: bool) -> None:
 # --- per-hop redirect validation in the fetch pipeline ------------------------
 
 
-def _client_factory(transport: httpx.BaseTransport):
+def _client_factory(transport: httpx.BaseTransport) -> Callable[..., httpx.AsyncClient]:
     original = httpx.AsyncClient  # capture BEFORE the module attribute is patched
 
     def factory(*args: object, **kwargs: object) -> httpx.AsyncClient:

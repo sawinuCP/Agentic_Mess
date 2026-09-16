@@ -62,13 +62,18 @@ def project(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient,
         yield app, client, response.json()["id"], root
 
 
-def unique_repo_root(tmp_path: Path) -> Path:
+@pytest.fixture()
+def repo_root(tmp_path: Path) -> Path:
     """A globally-unique existing directory for ``/api/projects/open``.
 
     pytest's numbered temp dirs can repeat across sessions once old ones are
     cleaned up, and project open is idempotent by design — without a unique
     subdir a colliding run would silently reuse a stale project row.
     """
+    return unique_repo_root(tmp_path)
+
+
+def unique_repo_root(tmp_path: Path) -> Path:
     root = tmp_path / f"repo-{uuid.uuid4().hex[:8]}"
     root.mkdir()
     return root

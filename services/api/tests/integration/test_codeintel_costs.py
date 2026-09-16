@@ -1,4 +1,4 @@
-"""Model cost ledger integration (spec §32): recording, summary, budget gate."""
+"""Model cost ledger integration (spec Â§32): recording, summary, budget gate."""
 
 from __future__ import annotations
 
@@ -15,14 +15,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.durable.activities import agent_execute_activity, init_refs, start_agent_activity
 from app.services.intelligence import costs as cost_service
-from tests.conftest import unique_repo_root
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture()
-def wired(app: FastAPI, tmp_path: Path) -> Iterator[tuple[FastAPI, TestClient, str]]:
-    root = unique_repo_root(tmp_path)
+def wired(app: FastAPI, repo_root: Path) -> Iterator[tuple[FastAPI, TestClient, str]]:
+    root = repo_root
     (root / "work.py").write_text("print('cost ledger work')\n", encoding="utf-8")
     with TestClient(app) as client:
         init_refs(app.state.session_factory, app.state.artifacts, app.state.settings)
