@@ -45,6 +45,11 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_NATS_DELIVERY_ENABLED` | `false` | NATS JetStream fan-out for durable messages |
 | `HARNESS_NATS_DELIVERY_STREAM` | `harness-messages` | JetStream stream name |
 | `HARNESS_NATS_DELIVERY_SUBJECT_PREFIX` | `harness.msg` | Subject prefix (`.agent.*` / `.broadcast`) |
+| `HARNESS_INDEX_MAX_FILES` | `5000` | Cap on files indexed per project |
+| `HARNESS_INDEX_MAX_FILE_BYTES` | `524288` | Skip source files larger than this |
+| `HARNESS_CONTEXT_RETRIEVAL_ENABLED` | `true` | Hybrid code retrieval in the agent context (T3) |
+| `HARNESS_RETRIEVAL_K` | `6` | Code symbols injected into the agent context |
+| `HARNESS_MODEL_BUDGET_TOKENS_PER_TASK` | `0` | Per-task token budget; 0 = unlimited (spec §32) |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run
@@ -69,6 +74,9 @@ npm run dev          # http://localhost:5173 — proxies /api → localhost:8000
 
 # Scheduler smoke (Phase 4): bounded scheduling → live Temporal, leases honored:
 ..\.venv\Scripts\python scripts\smoke_scheduler.py
+
+# Code-intelligence smoke (Phase 5): index → incremental → retrieval → SCIP export:
+..\.venv\Scripts\python scripts\smoke_intelligence.py
 
 # Optional heavy infra
 docker compose --profile temporal up -d          # Temporal + UI (http://localhost:8088)

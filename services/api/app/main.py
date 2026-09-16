@@ -15,6 +15,9 @@ from app.api.routes import (
     core as core_routes,
 )
 from app.api.routes import (
+    intelligence as intelligence_routes,
+)
+from app.api.routes import (
     orchestration as orchestration_routes,
 )
 from app.api.routes import (
@@ -64,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         *workspace_routes.routers,
         *planning_routes.routers,
         *orchestration_routes.routers,
+        *intelligence_routes.routers,
     ):
         app.include_router(router)
     app.add_middleware(RequestIDMiddleware)

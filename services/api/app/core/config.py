@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     nats_delivery_stream: str = "harness-messages"
     nats_delivery_subject_prefix: str = "harness.msg"
 
+    # Code intelligence (Phase 5): index caps + context retrieval (T3 tier).
+    index_max_files: int = 5000
+    index_max_file_bytes: int = 512_000
+    context_retrieval_enabled: bool = True
+    retrieval_k: int = 6
+
+    # Model budget gate (spec §32): cumulative tokens per task; 0 = unlimited.
+    model_budget_tokens_per_task: int = 0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

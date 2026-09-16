@@ -2,6 +2,7 @@
 
 from app.db.models.agents import Agent, AgentSession
 from app.db.models.artifacts import Artifact
+from app.db.models.codeintel import ModelInvocation, Symbol, SymbolFile
 from app.db.models.events import Event
 from app.db.models.infra import RuntimeInstance, ToolchainConfig
 from app.db.models.isolation import Resource, Worktree
@@ -24,12 +25,15 @@ __all__ = [
     "HitlRequest",
     "Memory",
     "Message",
+    "ModelInvocation",
     "Plan",
     "Project",
     "Requirement",
     "Resource",
     "Review",
     "RuntimeInstance",
+    "Symbol",
+    "SymbolFile",
     "Task",
     "TaskAttempt",
     "TaskDependency",

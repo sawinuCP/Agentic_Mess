@@ -22,7 +22,7 @@ from app.agents_runtime.gateway import invoke as gateway_invoke
 from app.agents_runtime.models_registry import ModelRegistry, extract_commands
 from app.agents_runtime.providers import ModelRequest
 from app.core.errors import DomainError
-from app.db.models import Artifact, Memory, Project, TaskAttempt
+from app.db.models import Artifact, Event, Memory, Project, TaskAttempt
 from app.durable.activities._context import current_settings, load_task_row, refs
 from app.durable.activities.agents import heartbeat_session
 from app.durable.activities.hitl import hitl_gate
@@ -52,6 +52,83 @@ def _decide_commands(payload: dict[str, Any], model_text: str) -> list[list[str]
     if payload_commands:
         return payload_commands
     return [text.split() for text in extract_commands(model_text)]
+
+
+async def _retrieve_code(factory, project_id: str | None, query: str, settings) -> str:  # type: ignore[no-untyped-def]
+    """Hybrid code retrieval feeding the T3 context tier. Never breaks execution."""
+    if not (project_id and query.strip()) or not getattr(
+        settings, "context_retrieval_enabled", True
+    ):
+        return ""
+
+    def _run() -> str:
+        from app.codeintel.retrieval import retrieve  # noqa: PLC0415 — keeps codeintel optional
+
+        with factory() as session:
+            hits = retrieve(
+                session,
+                project_id,
+                query,
+                k=int(getattr(settings, "retrieval_k", 6) or 6),
+            )
+            return "\n".join(
+                f"CODE {hit.path}:{hit.start_line}-{hit.end_line} [{hit.kind}] "
+                f"{hit.name} — {hit.signature}"
+                for hit in hits
+            )
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as exc:  # noqa: BLE001 — retrieval must never break an agent run
+        activity.logger.warning("code_retrieval_failed error=%s", exc)
+        return ""
+
+
+def _within_budget(factory, task_id: uuid.UUID, budget: int) -> bool:  # type: ignore[no-untyped-def]
+    from app.services import costs as cost_service  # noqa: PLC0415
+
+    with factory() as session:
+        return cost_service.tokens_for_task(session, task_id) < budget
+
+
+async def _record_budget_exceeded(factory, project_id: str | None, task_id: uuid.UUID) -> None:  # type: ignore[no-untyped-def]
+    def _write() -> None:
+        with factory() as session:
+            session.add(
+                Event(
+                    event_type="MODEL_BUDGET_EXCEEDED",
+                    source="temporal",
+                    project_id=uuid.UUID(project_id) if project_id else None,
+                    task_id=task_id,
+                    payload={},
+                )
+            )
+            session.commit()
+
+    await asyncio.to_thread(_write)
+
+
+async def _record_invocation(factory, *, project_id, task_id, agent_id, role, response) -> None:  # type: ignore[no-untyped-def]
+    def _write() -> None:
+        from app.services import costs as cost_service  # noqa: PLC0415
+
+        with factory() as session:
+            cost_service.record_invocation(
+                session,
+                project_id=uuid.UUID(project_id) if project_id else None,
+                task_id=task_id,
+                agent_id=uuid.UUID(agent_id) if agent_id else None,
+                role=role,
+                provider=response.provider,
+                model=response.model,
+                prompt_tokens=response.prompt_tokens_est,
+                completion_tokens=response.output_tokens_est,
+            )
+
+    try:
+        await asyncio.to_thread(_write)
+    except Exception as exc:  # noqa: BLE001 — accounting must never break an agent run
+        activity.logger.warning("cost_record_failed error=%s", exc)
 
 
 @activity.defn
@@ -86,6 +163,8 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     context_data = await asyncio.to_thread(_load_context)
     payload = context_data["payload"]
 
+    code_text = await _retrieve_code(factory, project_id, str(context_data["request"]), settings)
+
     bundle = assemble(
         safety_text=(
             "You are an agent inside the AI Harness. Policy: only execute commands the "
@@ -98,6 +177,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
             "Commands from the task payload are listed below with '- RUN:' markers."
         ),
         state_text=f"Project: {context_data['project_name']}",
+        code_text=code_text,
         history_text=f"Prior attempts on this task: {context_data['prior_attempts']}",
         evidence_text="\n".join(context_data["memories"]),
         budget_tokens=int(getattr(settings, "context_budget_tokens", 8000) or 8000),
@@ -109,8 +189,29 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         prompt=bundle.render() + "\n\n" + _run_markers(payload),
         max_output_tokens=1024,
     )
+    budget = int(getattr(settings, "model_budget_tokens_per_task", 0) or 0)
+    if budget and not await asyncio.to_thread(_within_budget, factory, task_id, budget):
+        await _record_budget_exceeded(factory, project_id, task_id)
+        return {
+            "outcome": "failed",
+            "failure_class": "BUDGET_EXCEEDED",
+            "failure_detail": (
+                f"Model budget exhausted for this task ({budget} tokens/task); "
+                "spec §32 bounded-cost policy."
+            ),
+            "evidence_artifact_ids": [],
+        }
+
     registry = ModelRegistry.load(Path(getattr(settings, "models_config_path", "") or "") or None)
     model_response = await registry.complete(model_request)
+    await _record_invocation(
+        factory,
+        project_id=project_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        role=model_request.role,
+        response=model_response,
+    )
 
     commands = _decide_commands(payload, model_response.text)
 

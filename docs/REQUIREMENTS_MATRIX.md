@@ -36,7 +36,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-021 | MCP discovery/invocation/permissions | mcp gateway | 7 | NOT_STARTED | — | — | SEC-001 | M |
 | FR-022 | Web research with evidence/provenance | researcher + evidence | 7 | NOT_STARTED | — | — | — | L |
 | FR-023 | Normalize/compress tool observations pre-context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
-| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IN_PROGRESS | app/db/models/event.py, app/events/recorder.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
+| FR-024 | Persist events/artifacts/audit info | events, artifacts, db | 0/2 | IMPLEMENTED | app/db/models/events.py, app/services/events.py, app/artifacts/store.py | tests/integration/test_db_smoke.py, tests/integration/test_durable_core_api.py | — | L |
 | FR-025 | Engineering-office UI for live agent activity | web-ui | 9 | NOT_STARTED | — | — | FR-024 | M |
 | FR-026 | No completion from agent self-report alone | requirement-overseer | 8 | NOT_STARTED | — | — | FR-013 | H |
 | FR-027 | Final evidence-backed completion report | overseer + UI | 8/9 | NOT_STARTED | — | — | FR-026 | M |
@@ -52,7 +52,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | LANG-002 | Projects may contain multiple languages/toolchains | registry | 1 | IMPLEMENTED | app/toolchains/detection.py | tests/unit/test_toolchains.py | LANG-001 | M |
 | LANG-003 | Missing tool → actionable diagnostic | toolchain registry | 1 | IMPLEMENTED | app/toolchains/service.py | tests/unit/test_toolchains.py | LANG-001 | L |
 | LANG-004 | Formatting available manually + as agent action | adapters, tools | 1/3 | IN_PROGRESS | app/toolchains/service.py, RunView UI | tests/unit/test_toolchains.py | LANG-001 | L |
-| LANG-005 | Compiler/test output passes observation normalizer | context-engine | 3 | NOT_STARTED | — | — | FR-023 | M |
+| LANG-005 | Compiler/test output passes observation normalizer | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py, app/toolchains/service.py | tests/unit/test_agent_gateway.py | FR-023 | M |
 
 ## Task / recovery rules (spec §13, §26)
 
@@ -60,7 +60,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
 | TASK-001 | No vague tasks when acceptance criteria can be explicit | planner | 2 | IMPLEMENTED | app/api/routes/requirements.py | tests/integration/test_durable_core_api.py | FR-006 | M |
 | TASK-002 | Task state persisted independently of worker process | db, orchestrator | 2 | IMPLEMENTED | app/db/models/tasks.py, app/durable/ | tests/integration/test_durable_activities.py | FR-006 | H |
-| TASK-003 | Task attempts preserve failure reasons + evidence | db, recovery | 2/3 | IMPLEMENTED | app/db/models/tasks.py, app/durable/activities.py | tests/integration/test_durable_activities.py | TASK-002 | M |
+| TASK-003 | Task attempts preserve failure reasons + evidence | db, recovery | 2/3 | IMPLEMENTED | app/db/models/tasks.py, app/durable/activities/ | tests/integration/test_durable_activities.py | TASK-002 | M |
 | REC-001 | Recovery preserves task identity + attempt evidence | recovery-manager | 3 | IN_PROGRESS | app/durable/workflows.py, app/durable/activities.py | tests/integration/test_durable_activities.py | TASK-003 | H |
 | REC-002 | Retries are bounded | recovery-manager, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (max_attempts + durable timers) | tests/integration/test_durable_activities.py | REC-001 | M |
 | REC-003 | Repeated failure → escalation/replan, never infinite loop | recovery-manager | 3 | NOT_STARTED | — | — | REC-002 | M |
@@ -91,7 +91,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | PERF-005 | Recovery operations idempotent where possible | recovery-manager | 3 | NOT_STARTED | — | — | REC-001 | M |
 | PERF-006 | Durable state survives application restart | db, temporal | 2/3 | IN_PROGRESS | app/durable/workflows.py (durable timers/state) | scripts/smoke_durable.py | FR-024 | H |
 | PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | IMPLEMENTED | app/services/agents.py (supervise_sessions), app/durable/workflows.py | tests/integration/test_phase3_runtime.py | TASK-002 | H |
-| PERF-008 | Index updates incremental after file changes | code-intelligence | 5 | NOT_STARTED | — | — | FR-013 | M |
+| PERF-008 | Index updates incremental after file changes | code-intelligence | 5 | IMPLEMENTED | app/codeintel/indexer.py (hash-driven reindex), app/db/models/codeintel.py | tests/integration/test_codeintel_index.py | FR-013 | M |
 
 ## Product acceptance criteria (spec §44)
 
@@ -104,7 +104,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | AC-005 | Parallel changes isolated + safely integrated | Worktree/integration tests | 4 | IN_PROGRESS (worktrees + integration queue live; review gates land Phase 8) |
 | AC-006 | Agents use compilers/formatters/linters/test runners | Toolchain adapter tests | 1/6 | NOT_STARTED |
 | AC-007 | Pause/resume + worker-failure recovery | Recovery tests | 3 | IN_PROGRESS (pause/resume live; supervision live) |
-| AC-008 | Semantic/structural repo inspection | Code-intelligence tests | 5 | NOT_STARTED |
+| AC-008 | Semantic/structural repo inspection | Code-intelligence tests | 5 | IN_PROGRESS (symbol index + hybrid retrieval + SCIP-JSON export live; LSP daemon + call/dependency graphs deferred) |
 | AC-009 | Tool output compressed before context injection | Context tests | 3 | IMPLEMENTED (FR-023 observation compression) |
 | AC-010 | Web/MCP/browser permission-controlled + observable | Security tests | 7 | NOT_STARTED |
 | AC-011 | Requirement coverage continuously tracked | Overseer tests | 8 | NOT_STARTED |

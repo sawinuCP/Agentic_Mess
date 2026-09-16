@@ -5,7 +5,7 @@ Users describe a software requirement; the harness plans work, dynamically creat
 executes them in isolated workspaces with controlled tools, verifies results with evidence,
 and keeps humans in control — all inside a professional code editor.
 
-> **Status:** Phase 4 complete — agent runtime + multi-agent orchestration (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
+> **Status:** Phase 5 complete — agent runtime + multi-agent orchestration + code intelligence (see [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)).
 > The specification is authoritative: `AI_Harness_Code_Editor_Complete_Implementation_Specification.md`.
 
 ## What works today (Phases 1–4)
@@ -24,6 +24,8 @@ and keeps humans in control — all inside a professional code editor.
   pause/resume signals, bounded scheduler (global/role concurrency, lease-aware), dynamic spawn policy
 - Multi-agent plumbing: TTL resource leases with renewal, NATS JetStream message fan-out
   (opt-in), git worktree isolation with a controlled integration queue (conflicts → explicit tasks)
+- Code intelligence: tree-sitter/ast symbol index with incremental updates, hybrid
+  lexical+semantic retrieval feeding agent context, SCIP-JSON export, model cost ledger
 - Health/readiness endpoints, durable event stream, structured JSON logs, opt-in OpenTelemetry
 
 ## Quickstart (local development)

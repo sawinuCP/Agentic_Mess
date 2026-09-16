@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Generated:** 2026-09-15 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 4 — Multi-agent orchestration (complete)
+**Generated:** 2026-09-15 · **Spec:** v1.0 (2026-09-14) · **Current phase:** 5 — Code intelligence (complete)
 
 ## Phase overview
 
@@ -11,7 +11,7 @@
 | 2 | Durable core (PostgreSQL entities + artifacts) | **COMPLETE** | Full spec §29 schema (21 entities, migrations 0002-0006), artifacts store, durable Temporal task execution with attempts/evidence |
 | 3 | Agent runtime + durable orchestration | **COMPLETE** | Lifecycle, model routing + escalation, tool gateway + HITL gates, context broker, pause/resume, supervision, agent replacement |
 | 4 | Multi-agent orchestration | **COMPLETE** | Resource leases, scheduler + spawn policy, NATS message fan-out, worktrees + integration queue |
-| 5 | Code intelligence | NOT_STARTED | Tree-sitter, LSP, SCIP, retrieval |
+| 5 | Code intelligence | **COMPLETE** | Symbol index (tree-sitter/ast), incremental reindex, hybrid retrieval, SCIP-JSON export, model cost ledger |
 | 6 | Execution plane | NOT_STARTED | Containers, quotas, port manager |
 | 7 | Browser / MCP / web research | NOT_STARTED | Playwright, MCP registry, evidence packets |
 | 8 | Quality & oversight | NOT_STARTED | Requirement overseer, review/debate, security validation |
@@ -58,6 +58,45 @@ Phase-3 follow-ups were completed inside the Phase-3 commit: HITL fail-closed ap
 (stale sessions → `lost`, agents → `failed`), agent replacement with `replaces_agent_id` provenance,
 and per-route model fallback escalation. Remaining deferrals are tracked in the honesty list below
 and in the requirements matrix.
+
+## Phase 5 — code intelligence (implemented 2026-09-15)
+
+Layered per ARCHITECTURE §8 — structural first, embeddings as one ranker:
+
+- **Symbol index (tree-sitter + ast)** — `app/codeintel/parser.py`: Python via the
+  stdlib `ast` (exact), javascript/typescript/go/rust/c-sharp via tree-sitter grammars
+  (walk-based extraction, no query-API churn), and a documented regex fallback when a
+  grammar is unavailable. `SymbolSpan`s carry kind (class/function/method/interface/
+  struct/enum/trait/impl/type), parent, signature, doc, 1-based line span.
+- **Incremental indexer (PERF-008)** — `app/codeintel/indexer.py`: content-hash-driven;
+  a file is re-extracted only when it changed, deleted files are pruned, and each file
+  commits atomically (crash-safe partial index). Dependency/asset directories and
+  oversized files are skipped with configurable caps.
+- **Hybrid retrieval** — `app/codeintel/retrieval.py`: lexical scoring (exact/prefix/
+  token-overlap/signature hits, kind boosts) combined with pgvector cosine similarity
+  over deterministic local embeddings (`app/codeintel/embeddings.py`, dim-256 hashing
+  embedder — stable across runs, so unchanged files keep their embeddings). Wired into
+  the agent context as the T3 "relevant code" tier (`context_broker.assemble(code_text=…)`,
+  never breaking a run on retrieval failure).
+- **SCIP-JSON export** — `app/codeintel/scip.py`: metadata + documents + definition
+  occurrences built from the durable index (documented harness-scheme subset; full
+  binary-protocol interop tracked for Phase 8 tooling).
+- **Model cost ledger (spec §32)** — `app/services/costs.py` + `model_invocations` table:
+  every model call records provider/model/tokens/latency per task & agent; optional
+  `HARNESS_MODEL_BUDGET_TOKENS_PER_TASK` gate fails closed with `BUDGET_EXCEEDED` and a
+  `MODEL_BUDGET_EXCEEDED` audit event. The deferred Phase-4 ledger item is now delivered.
+- **API** — `routes/intelligence/`: `POST /intelligence/index`, `GET /intelligence/status`
+  (engines per language), `GET /symbols?q=&kind=`, `GET /symbols/file?path=`,
+  `GET /intelligence/retrieve?q=`, `GET /intelligence/scip`, `GET /intelligence/costs`.
+
+### Phase 5 validation log (2026-09-15)
+
+| Gate | Result |
+| ---- | ------ |
+| ruff / mypy (165 files) | pass |
+| pytest — **143 passed** (+20: parser, embeddings, SCIP, index/retrieval/costs) | pass |
+| Live smokes: editor (7/7) · durable (agent loop + evidence) · scheduler (leases) | PASS |
+| `scripts/smoke_intelligence.py` — index → retrieve → costs through the live API | PASS |
 
 ## Phase 4 — COMPLETE (2026-09-15)
 
@@ -278,21 +317,28 @@ tracked in the requirements matrix. No placeholder code pretends otherwise.
 - Agent lifecycle engine, model adapters/routing, tool gateway, observation compression (Phase 3) — **delivered**
 - Dynamic spawning, scheduler, leases, worktree integration (Phase 4) — **delivered**
 - Model cost/token budget accounting ledger (deferred; tracked for Phase 5+)
-- Tree-sitter/LSP/SCIP indexing, pgvector retrieval (Phase 5)
+- Tree-sitter/LSP/SCIP indexing, pgvector retrieval (Phase 5) — **delivered** (tree-sitter + ast
+  symbols, pgvector hybrid retrieval, SCIP-JSON subset; LSP daemon + call/dependency graphs deferred)
 - Sandbox runtime manager, quotas, port manager (Phase 6)
 - Playwright browser debugging, MCP gateway, web research evidence (Phase 7)
 - Requirement overseer, review/debate/adjudication (Phase 8)
 - Office/graph/timeline/diff UIs (Phase 9)
 - Packaging, diagnostics screen, export/import (Phase 10)
 
-## Next phase entry criteria (Phase 5)
+## Next phase entry criteria (Phase 6)
 
-Phase 4 gates green → begin Phase 5 code intelligence:
-tree-sitter structural parsing, LSP/SCIP symbol infrastructure, hybrid retrieval (lexical/AST/LSP
-first, pgvector as one ranker), incremental index updates after file changes (PERF-008), and the
-model cost/token budget accounting ledger deferred from Phase 4.
+Phase 5 gates green → begin Phase 6 execution plane:
+sandbox runtime manager (Docker/dev-container runtimes), CPU/memory/process quotas, network
+policy, port allocator with TTL, and process supervision (spec §19). Deferred from earlier
+phases: LSP daemon integration + call/dependency graphs (code intelligence deepening), and
+external embedding providers behind the retrieval interface.
 
 ## Change log
+
+- 2026-09-15 — Phase 5 code intelligence: tree-sitter/ast symbol index with hash-driven
+  incremental reindexing (PERF-008), hybrid lexical+pgvector retrieval wired into the agent
+  context T3 tier, SCIP-JSON export, and the model cost ledger with an optional per-task token
+  budget gate (spec §32) — live smoke green.
 
 - 2026-09-15 — Maintainability restructure: the 585-line `durable/activities.py` monolith split
   into an `app/durable/activities/` package by concern (context/tasks/agents/execution/hitl, with
