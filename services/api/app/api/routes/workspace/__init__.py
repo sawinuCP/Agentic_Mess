@@ -1,10 +1,10 @@
-"""Workspace routes: projects, file editing/search, git, terminals, toolchains."""
+"""Workspace routes: projects, file editing/search, git, terminals, toolchains, portability."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes.workspace import files, git, projects, terminal, toolchains
+from app.api.routes.workspace import files, git, portability, projects, terminal, toolchains
 
 routers: list[APIRouter] = [
     projects.router,
@@ -12,4 +12,5 @@ routers: list[APIRouter] = [
     git.router,
     terminal.router,
     toolchains.router,
+    portability.router,
 ]

@@ -242,3 +242,25 @@ export const runReview = (
     method: "POST",
     body: JSON.stringify(body),
   });
+
+// --- diagnostics (Phase 10) -----------------------------------------------
+
+export interface DiagnosticsReport {
+  app: {
+    version: string;
+    environment: string;
+    python: string;
+    platform: string;
+    pid: number;
+    uptime_seconds: number;
+  };
+  database: { status: string; alembic_head: string };
+  counts: Record<string, number>;
+  artifact_store: { status: string; detail: string };
+  temp_dir: { status: string; detail: string };
+  redis: { status: string; detail: string };
+  nats: { status: string; detail: string };
+  config: Record<string, string | boolean>;
+}
+
+export const getDiagnostics = () => request<DiagnosticsReport>("/api/diagnostics");

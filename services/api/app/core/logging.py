@@ -45,6 +45,30 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+class SecretRedactionFilter(logging.Filter):
+    """Redacts credential-shaped spans from log messages (SEC-003).
+
+    Uses the Phase-8 scanner patterns; every high-confidence match is replaced
+    in-place with a mask so secrets never persist in normal logs. Non-string
+    extras are left untouched (the formatter stringifies them separately).
+    """
+
+    MASK = "«redacted»"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from app.services.quality.secrets import (
+            redact_span,  # noqa: PLC0415 — no import cycle at load
+        )
+
+        if isinstance(record.msg, str):
+            record.msg = redact_span(record.msg)
+        if record.args:
+            record.args = tuple(
+                redact_span(arg) if isinstance(arg, str) else arg for arg in record.args
+            )
+        return True
+
+
 class RequestIdFilter(logging.Filter):
     """Injects the current request id (if any) into every log record."""
 
@@ -62,4 +86,5 @@ def configure_logging(level: str) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     handler.addFilter(RequestIdFilter())
+    handler.addFilter(SecretRedactionFilter())
     root.addHandler(handler)

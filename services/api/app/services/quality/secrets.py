@@ -17,6 +17,7 @@ from typing import TypedDict
 MAX_SCAN_BYTES = 512_000
 MAX_FILES = 2000
 SNIPPET_CONTEXT = 24  # chars of context around a finding, redacted
+MASK = "«redacted»"  # the mask used everywhere a secret is replaced
 
 # High-confidence patterns; each entry: (kind, compiled regex).
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -87,7 +88,15 @@ def redact(line: str, start: int, end: int) -> str:
     """Context around a match with the match itself replaced by a mask."""
     prefix = line[max(0, start - SNIPPET_CONTEXT) : start]
     suffix = line[end : end + SNIPPET_CONTEXT]
-    return f"{prefix}«redacted»{suffix}".strip()
+    return f"{prefix}{MASK}{suffix}".strip()
+
+
+def redact_span(text: str) -> str:
+    """Replace every credential match in ``text`` with a mask (whole string)."""
+    result = text
+    for _kind, pattern in _PATTERNS:
+        result = pattern.sub(MASK, result)
+    return result
 
 
 def scan_text(text: str) -> list[SecretFinding]:

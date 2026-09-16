@@ -1064,3 +1064,28 @@ body {
 .office-status .row {
   display: inline-flex;
 }
+
+/* Diagnostics dialog (Phase 10) */
+.diagnostics-dialog {
+  width: min(560px, 92vw);
+}
+
+.diag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.diag-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.diag-count {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+}

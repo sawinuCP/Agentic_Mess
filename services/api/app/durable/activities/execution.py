@@ -28,6 +28,7 @@ from app.durable.activities.agents import heartbeat_session
 from app.durable.activities.hitl import hitl_gate
 from app.runtime.runtimes import resolve_spec
 from app.schemas.orchestration.leases import LeaseOut
+from app.services.orchestration.recovery import classify_failure, recovery_plan
 
 
 def _run_markers(payload: dict[str, Any]) -> str:
@@ -330,17 +331,25 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
             evidence_ids.extend(observation.artifact_ids)
             if observation.status != "success":
                 overall = "timeout" if observation.status == "timeout" else "failed"
-                failure_class = "TIMEOUT" if observation.status == "timeout" else "TASK_FAILURE"
                 failure_detail = f"command {index} failed: {observation.summary[:200]}"
+                failure_class = classify_failure(
+                    failure_detail, timed_out=observation.status == "timeout"
+                )
                 break
     finally:
         if slot is not None:
             await asyncio.to_thread(_release_slot, slot)
 
+    recovery = (
+        recovery_plan(failure_class, int(payload.get("attempt_number", 1) or 1))
+        if failure_class
+        else None
+    )
     return {
         "outcome": overall,
         "failure_class": failure_class,
         "failure_detail": failure_detail,
+        "recovery": recovery,
         "evidence_artifact_ids": evidence_ids,
         "observation": observations[0] if observations else None,
         "model": {"provider": model_response.provider, "model": model_response.model},

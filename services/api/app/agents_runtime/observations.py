@@ -30,6 +30,7 @@ class Observation:
     relevant_errors: list[str] = field(default_factory=list)
     artifact_ids: list[str] = field(default_factory=list)
     duration_ms: int = 0
+    security_flags: list[str] = field(default_factory=list)  # SEC-006/007
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -40,6 +41,7 @@ class Observation:
             "relevant_errors": self.relevant_errors,
             "artifact_ids": self.artifact_ids,
             "duration_ms": self.duration_ms,
+            "security_flags": self.security_flags,
         }
 
 
@@ -77,6 +79,10 @@ def normalize_tool_observation(
         status = "success"
     else:
         status = "failed"
+    from app.services.quality.security import (
+        prompt_injection_scan,  # noqa: PLC0415 — no cycle at load
+    )
+
     return Observation(
         tool=tool,
         status=status,
@@ -85,6 +91,7 @@ def normalize_tool_observation(
         relevant_errors=_relevant_errors(stderr, stdout),
         artifact_ids=list(artifact_ids or []),
         duration_ms=duration_ms,
+        security_flags=prompt_injection_scan(f"{stdout}\n{stderr}"),
     )
 
 

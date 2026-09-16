@@ -28,7 +28,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | FR-013 | Requirement→task→code→test traceability | requirement-engine, db | 2/8 | NOT_STARTED | — | — | FR-006 | H |
 | FR-014 | HITL approvals/interventions at any phase | hitl + UI | 3/9 | IMPLEMENTED (API+gates; UI in Phase 9) | app/services/hitl.py, app/api/routes/hitl.py, app/durable/activities.py (gate) | tests/integration/test_phase3_runtime.py | — | M |
 | FR-015 | Pause/resume without destroying durable state | agent-runtime, temporal | 3 | IMPLEMENTED | app/durable/workflows.py (signals+checkpoints) | scripts/smoke_durable.py (live) | FR-008 | H |
-| FR-016 | Classify failures, bounded recovery | recovery-manager | 3 | NOT_STARTED | — | — | FR-008 | H |
+| FR-016 | Classify failures, bounded recovery | recovery-manager | 3/10 | IMPLEMENTED | app/services/orchestration/recovery.py (11 spec §26 classes + bounded plans), wired into app/durable/activities/execution.py | tests/unit/test_recovery.py | FR-008 | H |
 | FR-017 | Independent validation of high-risk decisions | review/debate | 8 | IMPLEMENTED | app/services/quality/review.py (independent reviewers -> critic -> evidence verifier -> adjudicator), routes/quality | tests/integration/test_quality_review.py, scripts/smoke_oversight.py | FR-013 | M |
 | FR-018 | Execute code in isolated runtimes | runtime-manager | 6 | IMPLEMENTED | app/runtime/runtimes.py (local + docker backends), app/agents_runtime/gateway.py | tests/unit/test_runtime_manager.py, scripts/smoke_runtime.py | — | H |
 | FR-019 | Compiler/interpreter + formatter as first-class tools | toolchain adapters | 1/6 | IMPLEMENTED | app/toolchains/service.py, app/runtime/runner.py | tests/unit/test_toolchains.py, tests/unit/test_runner.py | FR-004 | M |
@@ -71,11 +71,11 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 |----|-------------|-----------|-------|--------|-------|-------|---------|------|
 | SEC-001 | All tool execution passes policy enforcement | tool-gateway | 3 | IMPLEMENTED | app/agents_runtime/gateway.py | tests/unit/test_agent_gateway.py | — | H |
 | SEC-002 | Least-privilege files/network/secrets/tools per agent | policy engine | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (allowlists) | tests/unit/test_agent_gateway.py | SEC-001 | H |
-| SEC-003 | Secrets never in prompts or normal logs | secret store, logging | 3 | NOT_STARTED | — | — | SEC-001 | H |
+| SEC-003 | Secrets never in prompts or normal logs | secret store, logging | 8/10 | IMPLEMENTED (credential scanner + SecretRedactionFilter on the log pipeline) | app/services/quality/secrets.py, app/core/logging.py | tests/unit/test_quality_secrets.py, tests/unit/test_logging.py | SEC-001 | H |
 | SEC-004 | Sensitive actions support HITL approval | hitl, gateway | 3 | IN_PROGRESS | app/agents_runtime/gateway.py (APPROVAL_PATTERNS) | tests/unit/test_agent_gateway.py | SEC-001 | M |
 | SEC-005 | Untrusted code runs in stronger isolation when configured | runtime-manager | 6 | IN_PROGRESS (docker backend live: workspace-only mount, network-none, memory/CPU caps, no-new-privileges; gVisor/Firecracker deferred) | app/runtime/runtimes.py | tests/unit/test_runtime_manager.py | FR-018 | H |
 | SEC-006 | Tool outputs treated as untrusted input | context-engine | 3 | IN_PROGRESS | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | SEC-001 | M |
-| SEC-007 | Prompt injection cannot override system policy | policy engine, context | 3+ | NOT_STARTED | — | — | SEC-006 | H |
+| SEC-007 | Prompt injection cannot override system policy | policy engine, context | 10+ | IN_PROGRESS (injection detector flags tool outputs; system prompt/policy stay authoritative — full policy engine deferred) | app/services/quality/security.py, app/agents_runtime/observations.py | tests/unit/test_quality_security.py | SEC-006 | H |
 | SEC-008 | Audit events for security-sensitive actions | events | 3 | NOT_STARTED | — | — | FR-024 | L |
 | SEC-009 | User/project data local by default | packaging, config | 10 | NOT_STARTED | — | — | — | L |
 | SEC-010 | Credential redaction + secret scanning | logging, gateway | 3 | NOT_STARTED | — | — | SEC-003 | M |
@@ -88,7 +88,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | PERF-002 | Live event streaming incremental + backpressure-aware | api, nats | 9 | NOT_STARTED | — | — | FR-024 | M |
 | PERF-003 | Scheduler concurrency bounded by config | scheduler | 4 | IMPLEMENTED | app/services/scheduler.py (HARNESS_SCHEDULER_* limits) | tests/integration/test_phase4_orchestration.py | FR-011 | L |
 | PERF-004 | Large logs never injected wholesale into context | context-engine | 3 | IMPLEMENTED | app/agents_runtime/observations.py | tests/unit/test_agent_gateway.py | FR-023 | H |
-| PERF-005 | Recovery operations idempotent where possible | recovery-manager | 3 | NOT_STARTED | — | — | REC-001 | M |
+| PERF-005 | Recovery operations idempotent where possible | recovery-manager | 10 | IMPLEMENTED (restart-recovery integration test; idempotent project re-open) | tests/integration/test_hardening.py | tests/integration/test_hardening.py | REC-001 | M |
 | PERF-006 | Durable state survives application restart | db, temporal | 2/3 | IN_PROGRESS | app/durable/workflows.py (durable timers/state) | scripts/smoke_durable.py | FR-024 | H |
 | PERF-007 | Agent process loss must not destroy task state | orchestrator, db | 3 | IMPLEMENTED | app/services/agents.py (supervise_sessions), app/durable/workflows.py | tests/integration/test_phase3_runtime.py | TASK-002 | H |
 | PERF-008 | Index updates incremental after file changes | code-intelligence | 5 | IMPLEMENTED | app/codeintel/indexer.py (hash-driven reindex), app/db/models/codeintel.py | tests/integration/test_codeintel_index.py | FR-013 | M |
@@ -112,7 +112,7 @@ the Requirement Overseer (Phase 8) for machine-checked coverage.
 | AC-013 | HITL intervenes without destroying state | HITL tests | 3/9 | IMPLEMENTED (fail-closed gates + office approval card; Playwright-verified) |
 | AC-014 | Office UI reflects live execution state | UI tests | 9 | IMPLEMENTED (polled agents/tasks/events/oversight; Playwright smoke) |
 | AC-015 | Completion evidence-backed, blocked by unmet criteria | Overseer tests | 8 | IMPLEMENTED (409 + blockers; VERIFIED only with evidence) |
-| AC-016 | Restart preserves durable execution state | Restart-recovery tests | 2/3 | NOT_STARTED |
+| AC-016 | Restart preserves durable execution state | Restart-recovery tests | 2/3/10 | IMPLEMENTED (restart-recovery integration test: fresh engine sees all state, artifacts readable) |
 | AC-017 | Multi-language via configurable toolchains | Multi-language suite | 1/6 | NOT_STARTED |
 
 ## Phase 0 evidence

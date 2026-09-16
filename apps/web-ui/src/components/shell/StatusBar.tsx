@@ -3,6 +3,7 @@ import { glue } from "@typehug/en";
 import { getLiveness, type Liveness } from "../../health";
 import { runningAgents, useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
+import DiagnosticsDialog from "./DiagnosticsDialog";
 
 export default function StatusBar() {
   const project = useStore((s) => s.project);
@@ -39,6 +40,7 @@ export default function StatusBar() {
   const pendingHitl = useOffice((s) => s.hitl.length);
   const running = runningAgents(agents).length;
   const setFnOffice = useOffice((s) => s.set);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   return (
     <footer className="status-bar">
@@ -75,7 +77,15 @@ export default function StatusBar() {
         </span>
       ))}
       <span className="status-item muted">{liveness ? `api v${liveness.version}` : "api"}</span>
+      <button
+        className="status-item clickable muted"
+        title="Diagnostics"
+        onClick={() => setDiagnosticsOpen(true)}
+      >
+        diagnostics
+      </button>
       <span className={`status-dot ${apiUp ? "ok" : "down"}`} title={apiUp ? "API reachable" : "API unreachable"} />
+      {diagnosticsOpen && <DiagnosticsDialog onClose={() => setDiagnosticsOpen(false)} />}
     </footer>
   );
 }

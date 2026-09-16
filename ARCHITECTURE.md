@@ -283,6 +283,6 @@ because Alembic requires the models importable; documented, not accidental.
 | 7 | Browser/MCP/web | Playwright, MCP gateway, research evidence | COMPLETE (2026-09-16) |
 | 8 | Quality/oversight | Requirement graph, reviewers, adjudication, security | COMPLETE (2026-09-16) |
 | 9 | Office UI | Live team view, graph, timeline, evidence | COMPLETE (2026-09-16) |
-| 10 | Hardening | Security/recovery/performance, packaging, docs | NOT_STARTED |
+| 10 | Hardening | Security/recovery/performance, packaging, docs | COMPLETE (2026-09-16) |
 
 

@@ -40,7 +40,15 @@ def test_benign_code_is_clean() -> None:
 def test_findings_are_redacted() -> None:
     finding = secrets.scan_text("token = 'abcdefghijklmnop'")[0]
     assert "abcdefghijklmnop" not in finding.snippet
-    assert "«redacted»" in finding.snippet
+    assert secrets.MASK in finding.snippet
+
+
+def test_redact_span_masks_every_match() -> None:
+    text = "AKIAIOSFODNN7EXAMPLE and ghp_abcabcabcabcabcabcabcabcabcabcabcabc"
+    clean = secrets.redact_span(text)
+    assert "AKIA" not in clean
+    assert "ghp_" not in clean
+    assert clean.count(secrets.MASK) == 2
 
 
 def test_scan_paths_skips_excluded_dirs_and_reports_findings(tmp_path: Path) -> None:
