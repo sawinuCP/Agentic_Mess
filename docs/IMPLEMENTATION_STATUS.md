@@ -598,6 +598,27 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
   Verified: ruff/mypy clean, pytest 158 passed, and all five live smokes green
   (editor/durable/scheduler/intelligence/runtime).
 
+- 2026-09-16 — **Wave 2 executable recovery** (post-spec production plan, W2): the Temporal
+  task workflow is now the authoritative recovery coordinator — the recovery decision returned
+  by each failed attempt is actually EXECUTED (it was advisory before). The pure policy core
+  (`services/orchestration/recovery.py`) grew deterministic decisions (`recovery_decision`:
+  action ladder per failure class with real attempt counts, parameters, budget sensitivity and
+  a deterministic `recovery_id`), bounded exponential backoff with hash-free jitter, and a
+  non-retryable set (SECURITY_BLOCK/HITL_TIMEOUT/BUDGET_EXCEEDED → terminal, never retried).
+  New durable executor activities (`durable/activities/recovery.py` + a HITL recovery gate):
+  budget check against the cost ledger before expensive actions (insufficient → durable HITL
+  gate, fail-closed), debugger/integration child tasks with structured evidence, replan
+  follow-up tasks on ladder exhaustion (REC-003), terminal-failure evidence payloads, agent
+  session drain for replacement (replaces_agent_id now driven), dependency resolution via
+  durable signals (blocked tasks hold no worker) and idempotency keys on every effect
+  (activity replays never duplicate). Recovery events (RECOVERY_SELECTED, RETRY_STARTED,
+  MODEL_SWITCHED, AGENT_REPLACED, DEBUGGER_SPAWNED, TASK_REPLANNED, DEPENDENCY_*,
+  HITL_RECOVERY_*, TASK_TERMINALLY_FAILED) are queryable via the event stream. Docs:
+  `docs/RECOVERY.md` (decision table + flow diagram). Tests: recovery units (28) + executor
+  integration suite (9, incl. idempotency and HITL flows) + a live-Temporal recovery smoke
+  (`scripts/smoke_recovery.py`, battery 8/8). Verified: ruff/mypy clean (243 files),
+  pytest 283 passed.
+
 - 2026-09-16 — **Wave 1 security hardening** (post-spec production plan, W1): optional
   bearer-token auth covering every `/api/*` route AND WebSocket handshakes (`app/api/security.py`
   — constant-time compare, subprotocol transport for browsers, 4401 close code, no secrets in

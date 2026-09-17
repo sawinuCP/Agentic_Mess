@@ -11,7 +11,12 @@ from sqlalchemy import func, select
 from temporalio import activity
 
 from app.db.models import Artifact, Event, Project, Task, TaskAttempt
-from app.durable.activities._context import EVIDENCE_MIN_BYTES, load_task_row, refs
+from app.durable.activities._context import (
+    EVIDENCE_MIN_BYTES,
+    current_settings,
+    load_task_row,
+    refs,
+)
 from app.runtime.runner import run_process
 
 
@@ -23,13 +28,33 @@ async def load_task_activity(task_id: str) -> dict[str, Any]:
     def _load() -> dict[str, Any]:
         with factory() as session:
             task = load_task_row(session, uuid.UUID(task_id))
+            settings = current_settings()
             return {
                 "id": str(task.id),
                 "project_id": str(task.project_id) if task.project_id else None,
+                "requirement_id": str(task.requirement_id) if task.requirement_id else None,
+                "plan_id": str(task.plan_id) if task.plan_id else None,
                 "title": task.title,
                 "status": task.status,
                 "payload": task.payload or {},
                 "retry_policy": task.retry_policy or {},
+                "recovery_policy": {
+                    "base_backoff": float(
+                        getattr(settings, "recovery_backoff_base_seconds", 2.0) or 2.0
+                    ),
+                    "factor": float(getattr(settings, "recovery_backoff_factor", 2.0) or 2.0),
+                    "max_backoff": float(
+                        getattr(settings, "recovery_backoff_max_seconds", 60.0) or 60.0
+                    ),
+                    "jitter_ratio": float(getattr(settings, "recovery_jitter_ratio", 0.25) or 0.0),
+                    "hitl_timeout_seconds": float(
+                        getattr(settings, "hitl_timeout_seconds", 300.0) or 300.0
+                    ),
+                    "hitl_poll_seconds": float(getattr(settings, "hitl_poll_seconds", 1.0) or 1.0),
+                    "dependency_wait_seconds": float(
+                        getattr(settings, "recovery_dependency_wait_seconds", 900.0) or 900.0
+                    ),
+                },
             }
 
     return await asyncio.to_thread(_load)

@@ -18,15 +18,22 @@ from app.core.logging import configure_logging
 from app.db.base import build_engine, build_session_factory
 from app.durable.activities import (
     agent_execute_activity,
+    end_agent_session_activity,
     execute_work_activity,
     finish_attempt_activity,
+    hitl_recovery_gate_activity,
     init_refs,
     load_task_activity,
     record_event_activity,
+    recovery_budget_activity,
+    replan_task_activity,
     set_agent_state_activity,
     set_task_status_activity,
+    spawn_child_task_activity,
     start_agent_activity,
     start_attempt_activity,
+    task_dependents_activity,
+    terminal_failure_activity,
 )
 from app.durable.workflows import TaskExecutionWorkflow
 
@@ -55,6 +62,13 @@ async def main() -> None:
             set_agent_state_activity,
             start_agent_activity,
             record_event_activity,
+            recovery_budget_activity,
+            spawn_child_task_activity,
+            replan_task_activity,
+            terminal_failure_activity,
+            end_agent_session_activity,
+            task_dependents_activity,
+            hitl_recovery_gate_activity,
         ],
     )
     print(f"temporal worker ready queue={settings.temporal_task_queue}")  # noqa: T201

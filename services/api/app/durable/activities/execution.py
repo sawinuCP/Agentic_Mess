@@ -142,6 +142,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     agent_id: str = input["agent_id"]
     session_id: str = input.get("session_id", "")
     project_id = input.get("project_id")
+    recovery_params: dict[str, Any] = input.get("recovery_params") or {}
 
     def _load_context() -> dict[str, Any]:
         with factory() as session:
@@ -183,7 +184,12 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         code_text=code_text,
         history_text=f"Prior attempts on this task: {context_data['prior_attempts']}",
         evidence_text="\n".join(context_data["memories"]),
-        budget_tokens=int(getattr(settings, "context_budget_tokens", 8000) or 8000),
+        # Recovery (Wave 2): COMPACT_CONTEXT/rebuild_context scales the context
+        # budget so the next model invocation receives a rebuilt, smaller bundle.
+        budget_tokens=int(
+            int(getattr(settings, "context_budget_tokens", 8000) or 8000)
+            * float(recovery_params.get("context_budget_scale", 1.0))
+        ),
     )
 
     model_request = ModelRequest(
@@ -206,6 +212,14 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         }
 
     registry = ModelRegistry.load(Path(getattr(settings, "models_config_path", "") or "") or None)
+    # Recovery (Wave 2): SWITCH_MODEL/ESCALATE_MODEL route the next attempt to
+    # the configured alternate model (the route's policy-defined fallback_role)
+    # — never an unapproved provider (prompt §10).
+    if str(recovery_params.get("model_route", "")) == "fallback":
+        route = registry.route_for(model_request.role)
+        fallback_role = str(getattr(route, "fallback_role", "") or "")
+        if fallback_role and fallback_role != model_request.role:
+            model_request = replace(model_request, role=fallback_role)
     model_response = await registry.complete(model_request)
     await _record_invocation(
         factory,
@@ -341,7 +355,11 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
             await asyncio.to_thread(_release_slot, slot)
 
     recovery = (
-        recovery_plan(failure_class, int(payload.get("attempt_number", 1) or 1))
+        recovery_plan(
+            failure_class,
+            int(input.get("attempt_number", 1) or 1),
+            max_attempts=int(input.get("max_attempts", 3) or 3),
+        )
         if failure_class
         else None
     )
@@ -350,6 +368,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         "failure_class": failure_class,
         "failure_detail": failure_detail,
         "recovery": recovery,
+        "attempt_number": input.get("attempt_number", 1),
         "evidence_artifact_ids": evidence_ids,
         "observation": observations[0] if observations else None,
         "model": {"provider": model_response.provider, "model": model_response.model},

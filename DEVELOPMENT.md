@@ -71,6 +71,8 @@ All settings are `HARNESS_`-prefixed (see `services/api/app/core/config.py`); a 
 | `HARNESS_HOST` | `127.0.0.1` | Server bind host; non-loopback without a token refuses to start |
 | `HARNESS_CORS_ORIGINS` | `localhost:5173` + Tauri origins | Explicit CORS allow-list (comma-separated; no wildcard) |
 | `HARNESS_AGENT_ENV_ALLOW` | *(empty)* | Extra env var names agent subprocesses may inherit (deny-by-default; sensitive names never) |
+| `HARNESS_RECOVERY_BACKOFF_BASE_SECONDS` / `_FACTOR` / `_MAX_SECONDS` | `2` / `2` / `60` | Bounded exponential backoff for recovery retries (docs/RECOVERY.md) |
+| `HARNESS_RECOVERY_JITTER_RATIO` / `_DEPENDENCY_WAIT_SECONDS` | `0.25` / `900` | Backoff jitter bound; blocked-task wait deadline |
 | `HARNESS_ARTIFACTS_DIR` | `./data/artifacts` | Content-addressed artifact store root |
 
 ## 3. Run

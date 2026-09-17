@@ -124,6 +124,14 @@ class Settings(BaseSettings):
     # inherited; scoped secrets go through explicit per-call overrides instead.
     agent_env_allow: str = ""
 
+    # Recovery policy (Wave 2): bounded exponential backoff for transient
+    # failures. delay = min(base * factor**(attempt-1), max) with ± jitter.
+    recovery_backoff_base_seconds: float = 2.0
+    recovery_backoff_factor: float = 2.0
+    recovery_backoff_max_seconds: float = 60.0
+    recovery_jitter_ratio: float = 0.25
+    recovery_dependency_wait_seconds: float = 900.0
+
     # Web research (Phase 7, FR-022): bounded fetches. Private/internal network
     # destinations are DENIED by default (SSRF posture, spec §31); local research
     # against the dev API opts back in explicitly (tests, smokes).
