@@ -17,12 +17,12 @@ export default function OpenProjectDialog() {
       .catch(() => setProjects([]));
   }, []);
 
-  const submit = async () => {
-    if (!rootPath.trim() || busy) return;
+  const submit = async (path = rootPath) => {
+    if (!path.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await openProject(rootPath.trim());
+      await openProject(path.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -57,9 +57,10 @@ export default function OpenProjectDialog() {
                 <li key={p.id}>
                   <button
                     className="link"
+                    disabled={busy}
                     onClick={() => {
                       setRootPath(p.root_path);
-                      void submit();
+                      void submit(p.root_path);
                     }}
                   >
                     {p.name} <span className="muted">— {p.root_path}</span>
