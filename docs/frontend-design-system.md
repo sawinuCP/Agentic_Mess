@@ -4,7 +4,7 @@ Scope: a restrained token layer over the existing single-CSS-file approach. No c
 
 ## Application of tokens
 
-Semantic tokens alias primitives; shared component styles (utility classes, tree, tabs, panel, status bar, state pills, approval/reject buttons, badges, dialogs) now consume them. Feature-specific one-off values remain and migrate opportunistically; new styles must use tokens.
+Semantic tokens alias primitives; utility classes, tree, tabs, panel, status bar, state pills, approval/reject buttons and badges consume them. Dialog/button/input migration is incomplete; some tokens are reserved rather than applied. Feature-specific one-off values remain and migrate opportunistically; new styles must use tokens.
 
 ## Typography
 
@@ -39,9 +39,12 @@ Colors: ok `#2ecc71`, warn `#e6b450`, down `#e74c3c`, accent `#5b8cff`, muted `#
 | State | Presentation |
 |---|---|
 | Running / live / completed / verified | `.state-pill.ok`, `.live-dot.on` |
-| Blocked / paused / waiting / degraded / resyncing / connecting | `.state-pill.warn` |
-| Failed / rejected / offline / permission denied (pending) | `.state-pill.down` + `.error-text` |
-| Blocked task (dependency wait) | task status pill `blocked` (warn) — never crash styling |
+| Paused | Existing task/agent `.state-pill.warn` |
+| Blocked / waiting / recovering | `StatusLabel` preserves contract text with warning tone in Team view |
+| Degraded / resyncing / connecting / reconnecting | Explicit connection text, separate from execution status |
+| Failed / rejected / offline | Explicit text plus `.state-pill.down` / contextual error feedback |
+| Permission denied | HTTP 401/403 explanation from `errorMessage`, with authentication/access guidance |
+| Blocked task (dependency wait) | Warning-tone status text; execution disabled until dependencies are completed |
 | Requires approval | `.approval-card` warn border + risk badge text |
 | Paused execution | `paused` pill (warn) |
 
@@ -50,7 +53,7 @@ Wave 3 connection states (live/connecting/reconnecting/offline/degraded/resyncin
 ## Accessibility rules
 
 - Never color alone: state always pairs color + text label (+ icon/dot where present).
-- `:focus-visible` 2px accent outline globally; `.visually-hidden` helper for icon-only labels.
+- `:focus-visible` 2px accent outline globally; `.visually-hidden` helper for icon-only labels. Existing input-specific focus rules may override the outline; full focus/contrast auditing remains required.
 - `prefers-reduced-motion` disables decorative animation (live-dot pulse, card entrance) globally.
 
 ## Validation

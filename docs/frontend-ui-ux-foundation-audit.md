@@ -40,6 +40,10 @@ Initial production build passed: main JS 3,871.99 kB, gzip 1,010.91 kB; Vite bui
 
 Extensive uncommitted earlier-wave work exists: preserve it, never stage whole repository. Stream changes must preserve StrictMode cleanup/project isolation. Panel hiding must not terminate terminals. No backend orchestration/contract changes planned. No model calls in validation.
 
+## Continuation status (2026-09-17)
+
+Implemented: token layer; searchable palette; App-owned monitoring; offline precedence and snapshot notices; resizable/collapsible persisted panels; retained terminal mounts and ResizeObserver cleanup; dirty-switch/beforeunload guards; project-scoped response checks; duplicate-tab prevention; focus-managed dialogs; view error boundaries; approval pending/error feedback; task execute/pause/resume adapters; granular Explorer selectors and keyboard buttons. The resize separator uses dedicated resize-sidebar/resize-bottom classes to avoid colliding with sidebar layout rules. See frontend-interaction-model.md for limitations and the exact acceptance results. No backend orchestration behavior was changed in this wave.
+
 ## Validation plan
 
 First fix: deterministic Python Playwright using intercepted project/initialization APIs and submitted-path assertions, no backend/model calls. Run Vitest, TypeScript, lint, production build. Extend browser coverage for palette search/focus/disabled actions, dialogs, desktop/narrow layout, connection transitions, terminal retention and approvals when implemented. Mocked tests do not replace live smokes. Record unfinished work explicitly. Light theme not applicable.
