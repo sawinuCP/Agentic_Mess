@@ -59,7 +59,7 @@ export default function TimelineTab() {
           <div key={event.id} className={`event-row ${kindClass(event.event_type)}`}>
             <span className="event-dot" />
             <span className="event-type mono">{event.event_type}</span>
-            <span className="event-detail">{brief(event.event_type, event.payload)}</span>
+            <span className="event-detail" title={brief(event.event_type, event.payload)}>{brief(event.event_type, event.payload)}</span>
             <span className="event-time muted small mono">
               {new Date(event.occurred_at).toLocaleTimeString()}
             </span>
@@ -67,7 +67,7 @@ export default function TimelineTab() {
         ))}
       </div>
       <div className="small muted pad-h">
-        {glue(`${filtered.length} of ${events.length} events shown`)}
+        {glue(`${filtered.length} of ${events.length} recent events shown. This bounded feed is not complete execution history.`)}
       </div>
     </div>
   );

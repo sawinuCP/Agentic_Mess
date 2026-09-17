@@ -69,6 +69,9 @@ def main() -> None:
             expect(page.locator(".dialog")).to_be_visible()  # project picker
             expect(page.locator(".command-palette")).to_have_count(0)
 
+            # Remember the actual focused element, not its non-unique class.
+            opener = page.locator(".dialog input")
+            opener.focus()
             # Ctrl+K opens the palette and focuses its input.
             page.keyboard.press("Control+K")
             palette_input = page.locator(".command-palette input")
@@ -87,13 +90,13 @@ def main() -> None:
             expect(page.locator(".command-palette")).to_be_visible()
 
             # Escape closes and restores focus to the previously focused element.
-            body_class_before = page.evaluate("document.activeElement?.className ?? ''")
+            page.keyboard.press("Tab")
+            expect(palette_input).to_be_focused()
+            page.keyboard.press("Shift+Tab")
+            expect(palette_input).to_be_focused()
             page.keyboard.press("Escape")
             expect(page.locator(".command-palette")).to_have_count(0)
-            focused_after = page.evaluate(
-                "() => document.activeElement?.className ?? ''")
-            assert focused_after == body_class_before, \
-                f"focus not restored: {body_class_before!r} -> {focused_after!r}"
+            expect(opener).to_be_focused()
 
             # Reopen and execute a real navigation command via keyboard.
             page.keyboard.press("Control+K")

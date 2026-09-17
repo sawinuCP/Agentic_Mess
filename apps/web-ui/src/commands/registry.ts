@@ -16,10 +16,10 @@ export interface CommandActions {
   setOfficeTab: (tab: OfficeTabId) => void;
   openQuickOpen: () => void;
   openProjectDialog: () => void;
-  openTerminal: () => void;
+  openTerminal: () => void | Promise<void>;
   showToolOutput: () => void;
   openSystemDiagnostics: () => void;
-  runTool: (tool: string, path?: string) => void;
+  runTool: (tool: string, path?: string) => void | Promise<void>;
 }
 
 export interface CommandContext {
@@ -38,7 +38,7 @@ export interface Command {
   keywords: string[];
   shortcut?: string;
   disabledReason?: string;
-  run: () => void;
+  run: () => void | Promise<void>;
 }
 
 const NO_PROJECT = "Open a project first";
@@ -92,13 +92,6 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       category: "Navigation",
       keywords: ["files", "tree", "sidebar"],
       run: () => a.setView("explorer"),
-    },
-    {
-      id: "nav.git",
-      label: "Show source control",
-      category: "Navigation",
-      keywords: ["git", "changes", "commits"],
-      run: () => a.setView("git"),
     },
     {
       id: "nav.run",
@@ -170,13 +163,6 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
           : "No linter detected"
         : NO_PROJECT,
       run: () => a.runTool("lint"),
-    },
-    {
-      id: "validation.toolchains",
-      label: "Show toolchain diagnostics",
-      category: "Validation",
-      keywords: ["languages", "tools", "availability"],
-      run: () => a.setView("run"),
     },
     {
       id: "validation.system",

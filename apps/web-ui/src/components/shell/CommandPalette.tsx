@@ -8,6 +8,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../../state/store";
+import { controlTask } from "../../api/client";
+import { errorMessage } from "../../api/errors";
+import { taskCommands } from "../../commands/taskCommands";
 import { runningAgents, useOffice } from "../../state/officeStore";
 import {
   buildCommands,
@@ -27,9 +30,14 @@ export default function CommandPalette() {
   const openTerminal = useStore((s) => s.createTerminal);
   const setOffice = useOffice((s) => s.set);
   const agents = useOffice((s) => s.agents);
+  const tasks = useOffice((s) => s.tasks);
+  const officeProjectId = useOffice((s) => s.projectId);
   const running = runningAgents(agents).length;
 
   const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const executing = useRef(false);
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -60,31 +68,41 @@ export default function CommandPalette() {
               ?.path ?? null,
         },
         {
-          setView: (view) => setFn({ view }),
+          setView: (view) => setFn({ view, sidebarOpen: true }),
           setOfficeTab: (tab) => setOffice({ tab }),
           openQuickOpen: () => setFn({ quickOpen: true }),
           openProjectDialog: () => setFn({ projectDialog: true }),
-          openTerminal: () => void openTerminal(),
+          openTerminal: () => openTerminal(),
           showToolOutput: () => setFn({ panelOpen: true, panelTab: "output" }),
           openSystemDiagnostics: () => setFn({ diagnosticsOpen: true }),
-          runTool: (tool, path) => void runTool(tool, path).catch(() => undefined),
+          runTool: (tool, path) => runTool(tool, path),
         },
       ),
     [project, toolchains, tabs, activePath, setFn, setOffice, runTool, openTerminal],
   );
 
-  const filtered = useMemo(() => filterCommands(commands, query), [commands, query]);
+  const executionCommands = useMemo(() => taskCommands(
+    project?.id === officeProjectId ? tasks : [],
+    async (id, action) => {
+      const task = useOffice.getState().tasks.find((t) => t.id === id);
+      if (!task || task.project_id !== useStore.getState().project?.id) throw new Error("Task is no longer in this project.");
+      const current = taskCommands(useOffice.getState().tasks, async () => undefined)
+        .find((command) => command.id === `task.${id}.${action}`);
+      if (current?.disabledReason) throw new Error(current.disabledReason);
+      const message = action === "execute"
+        ? `Start execution of ${task.title}? This may run tools and use configured model providers.`
+        : `Send ${action} to ${task.title}? Acknowledgement does not mean the workflow has reached a checkpoint.`;
+      if (!window.confirm(message)) return;
+      await controlTask(id, action);
+      useStore.getState().set({ notice: action === "execute"
+        ? `Execution dispatch acknowledged for ${task.title}. Follow its recorded state in Office.`
+        : `${action} signal acknowledged for ${task.title}. Awaiting workflow checkpoint; recorded status is unchanged.` });
+    }), [project?.id, officeProjectId, tasks]);
+  const filtered = useMemo(() => filterCommands([...commands, ...executionCommands], query), [commands, executionCommands, query]);
 
   // Keep selection on a selectable row when the filter result changes.
   useEffect(() => {
-    setSelected((current) => {
-      const ids = new Set(filtered.map((c) => c.id));
-      if (selected >= 0 && selected < filtered.length && ids.has(filtered[selected]?.id)) {
-        return current;
-      }
-      return firstSelectable(filtered);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSelected(firstSelectable(filtered));
   }, [filtered]);
 
   useEffect(() => {
@@ -92,13 +110,28 @@ export default function CommandPalette() {
     row?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
-  const execute = (command: Command | undefined) => {
-    if (!command || command.disabledReason) return;
-    setFn({ commandPalette: false });
-    command.run();
+  const execute = async (command: Command | undefined) => {
+    if (!command || command.disabledReason || executing.current) return;
+    executing.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await command.run();
+      setFn({ commandPalette: false });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      executing.current = false;
+      setBusy(false);
+    }
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // The combobox is the modal's only tab stop; rows use arrow navigation.
+    if (event.key === "Tab") {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       setFn({ commandPalette: false });
@@ -179,6 +212,8 @@ export default function CommandPalette() {
             </li>
           )}
         </ul>
+        {busy && <p role="status">Running command…</p>}
+        {error && <p className="error-text" role="alert">{error}</p>}
         <div className="command-hint muted small">
           <span>↑↓ navigate</span>
           <span>↵ run</span>

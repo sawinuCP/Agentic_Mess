@@ -222,6 +222,12 @@ export const listAgents = (projectId: string) =>
 export const listTasks = (projectId: string) =>
   request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);
 
+// Existing durable task endpoints. Signal acknowledgement is NOT a state change.
+export const controlTask = (taskId: string, action: "execute" | "pause" | "resume") =>
+  request<{ started: boolean; workflow_id: string } | void>(
+    `/api/tasks/${enc(taskId)}/${action}`, { method: "POST" },
+  );
+
 export const listRequirements = (projectId: string) =>
   request<RequirementInfo[]>(`/api/projects/${projectId}/requirements`);
 
