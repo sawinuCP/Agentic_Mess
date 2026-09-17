@@ -8,6 +8,8 @@ import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
 import ActivityBar from "./components/shell/ActivityBar";
+import CommandPalette from "./components/shell/CommandPalette";
+import DiagnosticsDialog from "./components/shell/DiagnosticsDialog";
 import OpenProjectDialog from "./components/shell/OpenProjectDialog";
 import QuickOpen from "./components/shell/QuickOpen";
 import StatusBar from "./components/shell/StatusBar";
@@ -25,6 +27,9 @@ export default function App() {
   const view = useStore((s) => s.view);
   const project = useStore((s) => s.project);
   const quickOpen = useStore((s) => s.quickOpen);
+  const commandPalette = useStore((s) => s.commandPalette);
+  const projectDialog = useStore((s) => s.projectDialog);
+  const diagnosticsOpen = useStore((s) => s.diagnosticsOpen);
   const saveActive = useStore((s) => s.saveActive);
   const setFn = useStore((s) => s.set);
   const Sidebar = SIDEBARS[view];
@@ -38,6 +43,10 @@ export default function App() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
         event.preventDefault();
         setFn({ quickOpen: true });
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setFn({ commandPalette: !useStore.getState().commandPalette });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -53,8 +62,14 @@ export default function App() {
         <BottomPanel />
       </main>
       <StatusBar />
-      {!project && <OpenProjectDialog />}
+      {projectDialog || !project ? (
+        <OpenProjectDialog
+          onClose={projectDialog ? () => setFn({ projectDialog: false }) : undefined}
+        />
+      ) : null}
       {quickOpen && <QuickOpen />}
+      {commandPalette && <CommandPalette />}
+      {diagnosticsOpen && <DiagnosticsDialog onClose={() => setFn({ diagnosticsOpen: false })} />}
     </div>
   );
 }

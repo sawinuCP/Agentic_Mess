@@ -665,6 +665,98 @@ body {
   padding: 4px 0;
 }
 
+/* --- command palette -------------------------------------------------------- */
+
+.command-overlay {
+  align-items: flex-start;
+}
+
+.command-palette {
+  width: 560px;
+  padding: var(--space-3);
+}
+
+.command-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.command-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.command-row:hover,
+.command-row.selected {
+  background: var(--surface-selected);
+}
+
+.command-row.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.command-row.disabled:hover {
+  background: none;
+}
+
+.command-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.command-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+  color: var(--muted);
+}
+
+.command-category {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+}
+
+.command-reason {
+  font-size: var(--text-xs);
+  color: var(--warn);
+}
+
+.command-empty {
+  padding: 8px var(--space-2);
+}
+
+.command-hint {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
 /* --- git / run views ---------------------------------------------------------- */
 
 .git-section {

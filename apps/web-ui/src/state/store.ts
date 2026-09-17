@@ -41,6 +41,9 @@ interface AppState {
   terminalIds: string[];
   activeTerminal: string | null;
   quickOpen: boolean;
+  commandPalette: boolean;
+  projectDialog: boolean;
+  diagnosticsOpen: boolean;
   output: ToolRunResult | null;
 
   openProject: (rootPath: string) => Promise<void>;
@@ -75,6 +78,9 @@ export const useStore = create<AppState>((set, get) => ({
   terminalIds: [],
   activeTerminal: null,
   quickOpen: false,
+  commandPalette: false,
+  projectDialog: false,
+  diagnosticsOpen: false,
   output: null,
 
   set: (partial) => set(partial),

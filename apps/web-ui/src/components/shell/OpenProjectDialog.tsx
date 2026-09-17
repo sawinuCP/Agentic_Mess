@@ -3,7 +3,7 @@ import * as api from "../../api/client";
 import type { ProjectInfo } from "../../types";
 import { useStore } from "../../state/store";
 
-export default function OpenProjectDialog() {
+export default function OpenProjectDialog({ onClose }: { onClose?: () => void }) {
   const openProject = useStore((s) => s.openProject);
   const [rootPath, setRootPath] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +23,7 @@ export default function OpenProjectDialog() {
     setError(null);
     try {
       await openProject(path.trim());
+      onClose?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -48,6 +49,11 @@ export default function OpenProjectDialog() {
           <button className="button" disabled={busy} onClick={() => void submit()}>
             {busy ? "Opening…" : "Open"}
           </button>
+          {onClose && (
+            <button className="button secondary" disabled={busy} onClick={onClose}>
+              Cancel
+            </button>
+          )}
         </div>
         {projects.length > 0 && (
           <>

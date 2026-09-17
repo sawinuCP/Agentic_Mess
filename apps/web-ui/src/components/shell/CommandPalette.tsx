@@ -1,0 +1,195 @@
+// Command palette (Wave 6 Phase 4): searchable, keyboard-first command surface.
+//
+// Commands come from the pure registry (`commands/registry.ts`); the palette
+// owns only presentation and interaction. Focus is moved into the input on
+// open, Escape closes, arrow navigation skips disabled commands, and the
+// palette always restores focus to the workspace when it closes — see
+// docs/frontend-interaction-model.md for the interaction contract.
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "../../state/store";
+import { runningAgents, useOffice } from "../../state/officeStore";
+import {
+  buildCommands,
+  filterCommands,
+  firstSelectable,
+  nextSelectable,
+  type Command,
+} from "../../commands/registry";
+
+export default function CommandPalette() {
+  const project = useStore((s) => s.project);
+  const toolchains = useStore((s) => s.toolchains);
+  const tabs = useStore((s) => s.tabs);
+  const activePath = useStore((s) => s.activePath);
+  const setFn = useStore((s) => s.set);
+  const runTool = useStore((s) => s.runTool);
+  const openTerminal = useStore((s) => s.createTerminal);
+  const setOffice = useOffice((s) => s.set);
+  const agents = useOffice((s) => s.agents);
+  const running = runningAgents(agents).length;
+
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const restoreFocusRef = useRef<Element | null>(null);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement;
+    inputRef.current?.focus();
+    return () => {
+      const restore = restoreFocusRef.current;
+      if (restore instanceof HTMLElement) restore.focus();
+    };
+  }, []);
+
+  const commands = useMemo(
+    () =>
+      buildCommands(
+        {
+          hasProject: project !== null,
+          hasTestRunner:
+            toolchains?.languages.some((l) => l.tools.includes("test")) ?? false,
+          hasLinter: toolchains?.languages.some((l) => l.tools.includes("lint")) ?? false,
+          hasFormatter:
+            toolchains?.languages.some((l) => l.tools.includes("format")) ?? false,
+          hasRunner: toolchains?.languages.some((l) => l.tools.includes("run")) ?? false,
+          activeFilePath:
+            tabs.find((t) => t.kind === "file" && t.path === activePath && !t.isBinary)
+              ?.path ?? null,
+        },
+        {
+          setView: (view) => setFn({ view }),
+          setOfficeTab: (tab) => setOffice({ tab }),
+          openQuickOpen: () => setFn({ quickOpen: true }),
+          openProjectDialog: () => setFn({ projectDialog: true }),
+          openTerminal: () => void openTerminal(),
+          showToolOutput: () => setFn({ panelOpen: true, panelTab: "output" }),
+          openSystemDiagnostics: () => setFn({ diagnosticsOpen: true }),
+          runTool: (tool, path) => void runTool(tool, path).catch(() => undefined),
+        },
+      ),
+    [project, toolchains, tabs, activePath, setFn, setOffice, runTool, openTerminal],
+  );
+
+  const filtered = useMemo(() => filterCommands(commands, query), [commands, query]);
+
+  // Keep selection on a selectable row when the filter result changes.
+  useEffect(() => {
+    setSelected((current) => {
+      const ids = new Set(filtered.map((c) => c.id));
+      if (selected >= 0 && selected < filtered.length && ids.has(filtered[selected]?.id)) {
+        return current;
+      }
+      return firstSelectable(filtered);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered]);
+
+  useEffect(() => {
+    const row = listRef.current?.querySelector("li.selected");
+    row?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+
+  const execute = (command: Command | undefined) => {
+    if (!command || command.disabledReason) return;
+    setFn({ commandPalette: false });
+    command.run();
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setFn({ commandPalette: false });
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelected((current) => nextSelectable(filtered, current, 1));
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSelected((current) => nextSelectable(filtered, current, -1));
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      execute(filtered[selected]);
+    }
+  };
+
+  return (
+    <div
+      className="overlay command-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+      onClick={() => setFn({ commandPalette: false })}
+    >
+      <div className="dialog command-palette" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          className="text-input"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="command-palette-list"
+          aria-activedescendant={
+            selected >= 0 && filtered[selected] ? `command-palette-${filtered[selected].id}` : undefined
+          }
+          aria-label="Search commands"
+          placeholder="Type a command…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <ul
+          id="command-palette-list"
+          ref={listRef}
+          className="command-list"
+          role="listbox"
+          aria-label="Commands"
+        >
+          {filtered.map((command, index) => (
+            <li
+              key={command.id}
+              id={`command-palette-${command.id}`}
+              className={`command-row ${index === selected ? "selected" : ""} ${
+                command.disabledReason ? "disabled" : ""
+              }`}
+              role="option"
+              aria-selected={index === selected}
+              aria-disabled={command.disabledReason ? true : undefined}
+              title={command.disabledReason}
+              onClick={() => execute(command)}
+              onMouseEnter={() => !command.disabledReason && setSelected(index)}
+            >
+              <span className="command-label">{command.label}</span>
+              <span className="command-meta">
+                {command.shortcut && <kbd className="command-kbd">{command.shortcut}</kbd>}
+                <span className="command-category">{command.category}</span>
+                {command.disabledReason && (
+                  <span className="command-reason">{command.disabledReason}</span>
+                )}
+              </span>
+            </li>
+          ))}
+          {filtered.length === 0 && (
+            <li className="command-empty muted small" aria-live="polite">
+              No matching commands
+            </li>
+          )}
+        </ul>
+        <div className="command-hint muted small">
+          <span>↑↓ navigate</span>
+          <span>↵ run</span>
+          <span>esc close</span>
+          {running > 0 && (
+            <span>
+              {running} agent{running === 1 ? "" : "s"} running
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
