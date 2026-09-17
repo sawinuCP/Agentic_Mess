@@ -61,6 +61,10 @@ Local deterministic fixture: 100 buffer edits produced 100 broad-store notificat
 
 No speculative virtualization or Monaco redesign. Large-log rendering, large-repository DOM cost, Monaco commit timing, full successful reconnect/recovery flows, real PTY processes and live orchestration remain unprofiled/unverified. Light theme is not present in the product. Token migration/contrast and keyboard coverage remain incremental.
 
+## Final workspace-race regression addendum
+
+A deferred-response test reproduced overlapping project opens replacing a newer selection with an older response. A request-generation guard now ignores superseded project results and initialization notices. The test failed before the fix and passed afterward. Final validation: 35/35 tests, typecheck/lint exit 0, production build exit 0 (56.79s), diff check clean; affected project-picker and terminal-retention smokes passed. The six-script acceptance results above precede this targeted store fix.
+
 ## Handoff and remaining acceptance gaps
 
 Complete the omitted capability list above and live reconnect/editor/terminal/orchestration acceptance before declaring every Wave 6 requirement met. The current implementation is a tested foundation increment, not full production signoff. Do not begin the full Office/Graph/traceability/replay/Command Center to hide those gaps.

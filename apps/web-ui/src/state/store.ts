@@ -69,6 +69,8 @@ interface AppState {
   set: (partial: Partial<AppState>) => void;
 }
 
+// Only the latest requested project may replace the workspace.
+let projectOpenGeneration = 0;
 export const useStore = create<AppState>((set, get) => ({
   project: null,
   toolchains: null,
@@ -95,7 +97,9 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().tabs.some((t) => t.kind === "file" && isDirty(t))) {
       throw new Error("Save or close modified files before switching projects. Your edits were preserved.");
     }
+    const generation = ++projectOpenGeneration;
     const project = await api.openProject(rootPath);
+    if (generation !== projectOpenGeneration) return;
     // A request may complete after the user edits a buffer: check again.
     if (get().tabs.some((t) => t.kind === "file" && isDirty(t))) {
       throw new Error("A file changed while opening the project. Save it before switching.");
@@ -105,6 +109,7 @@ export const useStore = create<AppState>((set, get) => ({
     const results = await Promise.allSettled([
       get().refreshTree(), get().refreshToolchains(), get().refreshGit(), get().createTerminal(),
     ]);
+    if (generation !== projectOpenGeneration) return;
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length) set({ notice: "Project opened with partial data. " + failures.map(
       (r) => r.status === "rejected" ? String(r.reason) : "").join("; ") });
