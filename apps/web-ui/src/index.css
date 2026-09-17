@@ -2,17 +2,25 @@
  * Design system + global styles for the editor UI.
  *
  * Organization (search for the `--- name ---` markers):
- *   1. tokens        — design tokens (colors) on :root
+ *   1. tokens        — design tokens (color, typography, spacing, radius, state)
  *   2. base          — element defaults + shared utility classes (.pad/.stack/.muted/…)
- *   3. IDE layout    — the app grid: activity bar / sidebar / main / status bar
- *   4. tree          — file explorer + search results
- *   5. editor        — tab strip + Monaco host
- *   6. bottom panel  — terminal/output panel + terminal chips
- *   7. status bar
- *   8. dialogs/inputs— overlay, dialogs, buttons, inputs
+ *   3. a11y          — focus visibility, reduced motion, screen-reader helpers
+ *   4. IDE layout    — the app grid: activity bar / sidebar / main / status bar
+ *   5. tree          — file explorer + search results
+ *   6. editor        — tab strip + Monaco host
+ *   7. bottom panel  — terminal/output panel + terminal chips
+ *   8. status bar
+ *   9. dialogs/inputs— overlay, dialogs, buttons, inputs
+ *  10. git/run/office— feature-view styles on shared tokens
+ *
+ * Tokens are documented in docs/frontend-design-system.md. Primitives keep the
+ * original variable names (--bg, --panel, --ok, …) so existing rules and the
+ * Monaco/xterm themes stay valid; semantic tokens alias them.
  */
 :root {
   color-scheme: dark;
+
+  /* --- color primitives (existing palette, unchanged) ----------------------- */
   --bg: #0f1117;
   --bg-alt: #0d1017;
   --panel: #171a23;
@@ -24,6 +32,59 @@
   --down: #e74c3c;
   --warn: #e6b450;
   --accent: #5b8cff;
+
+  /* --- semantic surfaces ------------------------------------------------------ */
+  --surface-app: var(--bg);
+  --surface-workspace: var(--bg-alt);
+  --surface-panel: var(--panel);
+  --surface-panel-alt: var(--panel-alt);
+  --surface-elevated: #1c2030; /* dialogs, popovers */
+  --surface-selected: rgba(91, 140, 255, 0.12);
+  --surface-hover: rgba(91, 140, 255, 0.08);
+  --surface-code: #101319; /* must match Monaco "harness-dark" editor.background */
+
+  /* --- borders & radius ------------------------------------------------------- */
+  --border-strong: #333a4d;
+  --border-soft: rgba(38, 43, 56, 0.7);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-full: 999px;
+
+  /* --- typography --------------------------------------------------------------- */
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --text-2xs: 10px; /* badges, severity chips */
+  --text-xs: 11px; /* metadata, status bar, section labels */
+  --text-sm: 12px; /* secondary text, dense lists */
+  --text-md: 13px; /* body / default */
+  --text-lg: 15px; /* dialog titles, page headings */
+  --text-xl: 18px; /* application title */
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --weight-bold: 700;
+  --tracking-label: 0.8px; /* uppercase section labels */
+
+  /* --- spacing scale -------------------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* --- semantic state colors (never color alone — pair with labels/icons) ------- */
+  --ok-bg: rgba(46, 204, 113, 0.16);
+  --ok-border: rgba(46, 204, 113, 0.5);
+  --warn-bg: rgba(230, 180, 80, 0.16);
+  --warn-border: rgba(230, 180, 80, 0.5);
+  --down-bg: rgba(231, 76, 60, 0.16);
+  --down-border: rgba(231, 76, 60, 0.4);
+  --muted-bg: rgba(139, 147, 167, 0.15);
+  --accent-soft: rgba(91, 140, 255, 0.08);
+  --accent-bg: rgba(91, 140, 255, 0.12);
+  --accent-strong: rgba(91, 140, 255, 0.16);
+  --focus-ring: 0 0 0 2px rgba(91, 140, 255, 0.55);
 }
 
 * {
@@ -38,19 +99,61 @@ body,
 }
 
 body {
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  background: var(--bg);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  background: var(--surface-app);
   color: var(--text);
   overflow: hidden;
 }
 
+/* --- a11y ------------------------------------------------------------------ */
+
+/*
+ * Visible keyboard focus everywhere without changing mouse appearance.
+ * Components with their own backgrounds (buttons, tabs) inherit the ring.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Screen-reader-only text for icon-only controls and live regions. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Reduced motion: kill decorative loops (live-dot pulse, card entrance) while
+ * keeping opacity feedback so state changes still register visually.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .live-dot.on {
+    animation: none;
+  }
+}
+
 .mono {
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .small {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .muted {
@@ -58,27 +161,27 @@ body {
 }
 
 .strong {
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 
 .pad {
-  padding: 10px 12px;
+  padding: var(--space-3);
 }
 
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .error-text {
   color: var(--down);
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   white-space: pre-wrap;
 }
 
@@ -191,13 +294,13 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 3px var(--space-2);
   cursor: default;
   white-space: nowrap;
 }
 
 .tree-row:hover {
-  background: rgba(91, 140, 255, 0.08);
+  background: var(--surface-hover);
 }
 
 .tree-row.file {
@@ -205,7 +308,7 @@ body {
 }
 
 .tree-row.match:hover {
-  background: rgba(91, 140, 255, 0.14);
+  background: var(--surface-selected);
 }
 
 .tree-disclosure {
@@ -238,7 +341,7 @@ body {
   color: var(--muted);
   cursor: pointer;
   padding: 0 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .tree-action:hover {
@@ -256,7 +359,7 @@ body {
 
 .tab-strip {
   display: flex;
-  background: var(--bg-alt);
+  background: var(--surface-workspace);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
@@ -274,7 +377,7 @@ body {
 
 .tab.active {
   color: var(--text);
-  background: var(--panel);
+  background: var(--surface-panel);
   border-top: 2px solid var(--accent);
 }
 
@@ -310,14 +413,14 @@ body {
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
-  background: var(--bg-alt);
+  background: var(--surface-workspace);
 }
 
 .panel-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 4px var(--space-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -325,11 +428,11 @@ body {
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-label);
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px var(--space-2);
 }
 
 .panel-tab.active {
@@ -395,11 +498,11 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 12px;
-  background: var(--bg-alt);
+  padding: 0 var(--space-3);
+  background: var(--surface-workspace);
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .status-item.strong {
@@ -748,32 +851,32 @@ body {
 }
 
 .state-pill {
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(139, 147, 167, 0.15);
+  border-radius: var(--radius-full);
+  padding: 1px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  background: var(--muted-bg);
   color: var(--muted);
   white-space: nowrap;
 }
 
 .state-pill.ok {
-  background: rgba(46, 204, 113, 0.16);
+  background: var(--ok-bg);
   color: var(--ok);
 }
 
 .state-pill.warn {
-  background: rgba(230, 180, 80, 0.16);
+  background: var(--warn-bg);
   color: var(--warn);
 }
 
 .state-pill.down {
-  background: rgba(231, 76, 60, 0.16);
+  background: var(--down-bg);
   color: var(--down);
 }
 
 .state-pill.tiny {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 0 6px;
   margin-right: 6px;
 }
@@ -949,10 +1052,10 @@ body {
 }
 
 .severity {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 5px;
 }
 
@@ -968,19 +1071,19 @@ body {
 
 .sev-minor,
 .sev-info {
-  background: rgba(139, 147, 167, 0.18);
+  background: var(--muted-bg);
   color: var(--muted);
 }
 
 .approval-card {
-  margin: 0 12px 8px;
-  border: 1px solid rgba(230, 180, 80, 0.5);
+  margin: 0 var(--space-3) var(--space-2);
+  border: 1px solid var(--warn-border);
   background: linear-gradient(180deg, rgba(230, 180, 80, 0.07), rgba(230, 180, 80, 0.02));
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: var(--radius-xl);
+  padding: 10px var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   animation: card-in 0.25s ease-out;
 }
 
@@ -996,16 +1099,16 @@ body {
 }
 
 .risk-badge {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
 }
 
 .approval-question {
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 .approval-choices {
@@ -1018,9 +1121,9 @@ body {
 }
 
 .btn.approve {
-  background: rgba(46, 204, 113, 0.18);
+  background: var(--ok-bg);
   color: var(--ok);
-  border: 1px solid rgba(46, 204, 113, 0.5);
+  border: 1px solid var(--ok-border);
   flex: 1;
 }
 
@@ -1029,9 +1132,9 @@ body {
 }
 
 .btn.reject {
-  background: rgba(231, 76, 60, 0.14);
+  background: var(--down-bg);
   color: var(--down);
-  border: 1px solid rgba(231, 76, 60, 0.45);
+  border: 1px solid var(--down-border);
   flex: 1;
 }
 
@@ -1044,8 +1147,8 @@ body {
 }
 
 .btn-small {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
 }
 
 .row.spread {
