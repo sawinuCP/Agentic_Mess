@@ -26,11 +26,11 @@ export default function EditorArea() {
               title={title}
               onClick={() => setActive(key)}
             >
-              <span className="tab-label">
+              <button className="link tab-label" aria-pressed={key === activePath} onClick={() => setActive(key)}>
                 {tab.kind === "file" ? (isDirty(tab) ? "● " : "") : "⇄ "}
                 {tab.path.split("/").pop()}
-              </span>
-              <button className="tab-close" title="Close" onClick={(e) => (e.stopPropagation(), closeTab(key))}>
+              </button>
+              <button className="tab-close" aria-label={`Close ${tab.path}`} title="Close" onClick={(e) => (e.stopPropagation(), closeTab(key))}>
                 ×
               </button>
             </div>

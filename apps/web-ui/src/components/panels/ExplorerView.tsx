@@ -2,15 +2,20 @@ import { useState } from "react";
 import * as api from "../../api/client";
 import type { TreeNode } from "../../types";
 import { useStore } from "../../state/store";
+import { useDialogFocus } from "../shell/useDialogFocus";
+import { errorMessage } from "../../api/errors";
+
+function report(error: unknown) { useStore.getState().set({ notice: errorMessage(error) }); }
 
 function InputDialog(props: { title: string; onSubmit: (value: string) => void; onClose: () => void }) {
   const [value, setValue] = useState("");
+  const dialogRef = useDialogFocus(props.onClose);
   return (
     <div className="overlay" onClick={props.onClose}>
-      <div className="dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-label={props.title} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <h2>{props.title}</h2>
         <input
-          autoFocus
+          aria-label={props.title}
           className="text-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -33,16 +38,21 @@ function InputDialog(props: { title: string; onSubmit: (value: string) => void; 
 }
 
 function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
-  const { tree, expanded, toggleDir, openFile } = useStore((s) => s);
+  const children = useStore((s) => s.tree[node.path]);
+  const isOpen = useStore((s) => s.expanded[node.path]);
+  const toggleDir = useStore((s) => s.toggleDir);
+  const openFile = useStore((s) => s.openFile);
   const project = useStore((s) => s.project);
   const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
 
   const isDir = node.kind === "directory";
-  const isOpen = expanded[node.path];
+
 
   const act = async (fn: () => Promise<unknown>) => {
-    await fn;
-    await useStore.getState().loadChildren(node.path.includes("/") ? node.path.split("/").slice(0, -1).join("/") : "");
+    try {
+      await fn();
+      await useStore.getState().loadChildren(node.path.includes("/") ? node.path.split("/").slice(0, -1).join("/") : "");
+    } catch (error) { report(error); }
   };
 
   return (
@@ -50,17 +60,17 @@ function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
       <div className={`tree-row ${isDir ? "" : "file"}`} style={{ paddingLeft: depth * 12 + 8 }}>
         {isDir ? (
           <>
-            <button className="tree-disclosure" onClick={() => void toggleDir(node.path)}>
+            <button className="tree-disclosure" aria-label={`Toggle ${node.name}`} aria-expanded={Boolean(isOpen)} onClick={() => void toggleDir(node.path).catch(report)}>
               {isOpen ? "▾" : "▸"}
             </button>
-            <span className="tree-name" onClick={() => void toggleDir(node.path)}>
+            <button className="link tree-name" onClick={() => void toggleDir(node.path).catch(report)}>
               {node.name}
-            </span>
+            </button>
           </>
         ) : (
-          <span className="tree-name" onClick={() => void openFile(node.path)}>
+          <button className="link tree-name" onClick={() => void openFile(node.path).catch(report)}>
             {node.name}
-          </span>
+          </button>
         )}
         {project && (
           <span className="tree-actions">
@@ -99,7 +109,7 @@ function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
           }}
         />
       )}
-      {isDir && isOpen && (tree[node.path] ?? []).map((child) => <TreeRow key={child.path} node={child} depth={depth + 1} />)}
+      {isDir && isOpen && (children ?? []).map((child) => <TreeRow key={child.path} node={child} depth={depth + 1} />)}
     </>
   );
 }
@@ -107,7 +117,8 @@ function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
 export default function ExplorerView() {
   const project = useStore((s) => s.project);
   const tree = useStore((s) => s.tree);
-  const { loadChildren, refreshTree } = useStore((s) => s);
+  const loadChildren = useStore((s) => s.loadChildren);
+  const refreshTree = useStore((s) => s.refreshTree);
   const [dialog, setDialog] = useState<{ kind: "file" | "directory" } | null>(null);
 
   if (!project) {
@@ -122,11 +133,11 @@ export default function ExplorerView() {
         <span className="sidebar-actions">
           <button className="tree-action" title="New file" onClick={() => setDialog({ kind: "file" })}>＋</button>
           <button className="tree-action" title="New folder" onClick={() => setDialog({ kind: "directory" })}>⊕</button>
-          <button className="tree-action" title="Refresh" onClick={() => void refreshTree()}>⟳</button>
+          <button className="tree-action" title="Refresh" onClick={() => void refreshTree().catch(report)}>⟳</button>
         </span>
       </header>
       <div className="tree">
-        {roots.length === 0 && <p className="muted pad">Loading…</p>}
+        {roots.length === 0 && <p className="muted pad">{tree[""] ? "This directory is empty." : "Loading directory…"}</p>}
         {roots.map((node) => (
           <TreeRow key={node.path} node={node} depth={0} />
         ))}
@@ -138,7 +149,7 @@ export default function ExplorerView() {
           onSubmit={(name) => {
             void loadChildren("")
               .then(() => api.createEntry(project.id, name, dialog.kind))
-              .then(() => loadChildren(""));
+              .then(() => loadChildren("")).catch(report);
             setDialog(null);
           }}
         />

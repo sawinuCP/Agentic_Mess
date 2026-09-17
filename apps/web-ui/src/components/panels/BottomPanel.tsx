@@ -1,5 +1,6 @@
 import { useStore } from "../../state/store";
 import TerminalPane from "./TerminalPane";
+import PanelResize from "../shell/PanelResize";
 
 export default function BottomPanel() {
   const panelOpen = useStore((s) => s.panelOpen);
@@ -11,10 +12,11 @@ export default function BottomPanel() {
   const createTerminal = useStore((s) => s.createTerminal);
   const closeTerminal = useStore((s) => s.closeTerminal);
 
-  if (!panelOpen) return null;
+  const panelHeight = useStore((s) => s.panelHeight);
 
   return (
-    <section className="bottom-panel">
+    <section className="bottom-panel" hidden={!panelOpen} style={{ height: panelHeight }} aria-label="Utility panel">
+      <PanelResize axis="bottom" />
       <div className="panel-tabs">
         <button
           className={`panel-tab ${panelTab === "terminal" ? "active" : ""}`}
@@ -53,12 +55,14 @@ export default function BottomPanel() {
         </button>
       </div>
       <div className="panel-body">
-        {panelTab === "terminal" &&
-          (activeTerminal ? (
-            <TerminalPane key={activeTerminal} sessionId={activeTerminal} />
-          ) : (
-            <p className="muted pad">No terminal. Open a project, then press ＋.</p>
-          ))}
+        {terminalIds.map((id) => (
+          <div key={id} className="terminal-session" hidden={panelTab !== "terminal" || id !== activeTerminal}>
+            <TerminalPane sessionId={id} />
+          </div>
+        ))}
+        {panelTab === "terminal" && !activeTerminal && (
+          <p className="muted pad">No terminal. Open a project, then press ＋.</p>
+        )}
         {panelTab === "output" && (
           <div className="output-view mono">
             {!output && <p className="muted">No tool runs yet.</p>}

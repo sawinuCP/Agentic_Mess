@@ -5,6 +5,7 @@ import { create } from "zustand";
 import * as api from "../api/client";
 import type { GitStatus, ProjectInfo, ProjectToolchains, ToolRunResult, TreeNode } from "../types";
 import { monacoLanguageFor } from "../util/languages";
+import { readLayout, saveLayout } from "./layout";
 
 export type ViewId = "explorer" | "search" | "git" | "run" | "office";
 
@@ -36,6 +37,10 @@ interface AppState {
   tabs: Tab[];
   activePath: string | null;
   view: ViewId;
+  sidebarOpen: boolean;
+  sidebarWidth: number;
+  panelHeight: number;
+  notice: string | null;
   panelOpen: boolean;
   panelTab: "terminal" | "output";
   terminalIds: string[];
@@ -73,7 +78,8 @@ export const useStore = create<AppState>((set, get) => ({
   tabs: [],
   activePath: null,
   view: "explorer",
-  panelOpen: true,
+  ...readLayout(),
+  notice: null,
   panelTab: "terminal",
   terminalIds: [],
   activeTerminal: null,
@@ -86,19 +92,30 @@ export const useStore = create<AppState>((set, get) => ({
   set: (partial) => set(partial),
 
   openProject: async (rootPath) => {
-    const project = await api.openProject(rootPath);
-    set({ project, tree: {}, expanded: { "": true }, tabs: [], activePath: null });
-    await Promise.all([get().refreshTree(), get().refreshToolchains(), get().refreshGit()]);
-    if (get().terminalIds.length === 0) {
-      await get().createTerminal();
+    if (get().tabs.some((t) => t.kind === "file" && isDirty(t))) {
+      throw new Error("Save or close modified files before switching projects. Your edits were preserved.");
     }
+    const project = await api.openProject(rootPath);
+    // A request may complete after the user edits a buffer: check again.
+    if (get().tabs.some((t) => t.kind === "file" && isDirty(t))) {
+      throw new Error("A file changed while opening the project. Save it before switching.");
+    }
+    set({ project, tree: {}, expanded: { "": true }, tabs: [], activePath: null,
+      terminalIds: [], activeTerminal: null, toolchains: null, git: null, output: null, notice: null });
+    const results = await Promise.allSettled([
+      get().refreshTree(), get().refreshToolchains(), get().refreshGit(), get().createTerminal(),
+    ]);
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length) set({ notice: "Project opened with partial data. " + failures.map(
+      (r) => r.status === "rejected" ? String(r.reason) : "").join("; ") });
   },
 
   refreshGit: async () => {
     const project = get().project;
     if (!project) return;
     try {
-      set({ git: await api.gitStatus(project.id) });
+      const git = await api.gitStatus(project.id);
+      if (get().project?.id === project.id) set({ git });
     } catch (err) {
       // Not a repository (409) is a normal state; keep the panel usable.
       if (err instanceof api.ApiError && err.status === 409) {
@@ -112,7 +129,8 @@ export const useStore = create<AppState>((set, get) => ({
   refreshToolchains: async () => {
     const project = get().project;
     if (!project) return;
-    set({ toolchains: await api.getProjectToolchains(project.id) });
+    const toolchains = await api.getProjectToolchains(project.id);
+    if (get().project?.id === project.id) set({ toolchains });
   },
 
   refreshTree: async () => {
@@ -128,7 +146,7 @@ export const useStore = create<AppState>((set, get) => ({
     const project = get().project;
     if (!project) return;
     const children = await api.getTree(project.id, dirPath);
-    set((state) => ({ tree: { ...state.tree, [dirPath]: children } }));
+    if (get().project?.id === project.id) set((state) => ({ tree: { ...state.tree, [dirPath]: children } }));
   },
 
   toggleDir: async (dirPath) => {
@@ -155,6 +173,8 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
     const content = await api.readFile(project.id, path);
+    if (get().project?.id !== project.id) return;
+    if (get().tabs.some((t) => t.kind === "file" && t.path === path)) { set({ activePath: path }); return; }
     const tab: FileTab = {
       kind: "file",
       path,
@@ -173,6 +193,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   closeTab: (path) => {
+    const closing = get().tabs.find((t) => t.kind === "file" && t.path === path);
+    if (closing?.kind === "file" && isDirty(closing) &&
+        !window.confirm(`Discard unsaved changes to ${path}?`)) return;
     const tabs = get().tabs.filter(
       (t) => (t.kind === "file" ? t.path : `diff:${t.path}`) !== path,
     );
@@ -207,6 +230,7 @@ export const useStore = create<AppState>((set, get) => ({
     const { project } = get();
     if (!project) return;
     const result = await api.runTool(project.id, { tool, path });
+    if (get().project?.id !== project.id) return;
     set({ output: result, panelTab: "output", panelOpen: true });
     if (tool === "format" && path && result.file_content !== null) {
       set({
@@ -228,6 +252,7 @@ export const useStore = create<AppState>((set, get) => ({
     const project = get().project;
     if (!project) return;
     const session = await api.createTerminalSession(project.id);
+    if (get().project?.id !== project.id) return;
     set({
       terminalIds: [...get().terminalIds, session.id],
       activeTerminal: session.id,
@@ -247,3 +272,10 @@ export const useStore = create<AppState>((set, get) => ({
 }));
 
 export const isDirty = (tab: FileTab): boolean => tab.content !== tab.savedContent;
+useStore.subscribe((state, prev) => {
+  if (state.sidebarOpen !== prev.sidebarOpen || state.panelOpen !== prev.panelOpen ||
+      state.sidebarWidth !== prev.sidebarWidth || state.panelHeight !== prev.panelHeight) {
+    saveLayout({ sidebarOpen: state.sidebarOpen, sidebarWidth: state.sidebarWidth,
+      panelOpen: state.panelOpen, panelHeight: state.panelHeight });
+  }
+});

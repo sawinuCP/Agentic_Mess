@@ -406,6 +406,22 @@ body {
   color: var(--muted);
 }
 
+.sidebar-container { grid-area: sidebar; display: flex; min-width: 0; min-height: 0; }
+.sidebar-container > .sidebar { flex: 1; min-width: 0; }
+.status-bar { overflow-x: auto; white-space: nowrap; }
+.dialog { max-width: calc(100vw - 24px); max-height: 85vh; overflow-y: auto; }
+.panel-tabs { flex-wrap: wrap; }
+.panel-terms { overflow-x: auto; max-width: 40vw; }
+
+/* Native hidden must win over component display rules; preserve mounted PTYs. */
+[hidden] { display: none !important; }
+.terminal-session { flex: 1; min-height: 0; display: flex; }
+.panel-resize { flex: none; touch-action: none; background: var(--border); }
+.panel-resize.resize-bottom { height: 5px; cursor: ns-resize; }
+.panel-resize.resize-sidebar { width: 5px; cursor: ew-resize; }
+.panel-resize:hover, .panel-resize:focus-visible { background: var(--accent); }
+.bottom-panel { max-height: 55vh; flex-shrink: 0; min-height: 100px; }
+
 /* --- bottom panel ---------------------------------------------------------- */
 
 .bottom-panel {
@@ -755,6 +771,42 @@ body {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+
+/* --- office notices + connection status -------------------------------------- */
+
+.office-notice {
+  margin: 0 var(--space-3) var(--space-2);
+  padding: 6px var(--space-2);
+  border: 1px solid var(--down-border);
+  border-radius: var(--radius-md);
+  background: var(--down-bg);
+  color: var(--down);
+  font-size: var(--text-xs);
+}
+
+.status-item.office-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Narrow windows: shrink the fixed sidebar instead of clipping content, and
+   let the utility panel shrink. Usability over pixel fidelity. */
+@media (max-width: 1100px) {
+  .ide {
+    grid-template-columns: 48px 220px 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .ide {
+    grid-template-columns: 48px 180px 1fr;
+  }
+
+  .bottom-panel {
+    height: 200px;
+  }
 }
 
 /* --- git / run views ---------------------------------------------------------- */

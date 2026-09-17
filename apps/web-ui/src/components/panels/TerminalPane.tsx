@@ -11,6 +11,10 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
     const host = hostRef.current;
     if (!host) return;
 
+    // Defer initialization past StrictMode's setup/cleanup probe. xterm 5's
+    // viewport schedules an uncancelled startup timeout when open() is called.
+    let dispose: (() => void) | undefined;
+    const initialize = window.setTimeout(() => {
     const terminal = new Terminal({
       fontFamily: "Consolas, ui-monospace, monospace",
       fontSize: 12,
@@ -32,6 +36,7 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
 
     const socket = new WebSocket(terminalWebSocketUrl(sessionId), webSocketProtocols());
     socket.onclose = (event) => {
+      if (event.code !== 4401) terminal.write("\r\n[terminal disconnected — create a new terminal to continue]\r\n");
       // 4401 = WS handshake rejected by the auth middleware (Wave 1 security).
       if (event.code === 4401) {
         terminal.write("\r\n\x1b[31m[terminal rejected: API authentication required]\x1b[0m\r\n");
@@ -41,9 +46,9 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
       }
     };
     socket.onopen = () => {
-      terminal.onData((data) => socket.send(JSON.stringify({ type: "input", data })));
+      terminal.onData((data) => { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data })); });
       terminal.onResize(({ cols, rows }) =>
-        socket.send(JSON.stringify({ type: "resize", cols, rows })),
+        { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols, rows })); },
       );
       socket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
     };
@@ -68,12 +73,26 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
         // ignore
       }
     };
-    window.addEventListener("resize", onResize);
+    // ResizeObserver callbacks can be delivered after dispose() (queued task);
+    // fit() on a disposed terminal throws "reading 'dimensions'". Guard it.
+    let disposed = false;
+    const observer = new ResizeObserver(() => {
+      if (disposed || !host.isConnected) return;
+      if (host.clientWidth && host.clientHeight) onResize();
+    });
+    observer.observe(host);
 
-    return () => {
-      window.removeEventListener("resize", onResize);
+    dispose = () => {
+      disposed = true;
+      observer.disconnect();
+      socket.onopen = socket.onclose = socket.onmessage = null;
       socket.close();
       terminal.dispose();
+    };
+    }, 0);
+    return () => {
+      window.clearTimeout(initialize);
+      dispose?.();
     };
   }, [sessionId]);
 

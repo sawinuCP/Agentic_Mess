@@ -4,6 +4,7 @@ import { getLiveness, type Liveness } from "../../health";
 import { runningAgents, useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import DiagnosticsDialog from "./DiagnosticsDialog";
+import OfficeConnectionStatus, { OfficeResyncAction } from "./OfficeConnectionStatus";
 
 export default function StatusBar() {
   const project = useStore((s) => s.project);
@@ -53,6 +54,8 @@ export default function StatusBar() {
         </button>
       )}
       {dirtyCount > 0 && <span className="status-item warn">{dirtyCount} unsaved</span>}
+      <OfficeConnectionStatus />
+      <OfficeResyncAction />
       {(running > 0 || pendingHitl > 0) && (
         <button
           className="status-item clickable office-status"

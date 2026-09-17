@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import * as api from "../../api/client";
 import type { ProjectInfo } from "../../types";
 import { useStore } from "../../state/store";
+import { useDialogFocus } from "./useDialogFocus";
+import { errorMessage } from "../../api/errors";
 
 export default function OpenProjectDialog({ onClose }: { onClose?: () => void }) {
   const openProject = useStore((s) => s.openProject);
@@ -9,6 +11,7 @@ export default function OpenProjectDialog({ onClose }: { onClose?: () => void })
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const dialogRef = useDialogFocus(busy ? undefined : onClose);
 
   useEffect(() => {
     api
@@ -25,7 +28,7 @@ export default function OpenProjectDialog({ onClose }: { onClose?: () => void })
       await openProject(path.trim());
       onClose?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -33,11 +36,11 @@ export default function OpenProjectDialog({ onClose }: { onClose?: () => void })
 
   return (
     <div className="overlay">
-      <div className="dialog">
+      <div className="dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-label="Open project" tabIndex={-1}>
         <h2>Open project</h2>
         <p className="muted">Absolute path of a local project directory.</p>
         <input
-          autoFocus
+          aria-label="Project directory"
           className="text-input"
           placeholder="e.g. C:\\dev\\my-project"
           value={rootPath}

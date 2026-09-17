@@ -5,28 +5,35 @@ import { glue } from "@typehug/en";
 
 import * as api from "../../api/client";
 import type { DiagnosticsReport } from "../../api/client";
+import { useDialogFocus } from "./useDialogFocus";
+import { UiState } from "./UiState";
+import { errorMessage } from "../../api/errors";
 
 function Pill({ status }: { status: string }) {
   return <span className={`state-pill ${status === "ok" ? "ok" : "down"}`}>{status}</span>;
 }
 
 export default function DiagnosticsDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useDialogFocus(onClose);
   const [report, setReport] = useState<DiagnosticsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    api
-      .getDiagnostics()
-      .then(setReport)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
+    let active = true;
+    setError(null);
+    api.getDiagnostics().then((value) => { if (active) setReport(value); })
+      .catch((err) => { if (active) setError(errorMessage(err)); });
+    return () => { active = false; };
+  }, [attempt]);
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="dialog diagnostics-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog diagnostics-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-label="Diagnostics" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+        <button className="button secondary" onClick={onClose}>Close diagnostics</button>
         <h2>{glue("Diagnostics")}</h2>
-        {error && <p className="error-text">{error}</p>}
-        {!report && !error && <p className="muted">{glue("Collecting…")}</p>}
+        {error && <UiState title="Diagnostics unavailable" error retry={() => setAttempt((n) => n + 1)}>{error}</UiState>}
+        {!report && !error && <UiState title="Collecting diagnostics…" />}
         {report && (
           <div className="stack">
             <div className="small muted mono">

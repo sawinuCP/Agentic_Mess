@@ -61,11 +61,16 @@ export default function ActivityBar() {
           key={id}
           title={title}
           className={`activity-btn ${view === id ? "active" : ""}`}
-          onClick={() => setFn({ view: id })}
+          aria-label={title}
+          onClick={() => setFn({ view: id, sidebarOpen: true })}
         >
           {ICONS[id]}
         </button>
       ))}
+      <button className="activity-btn" title="Toggle sidebar" aria-label="Toggle sidebar"
+        onClick={() => setFn({ sidebarOpen: !useStore.getState().sidebarOpen })}>☰</button>
+      <button className="activity-btn" title="Command palette" aria-label="Command palette"
+        onClick={() => setFn({ commandPalette: true })}>⌘</button>
       <div className="activity-spacer" />
       <button
         title="Toggle panel"
