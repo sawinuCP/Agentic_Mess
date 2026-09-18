@@ -120,6 +120,14 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       keywords: ["agents", "tasks", "ai", "activity"],
       run: () => a.setView("office"),
     },
+    {
+      id: "nav.graph",
+      label: "Open execution graph",
+      category: "Navigation",
+      keywords: ["graph", "traceability", "requirements", "dependencies", "lineage"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.setView("graph"),
+    },
     // --- execution ----------------------------------------------------------
     {
       id: "execution.run-file",

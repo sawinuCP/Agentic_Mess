@@ -1551,3 +1551,148 @@ select.text-input.small {
   padding: 2px 6px;
   font-size: var(--text-xs);
 }
+
+/*
+ * 12. execution graph (Wave 8) — layered SVG lineage on Wave 6 tokens.
+ * Dense operator view: text-first nodes, tone fills, dashed derived edges.
+ */
+.graph-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface-workspace);
+}
+
+.graph-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.graph-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.graph-canvas {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-canvas:active {
+  cursor: grabbing;
+}
+
+.graph-node {
+  cursor: pointer;
+}
+
+.graph-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.graph-rect {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.graph-rect.tone-ok {
+  fill: var(--ok-bg);
+}
+
+.graph-rect.tone-warn {
+  fill: var(--warn-bg);
+}
+
+.graph-rect.tone-down {
+  fill: var(--down-bg);
+}
+
+.graph-rect.tone-muted {
+  fill: var(--surface-panel);
+}
+
+.graph-rect.selected {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.graph-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: var(--weight-strong);
+}
+
+.graph-status {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.graph-detail {
+  width: 340px;
+  flex: none;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--surface-panel-alt);
+  padding: var(--space-3);
+}
+
+.graph-text {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+.graph-text ul {
+  list-style: none;
+  margin: var(--space-1) 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 1100px) {
+  .graph-body {
+    flex-direction: column;
+  }
+
+  .graph-canvas {
+    min-height: 320px;
+  }
+
+  .graph-detail {
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 45vh;
+  }
+}

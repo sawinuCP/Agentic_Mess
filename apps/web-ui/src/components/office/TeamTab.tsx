@@ -26,6 +26,7 @@ import {
 } from "../../office/selectors";
 import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
+import { useStore } from "../../state/store";
 import { StatusLabel } from "../shell/UiState";
 import DepMap from "./DepMap";
 import NewTaskDialog from "./NewTaskDialog";
@@ -351,6 +352,17 @@ export default function TeamTab() {
                     }
                   >
                     {reviewBusyTaskId === task.id ? "reviewing…" : "request review"}
+                  </button>
+                  <button
+                    className="btn btn-small"
+                    title="Open the execution graph focused on this task"
+                    aria-label={`Open graph: ${task.title}`}
+                    onClick={() => {
+                      setOffice({ selectedTaskId: task.id });
+                      useStore.getState().set({ view: "graph", sidebarOpen: true });
+                    }}
+                  >
+                    Graph
                   </button>
                 </span>
               </div>

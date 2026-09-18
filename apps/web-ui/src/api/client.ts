@@ -318,6 +318,21 @@ export const runReview = (
     body: JSON.stringify(body),
   });
 
+// --- evidence metadata (Wave 8): existing artifact endpoints, thin client --
+
+export interface ArtifactMeta {
+  id: string;
+  project_id: string | null;
+  name: string;
+  kind: string;
+  mime: string;
+  size: number;
+  sha256: string;
+}
+
+export const getArtifact = (artifactId: string) =>
+  request<ArtifactMeta>(`/api/artifacts/${enc(artifactId)}`);
+
 // --- agent office (Wave 7): communication, worktrees, costs -----------------
 // Read-only projections over existing endpoints. No new backend concepts.
 

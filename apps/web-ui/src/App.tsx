@@ -4,6 +4,7 @@ import EditorArea from "./components/editor/EditorArea";
 import BottomPanel from "./components/panels/BottomPanel";
 import ExplorerView from "./components/panels/ExplorerView";
 import GitView from "./components/panels/GitView";
+import GraphView from "./components/graph/GraphView";
 import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
@@ -25,6 +26,8 @@ const SIDEBARS: Record<ViewId, () => JSX.Element> = {
   git: GitView,
   run: RunView,
   office: OfficeView,
+  // The graph lives in the main area; the sidebar keeps the last panel.
+  graph: OfficeView,
 };
 
 export default function App() {
@@ -91,7 +94,11 @@ export default function App() {
         {notice && <div className="office-notice" role="alert">{notice}
           <button className="link" onClick={() => setFn({ notice: null })}>Dismiss</button>
         </div>}
-        <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
+        {view === "graph" ? (
+          <ViewBoundary name="Execution graph"><GraphView /></ViewBoundary>
+        ) : (
+          <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
+        )}
         <ViewBoundary name="Utility panel"><BottomPanel /></ViewBoundary>
       </main>
       <StatusBar />

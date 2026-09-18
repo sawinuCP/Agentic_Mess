@@ -132,6 +132,7 @@ export interface RequirementInfo {
   project_id: string;
   title: string;
   description: string;
+  desired_outcome: string | null;
   priority: string;
   status: string;
   criteria: CriterionInfo[];

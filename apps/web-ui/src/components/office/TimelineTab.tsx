@@ -3,7 +3,7 @@
 // AGENT_STARTED"); category + agent + failure filters keep dense executions
 // readable. Rows navigate to the recorded agent/task via office selection.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { glue } from "@typehug/en";
 
 import { categories, describeEvent, eventCategory, groupTimeline } from "../../office/selectors";
@@ -48,6 +48,14 @@ export default function TimelineTab() {
   const [agentFilter, setAgentFilter] = useState("all");
   const [taskFilter, setTaskFilter] = useState("all");
   const [failuresOnly, setFailuresOnly] = useState(false);
+  const activityFilter = useOffice((s) => s.activityFilter);
+
+  // The graph's "View activity" seeds these filters; manual changes win after.
+  useEffect(() => {
+    if (!activityFilter) return;
+    if (activityFilter.agentId) setAgentFilter(activityFilter.agentId);
+    if (activityFilter.taskId) setTaskFilter(activityFilter.taskId);
+  }, [activityFilter]);
 
   const filtered = useMemo(() => {
     return events.filter((e) => {

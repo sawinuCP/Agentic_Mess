@@ -59,6 +59,8 @@ interface OfficeState {
   tab: OfficeTab;
   selectedAgentId: string | null;
   selectedTaskId: string | null;
+  selectedRequirementId: string | null;
+  activityFilter: { agentId: string | null; taskId: string | null } | null;
   spawnDialog: boolean;
   taskDialog: boolean;
   connectionState: ConnectionState;
@@ -252,6 +254,8 @@ export const useOffice = create<OfficeState>((set, get) => {
     tab: "team",
     selectedAgentId: null,
     selectedTaskId: null,
+    selectedRequirementId: null,
+    activityFilter: null,
     spawnDialog: false,
     taskDialog: false,
     connectionState: "connecting",
@@ -302,6 +306,8 @@ export const useOffice = create<OfficeState>((set, get) => {
         notice: null,
         selectedAgentId: null,
         selectedTaskId: null,
+        selectedRequirementId: null,
+        activityFilter: null,
         messages: [],
         messagesError: null,
         worktrees: [],

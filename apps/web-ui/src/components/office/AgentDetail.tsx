@@ -141,7 +141,19 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
         <button className="btn btn-small" onClick={() => setOffice({ selectedAgentId: null })}>
           ← Back to team
         </button>
-        <StatusLabel state={agent.state} />
+        <span className="row gap4">
+          <button
+            className="btn btn-small"
+            title="Open the execution graph focused on this agent"
+            onClick={() => {
+              setOffice({ selectedAgentId: agent.id });
+              useStore.getState().set({ view: "graph", sidebarOpen: true });
+            }}
+          >
+            Graph
+          </button>
+          <StatusLabel state={agent.state} />
+        </span>
       </div>
       <div>
         <div className="strong">{agent.name}</div>

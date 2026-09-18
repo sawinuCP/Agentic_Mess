@@ -4,6 +4,7 @@ import { TextMorph } from "torph/react";
 import { glue } from "@typehug/en";
 
 import { useOffice } from "../../state/officeStore";
+import { useStore } from "../../state/store";
 
 const STATE_CLASS: Record<string, string> = {
   VERIFIED: "ok",
@@ -107,6 +108,16 @@ export default function OversightTab() {
                 {linked.length} linked task{linked.length === 1 ? "" : "s"}
               </span>
             </summary>
+            <button
+              className="btn btn-small"
+              title="Open the execution graph focused on this requirement"
+              onClick={() => {
+                setOffice({ selectedRequirementId: requirement.id });
+                useStore.getState().set({ view: "graph", sidebarOpen: true });
+              }}
+            >
+              Open in graph
+            </button>
             {(requirement.criteria ?? []).map((criterion) => (
               <div key={criterion.id} className="criterion-row small">
                 <span className={`state-pill tiny ${STATE_CLASS[criterion.state] ?? "muted"}`}>
