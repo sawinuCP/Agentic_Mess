@@ -47,6 +47,7 @@ interface AppState {
   activeTerminal: string | null;
   quickOpen: boolean;
   commandPalette: boolean;
+  symbolSearch: boolean;
   projectDialog: boolean;
   diagnosticsOpen: boolean;
   output: ToolRunResult | null;
@@ -87,6 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
   activeTerminal: null,
   quickOpen: false,
   commandPalette: false,
+  symbolSearch: false,
   projectDialog: false,
   diagnosticsOpen: false,
   output: null,

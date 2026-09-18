@@ -20,23 +20,27 @@ Ctrl+K / Cmd+K toggles a conditionally mounted palette. Search matches label, ca
 
 Existing Ctrl/Cmd+P and Ctrl/Cmd+S are unchanged. There is no new execution scheduler or simulated agent activity.
 
-### Implemented registry (19 commands)
+### Implemented registry (20 commands)
 
-- Workspace: Open project (includes recent list), Go to file, Search in files, Show changed files.
+- Workspace: Open project (includes recent list), Go to file, Search in files, Search symbols…, Show changed files.
 - Navigation: Show explorer, Show run and toolchains, Open engineering office.
 - Execution/tooling: Run active file, Format active file, Run tests, Run build, Show tool output, Open terminal.
 - Validation: Run linter, Show system diagnostics.
 - Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight).
 
+Symbol search queries the existing code-intel index (`GET /api/projects/{id}/symbols`, debounced) and jumps to file:line in the existing editor; an unindexed project reports no symbols. Browsers reserve Ctrl+T, so symbol search is palette/command-only by design.
+
 Toolchain commands are NOT orchestration lifecycle controls. Timeline is the existing bounded event feed, NOT durable execution history or replay. Office is the existing sidebar, NOT the full Agent Office. Project switching is protected against dirty buffers and clears project-scoped terminal IDs.
 
-Additional task-specific commands: Start task execution, Request pause, Send resume signal, Cancel task. Task titles/IDs identify the target; guards require unattempted pending/ready tasks with completed dependencies for start. Pause/resume target an active durable workflow. Cancel targets a non-finished task via the existing `POST /api/tasks/{id}/cancel` human-intervention endpoint (FR-014); finished tasks (completed/cancelled/failed) keep their recorded outcome and the command explains why it is unavailable. Confirmation warns about tool/model use for start, checkpoint semantics for pause/resume, and history preservation for cancel. A signal acknowledgement is explicitly NOT represented as an authoritative paused/running state. Team buttons and palette use the same availability builder and existing POST endpoints, with pending lockout and contextual failures.
+Additional task-specific commands: Start task execution, Request pause, Send resume signal, Cancel task, Retry task. Task titles/IDs identify the target; guards require unattempted pending/ready tasks with completed dependencies for start. Pause/resume target an active durable workflow. Cancel targets a non-finished task via the existing `POST /api/tasks/{id}/cancel` human-intervention endpoint (FR-014); finished tasks keep their recorded outcome and the command explains why it is unavailable. Retry targets failed tasks only via the existing execute endpoint (Temporal starts a new run under `task-exec-{id}`; recorded attempts are preserved); cancelled tasks are excluded out of respect for the human decision. Confirmation warns about tool/model use for start, checkpoint semantics for pause/resume, history preservation for cancel, and new-run semantics for retry. A signal acknowledgement is explicitly NOT represented as an authoritative paused/running state. Team buttons and palette use the same availability builder and existing POST endpoints, with pending lockout and contextual failures.
+
+Bulk execution actions (Pause N / Resume N / Stop N) in the Office header fan out over the same per-task endpoints with one confirmation, per-task result reporting, and a single resync. Eligibility reuses the per-task availability builder, so bulk buttons can never offer what the endpoints would refuse.
 
 ### Missing capabilities and required follow-up
 
-Task execute/pause/resume/cancel routes exist; execute/pause/resume/cancel are now exposed and tested with intercepted responses. Failed-task retry remains omitted: re-executing an attempted task has no distinct backend endpoint and loosening the start guard would misrepresent Temporal re-run semantics. Agent creation/session routes exist, but their existence alone does not establish a safe spawn/replace-agent UX.
+Task execute/pause/resume/cancel routes exist and are all exposed and tested with intercepted responses, including failed-task retry (via the execute endpoint with new-run semantics) and bulk pause/resume/stop (fan-out with per-task reporting). Agent creation/session routes exist, but exposing spawn was refused on verification: `create_agent` is a bare registry insert and `start_session` on a taskless agent would rot into supervision-marked failure — the route existing does not make the UX safe.
 
-Not implemented: failed-task retry, durable execution history, task creation, agent lifecycle commands, workspace symbol search, dedicated problems/runtime/settings views, or a Command Center. These are explicit acceptance gaps, not disguised navigation aliases. No inert commands were added.
+Not implemented: durable execution history, task creation (no POST route exists), per-agent lifecycle commands (no endpoints; sessions are not listed anywhere), message composing (would fake agent provenance), dedicated problems/runtime/settings views, or a Command Center. These are explicit acceptance gaps, not disguised navigation aliases. No inert commands were added.
 
 ## States, focus and failure containment
 

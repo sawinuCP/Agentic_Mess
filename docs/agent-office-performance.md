@@ -42,6 +42,9 @@ timeline rows, one detail panel at a time).
   replaces snapshots wholesale (authoritative, unchanged from Wave 3).
 - Messages/worktrees/costs fetch once per project on first view open
   (store-guarded `*Loading` flags); tab switches never refetch.
+- Bulk execution fans out sequentially (never parallel bursts against the
+  control plane), then performs a single resync; per-task results are
+  reported, so partial failures are visible rather than silent.
 - `AgentDetail` mounts only for the selected agent; closing it unmounts all
   sections (no hidden DOM accumulation).
 - Timeline grouping is O(n) over the bounded feed per render input change.

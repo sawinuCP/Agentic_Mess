@@ -15,6 +15,7 @@ import type {
   RequirementInfo,
   ReviewOutcome,
   SearchMatch,
+  SymbolInfo,
   TaskInfo,
   ToolRunResult,
   TraceabilityReport,
@@ -302,6 +303,13 @@ export const getCosts = (projectId: string, taskId?: string) => {
   const query = taskId ? `?task_id=${enc(taskId)}` : "";
   return request<CostsSummary>(`/api/projects/${projectId}/intelligence/costs${query}`);
 };
+
+// --- workspace symbols (code-intel index; empty until the index runs) --------
+
+export const searchSymbols = (projectId: string, q: string, limit = 50) =>
+  request<SymbolInfo[]>(
+    `/api/projects/${projectId}/symbols?q=${enc(q)}&limit=${limit}`,
+  );
 
 // --- diagnostics (Phase 10) -----------------------------------------------
 

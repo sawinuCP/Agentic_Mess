@@ -38,6 +38,8 @@ def main():
             page = browser.new_page(viewport={"width": 1280, "height": 800})
             errors = []
             page.on("pageerror", lambda e: errors.append(e.stack or str(e)))
+            page.on("dialog", lambda dialog: dialog.accept())
+            task_requests = []
             project = {"id": "p", "name": "Local", "root_path": "C:\\local", "default_branch": "main"}
             agents = [
                 {"id": "a1", "project_id": "p", "name": "Backend", "role": "backend",
@@ -132,6 +134,23 @@ def main():
                 elif path.endswith("hitl/h/decide"):
                     approvals.clear()
                     route.fulfill(json={"status": "approved"})
+                elif "/symbols?" in path:
+                    route.fulfill(json=[{"id": "s1", "path": "services/api/app/core/auth.py",
+                                         "name": "authenticate", "kind": "function", "parent": None,
+                                         "start_line": 42, "end_line": 60,
+                                         "signature": "def authenticate(token)", "doc": None,
+                                         "language": "python"}])
+                elif "/file?" in path:
+                    route.fulfill(json={"path": "services/api/app/core/auth.py",
+                                        "content": "def authenticate(token): pass",
+                                        "is_binary": False, "size": 30, "mtime_ms": 0})
+                elif path.startswith("tasks/t"):
+                    task_requests.append((route.request.method, path))
+                    if path == "tasks/t3/execute":
+                        tasks[2]["status"] = "ready"
+                        route.fulfill(json={"started": True, "workflow_id": "w1"})
+                    else:
+                        route.fulfill(status=204)
                 elif path.startswith("events/stream"):
                     route.fulfill(content_type="text/event-stream",
                                   body='data: {"kind":"GATEWAY_STATUS","state":"live"}\n\n')
@@ -165,6 +184,16 @@ def main():
             expect(page.get_by_text("Waiting for Implement auth (running)", exact=False).first).to_be_visible()
             expect(page.get_by_text("Recovery attempted · still failing", exact=False).first).to_be_visible()
 
+            # Bulk execution: one confirmation fans out over per-task endpoints.
+            page.get_by_role("button", name="Pause 2 tasks", exact=True).click()
+            expect(page.get_by_text("Pause signal sent to 2 of 2 tasks", exact=False)).to_be_visible()
+            assert task_requests == [("POST", "tasks/t1/pause"), ("POST", "tasks/t2/pause")], task_requests
+
+            # Retry re-dispatches the failed task through the execute endpoint.
+            page.get_by_role("button", name="Retry task: Fix flaky test", exact=True).click()
+            expect(page.get_by_text("Retry dispatched.", exact=False)).to_be_visible()
+            assert ("POST", "tasks/t3/execute") in task_requests, task_requests
+
             # Agent detail: overview, activity, tasks, tools, files, recovery, cost.
             page.get_by_role("button", name="Inspect agent Backend", exact=True).click()
             expect(page.get_by_text("Current work:", exact=False)).to_be_visible()
@@ -172,6 +201,8 @@ def main():
             expect(page.get_by_text("pytest · exit 1 · 40ms", exact=False)).to_be_visible()
             expect(page.get_by_text("tests/test_auth.py", exact=False).first).to_be_visible()
             expect(page.get_by_text("1 artifact(s)", exact=False)).to_be_visible()
+            expect(page.get_by_text("(sole contributor)", exact=False)).to_be_visible()
+            expect(page.get_by_text("(shared with 1 other agent)", exact=False)).to_be_visible()
             page.locator("details summary", has_text="Fix flaky test").click()
             expect(page.get_by_text("Attempt 1 failed", exact=False)).to_be_visible()
             expect(page.get_by_text("Recovery decision: retry_if_safe", exact=False)).to_be_visible()
@@ -214,16 +245,30 @@ def main():
             expect(page.get_by_text("DEPENDENCY_WAIT_STARTED", exact=False)).to_be_visible()
             expect(page.get_by_text("TOOL_RUN_COMPLETED", exact=False)).to_have_count(0)
 
+            # Symbol search: palette command → index lookup → editor jump.
+            page.keyboard.press("Control+K")
+            search_sym = page.get_by_role("combobox", name="Search commands")
+            search_sym.fill("Search symbols")
+            page.keyboard.press("Enter")
+            expect(page.get_by_role("dialog", name="Search symbols")).to_be_visible()
+            page.get_by_role("textbox", name="Search symbols").fill("auth")
+            expect(page.get_by_text("authenticate", exact=False)).to_be_visible()
+            page.keyboard.press("Enter")
+            expect(page.locator(".tab-strip").get_by_text("auth.py", exact=False)).to_be_visible()
+
             # Approval: prominent card with task link, approve refreshes.
+            # (The symbol jump left the sidebar on the explorer — go back.)
+            page.get_by_role("button", name="Engineering Office", exact=True).click()
             page.get_by_role("button", name="Team", exact=False).click()
             expect(page.get_by_label("approvals needed")).to_be_visible()
             page.get_by_role("button", name="Approve", exact=True).click()
             expect(page.get_by_text("Approve local change?", exact=False)).to_have_count(0)
 
             assert not errors, errors
-            print("PASS: office summary/cards/waiting-duration/recovery; detail/tools/files/evidence; "
-                  "task inspector + requirement navigation; comms thread + detail; grouped activity "
-                  "with agent/task filters; approval flow; no page errors")
+            print("PASS: office summary/cards/waiting-duration/recovery; bulk pause + retry dispatch; "
+                  "detail/tools/files/evidence/attribution; task inspector + requirement navigation; "
+                  "comms thread + detail; grouped activity with agent/task filters; symbol search to editor; "
+                  "approval flow; no page errors")
             browser.close()
     finally:
         server.terminate()

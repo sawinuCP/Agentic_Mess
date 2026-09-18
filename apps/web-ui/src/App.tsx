@@ -15,6 +15,7 @@ import DiagnosticsDialog from "./components/shell/DiagnosticsDialog";
 import OpenProjectDialog from "./components/shell/OpenProjectDialog";
 import QuickOpen from "./components/shell/QuickOpen";
 import StatusBar from "./components/shell/StatusBar";
+import SymbolSearch from "./components/shell/SymbolSearch";
 import { useOffice } from "./state/officeStore";
 import { useStore, type ViewId } from "./state/store";
 
@@ -34,6 +35,7 @@ export default function App() {
   const project = useStore((s) => s.project);
   const quickOpen = useStore((s) => s.quickOpen);
   const commandPalette = useStore((s) => s.commandPalette);
+  const symbolSearch = useStore((s) => s.symbolSearch);
   const projectDialog = useStore((s) => s.projectDialog);
   const diagnosticsOpen = useStore((s) => s.diagnosticsOpen);
   const saveActive = useStore((s) => s.saveActive);
@@ -100,6 +102,7 @@ export default function App() {
       ) : null}
       {quickOpen && <QuickOpen />}
       {commandPalette && <CommandPalette />}
+      {symbolSearch && <SymbolSearch />}
       {diagnosticsOpen && <DiagnosticsDialog onClose={() => setFn({ diagnosticsOpen: false })} />}
     </div>
   );

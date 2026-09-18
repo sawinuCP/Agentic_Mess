@@ -204,6 +204,19 @@ export interface CostsSummary {
   extra?: Record<string, unknown>;
 }
 
+export interface SymbolInfo {
+  id: string;
+  path: string;
+  name: string;
+  kind: string;
+  parent: string | null;
+  start_line: number;
+  end_line: number;
+  signature: string | null;
+  doc: string | null;
+  language: string;
+}
+
 // --- realtime (Wave 3) -------------------------------------------------------
 
 /** Canonical wire envelope v1 — mirrors app/realtime/envelope.py. */

@@ -112,9 +112,11 @@ gap (see §8). The Office never invents them.
 Selection (`selectedAgentId/selectedTaskId` in `officeStore`) is the single
 navigation mechanism: cards, task rows, timeline rows, messages, HITL cards,
 and approval links all select rather than navigate away. Contextual actions
-are exactly the existing endpoints (execute/pause/resume/cancel task, decide
-HITL, request review, open file, open panel); unavailable actions render
-disabled with the recorded reason. Destructive actions (cancel) confirm.
+are exactly the existing endpoints (execute/pause/resume/cancel/retry task,
+bulk fan-out, decide HITL, request review, open file/symbol, open panel);
+unavailable actions render disabled with the recorded reason. Destructive
+actions (cancel/stop) confirm. Symbol search is palette/command-only
+(browsers reserve Ctrl+T).
 Nothing polls: team/activity state flows from SSE + authoritative resync;
 messages/worktrees/costs load on view open with an explicit refresh action
 (no message events exist to subscribe to).
@@ -141,6 +143,29 @@ ARIA soup.
 
 ## 8. Backend gaps (explicit, not fabricated in UI)
 
+Revisited 2026-09-18 — each former skip was re-verified against source:
+
+BUILT since first writing: bulk pause/resume/stop (fan-out, §6 above);
+failed-task retry (execute endpoint, new Temporal run, attempts preserved;
+cancelled excluded); workspace symbol search (palette + dialog over
+`GET …/symbols`, editor jump); sole-vs-shared cost attribution labels
+(`costAttribution`: a task scope belongs to one agent only when no other
+agent attempted it).
+
+STILL REFUSED, with evidence:
+1. Agent spawn UI — `create_agent` (`services/orchestration/agents.py:46`)
+   is a bare registry insert; the only activation path, `start_session`,
+   on a taskless agent heartbeats nothing until supervision marks it
+   `lost`/`failed`. Exposing spawn would manufacture failing agents.
+2. Per-agent pause/resume/stop — no endpoints exist; sessions cannot even be
+   listed (no GET sessions route), so there is nothing truthful to act on.
+3. Task creation UI — no POST tasks route exists (only list/get/
+   cancel/pause/resume/execute in `api/routes/planning/tasks.py`).
+4. Message composing — `POST /api/messages` exists but requires choosing a
+   `sender_agent_id`: the UI would impersonate agents. Read-only stands.
+5. Execution Graph / replay / traceability explorer / 3-column shell —
+   separate waves / stopping-condition items, not Wave 7 scope.
+
 1. No `MESSAGE_*` realtime events — comms refresh is manual/on-open.
 2. No per-agent cost aggregation (`ModelInvocation.agent_id` stored, never
    exposed) — UI shows project/by-role/task scopes with a labeled note.
@@ -151,9 +176,11 @@ ARIA soup.
 5. `replace_agent/spawn_debugger/request_hitl` unreachable via the pure Wave 2
    policy core (workflow handles them; policy never emits them) — the UI names
    only actions actually recorded in `RECOVERY_SELECTED`.
-6. No global pause/resume/stop-execution endpoint — the Office header
-   therefore shows state + counts, NOT bulk lifecycle buttons; per-task
-   actions remain where they are valid. Bulk signals would invent semantics.
+6. No global pause/resume/stop-execution endpoint — CLOSED on the frontend
+   by fan-out: the Office header offers Pause N / Resume N / Stop N over the
+   existing per-task endpoints with one confirmation, per-task result
+   reporting, and a single resync (`bulkEligible` reuses the per-task
+   availability builder). No bulk semantics were invented server-side.
 7. `TaskOut` omits `constraints/acceptance_criteria/allowed_tools/deadline`
    — detail shows `request/expected_output/priority/retry_policy` only.
 8. Events carry no `requirement_id`, so the Activity view filters by agent

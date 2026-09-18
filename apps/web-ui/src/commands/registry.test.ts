@@ -35,6 +35,7 @@ function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>
     setView: vi.fn(),
     setOfficeTab: vi.fn(),
     openQuickOpen: vi.fn(),
+    openSymbolSearch: vi.fn(),
     openProjectDialog: vi.fn(),
     openTerminal: vi.fn(),
     showToolOutput: vi.fn(),
@@ -63,12 +64,23 @@ describe("buildCommands", () => {
     const commands = buildCommands(ctxEmpty, makeActions());
     const gotoFile = commands.find((c) => c.id === "workspace.goto-file");
     const search = commands.find((c) => c.id === "workspace.search-text");
+    const symbols = commands.find((c) => c.id === "workspace.search-symbols");
     const terminal = commands.find((c) => c.id === "execution.terminal");
     expect(gotoFile?.disabledReason).toBe("Open a project first");
     expect(search?.disabledReason).toBe("Open a project first");
+    expect(symbols?.disabledReason).toBe("Open a project first");
     expect(terminal?.disabledReason).toBe("Open a project first");
     // Global navigation stays available.
     expect(commands.find((c) => c.id === "nav.explorer")?.disabledReason).toBeUndefined();
+  });
+
+  it("opens symbol search through the real action", () => {
+    const actions = makeActions();
+    const commands = buildCommands(ctxFull, actions);
+    const symbols = commands.find((c) => c.id === "workspace.search-symbols");
+    expect(symbols?.disabledReason).toBeUndefined();
+    symbols?.run();
+    expect(actions.openSymbolSearch).toHaveBeenCalledTimes(1);
   });
 
   it("explains missing tools for file-bound commands", () => {

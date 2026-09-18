@@ -16,6 +16,7 @@ export interface CommandActions {
   setView: (view: ViewId) => void;
   setOfficeTab: (tab: OfficeTabId) => void;
   openQuickOpen: () => void;
+  openSymbolSearch: () => void;
   openProjectDialog: () => void;
   openTerminal: () => void | Promise<void>;
   showToolOutput: () => void;
@@ -78,6 +79,14 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       keywords: ["find", "grep", "text", "project search"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("search"),
+    },
+    {
+      id: "workspace.search-symbols",
+      label: "Search symbols…",
+      category: "Workspace",
+      keywords: ["symbols", "definition", "function", "class", "workspace symbol", "scip"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.openSymbolSearch(),
     },
     {
       id: "workspace.changed-files",
