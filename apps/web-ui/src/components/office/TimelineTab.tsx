@@ -8,6 +8,7 @@ import { glue } from "@typehug/en";
 
 import { categories, describeEvent, eventCategory, groupTimeline, replaySteps } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
+import { useStore } from "../../state/store";
 import ActivityReplay from "./ActivityReplay";
 
 const KIND_CLASS: Record<string, string> = {
@@ -125,6 +126,13 @@ export default function TimelineTab() {
           onClick={enterReplay}
         >
           replay
+        </button>
+        <button
+          className="chip"
+          title="Open the full durable history with pagination, search, and true replay"
+          onClick={() => useStore.getState().set({ view: "history", sidebarOpen: true })}
+        >
+          full history
         </button>
       </div>
       {agents.length > 0 && (

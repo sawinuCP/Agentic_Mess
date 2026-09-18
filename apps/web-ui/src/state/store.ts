@@ -7,7 +7,7 @@ import type { GitStatus, ProjectInfo, ProjectToolchains, ToolRunResult, TreeNode
 import { monacoLanguageFor } from "../util/languages";
 import { readLayout, saveLayout } from "./layout";
 
-export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph";
+export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" | "history";
 
 export interface FileTab {
   kind: "file";

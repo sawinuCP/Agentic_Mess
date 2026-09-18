@@ -141,6 +141,8 @@ describe("buildCommands", () => {
     expect(actions.setOfficeTab).toHaveBeenCalledWith("team");
     commands.find((c) => c.id === "nav.graph")?.run();
     expect(actions.setView).toHaveBeenCalledWith("graph");
+    commands.find((c) => c.id === "nav.history")?.run();
+    expect(actions.setView).toHaveBeenCalledWith("history");
     commands.find((c) => c.id === "workspace.open-project")?.run();
     expect(actions.openProjectDialog).toHaveBeenCalledTimes(1);
   });

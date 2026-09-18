@@ -5,6 +5,7 @@ import BottomPanel from "./components/panels/BottomPanel";
 import ExplorerView from "./components/panels/ExplorerView";
 import GitView from "./components/panels/GitView";
 import GraphView from "./components/graph/GraphView";
+import HistoryView from "./components/history/HistoryView";
 import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
@@ -28,6 +29,8 @@ const SIDEBARS: Record<ViewId, () => JSX.Element> = {
   office: OfficeView,
   // The graph lives in the main area; the sidebar keeps the last panel.
   graph: OfficeView,
+  // History is a main-area surface over durable events, not a sidebar panel.
+  history: ExplorerView,
 };
 
 export default function App() {
@@ -96,6 +99,8 @@ export default function App() {
         </div>}
         {view === "graph" ? (
           <ViewBoundary name="Execution graph"><GraphView /></ViewBoundary>
+        ) : view === "history" ? (
+          <ViewBoundary name="Execution history"><HistoryView /></ViewBoundary>
         ) : (
           <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
         )}

@@ -128,6 +128,14 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("graph"),
     },
+    {
+      id: "nav.history",
+      label: "Open execution history",
+      category: "Navigation",
+      keywords: ["history", "timeline", "replay", "events", "audit", "debug"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.setView("history"),
+    },
     // --- execution ----------------------------------------------------------
     {
       id: "execution.run-file",

@@ -271,6 +271,28 @@ export const listRequirements = (projectId: string) =>
 export const listEvents = (projectId: string, limit = 120) =>
   request<EventEntry[]>(`/api/events?project_id=${enc(projectId)}&limit=${limit}`);
 
+export interface HistoryQuery {
+  limit?: number;
+  order?: "asc" | "desc";
+  sinceSeq?: number;
+  beforeSeq?: number;
+  eventType?: string;
+  taskId?: string;
+}
+
+/** Durable history reads with cursor paging (Wave 9): newest page first,
+// then repeat with beforeSeq = min seq for older pages until short. */
+export const listHistory = (projectId: string, query: HistoryQuery = {}) => {
+  const params = new URLSearchParams({ project_id: projectId });
+  params.set("limit", String(query.limit ?? 500));
+  params.set("order", query.order ?? "desc");
+  if (query.sinceSeq !== undefined) params.set("since_seq", String(query.sinceSeq));
+  if (query.beforeSeq !== undefined) params.set("before_seq", String(query.beforeSeq));
+  if (query.eventType) params.set("event_type", query.eventType);
+  if (query.taskId) params.set("task_id", query.taskId);
+  return request<EventEntry[]>(`/api/events?${params.toString()}`);
+};
+
 export const listHitl = (projectId: string, status?: string) => {
   const query = new URLSearchParams({ project_id: projectId });
   if (status) query.set("status", status);

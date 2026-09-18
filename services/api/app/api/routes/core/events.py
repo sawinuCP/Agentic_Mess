@@ -1,4 +1,9 @@
-"""Durable event stream queries (FR-024; feeds the office/timeline UIs later)."""
+"""Durable event stream queries (FR-024; feeds the office/timeline UIs).
+
+Wave 3 additions: ``project_seq`` is the per-project ordering cursor used by the
+realtime stream, ``since_seq`` + ``order=asc`` power authoritative replay and
+resynchronization (the realtime stream is a projection — never a second truth).
+"""
 
 from __future__ import annotations
 
@@ -23,6 +28,9 @@ class EventOut(BaseModel):
     project_id: uuid.UUID | None
     task_id: uuid.UUID | None
     agent_id: str | None
+    execution_id: str | None
+    project_seq: int | None
+    correlation_id: str | None
     payload: dict
 
 
@@ -30,15 +38,36 @@ class EventOut(BaseModel):
 def list_events(
     project_id: uuid.UUID | None = None,
     event_type: str | None = None,
+    task_id: uuid.UUID | None = None,
+    since_seq: int | None = Query(None, ge=0),
+    before_seq: int | None = Query(None, ge=0),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[EventOut]:
-    """Replay the durable event stream, newest first (filterable)."""
-    query = select(Event).order_by(Event.occurred_at.desc()).limit(limit)
+    """Replay the durable event stream (filterable; newest first by default).
+
+    Wave 9 additions are strictly additive: ``before_seq`` pages backward
+    (strict ``project_seq < before_seq``, mirroring ``since_seq``),
+    ``task_id`` scopes to one task, and ``correlation_id`` is exposed for
+    client-side chain following. Default ordering is unchanged.
+    """
+    query = select(Event)
+    if order == "asc":
+        query = query.order_by(Event.project_seq.asc().nulls_last(), Event.occurred_at.asc())
+    else:
+        query = query.order_by(Event.occurred_at.desc())
+    query = query.limit(limit)
     if project_id:
         query = query.where(Event.project_id == project_id)
     if event_type:
         query = query.where(Event.event_type == event_type)
+    if task_id:
+        query = query.where(Event.task_id == task_id)
+    if since_seq is not None:
+        query = query.where(Event.project_seq > since_seq)
+    if before_seq is not None:
+        query = query.where(Event.project_seq < before_seq)
     rows = db.scalars(query).all()
     return [
         EventOut(
@@ -49,6 +78,9 @@ def list_events(
             project_id=e.project_id,
             task_id=e.task_id,
             agent_id=e.agent_id,
+            execution_id=e.execution_id,
+            project_seq=e.project_seq,
+            correlation_id=e.correlation_id,
             payload=e.payload or {},
         )
         for e in rows

@@ -161,6 +161,7 @@ export interface EventEntry {
   payload: Record<string, unknown>;
   project_seq?: number | null;
   execution_id?: string | null;
+  correlation_id?: string | null;
 }
 
 // --- agent office (Wave 7): communication, worktrees, costs ------------------
