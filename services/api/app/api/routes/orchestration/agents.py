@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
@@ -33,6 +33,21 @@ async def list_agents(
 @router.get("/api/agents/{agent_id}", response_model=AgentOut)
 async def get_agent(agent_id: uuid.UUID, db: Session = Depends(get_db)) -> AgentOut:
     return await asyncio.to_thread(agent_service.get_agent, db, agent_id)
+
+
+@router.get("/api/agents/{agent_id}/sessions", response_model=list[SessionOut])
+async def list_agent_sessions(
+    agent_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[SessionOut]:
+    """Session history for one agent, newest first (Wave 7 completion).
+
+    Read-only: sessions are runtime-owned. No UI-driven lifecycle
+    transitions are offered here by design — the runtime, never the UI,
+    controls transitions (see app/agents_runtime/lifecycle.py).
+    """
+    return await asyncio.to_thread(agent_service.list_sessions, db, agent_id, limit)
 
 
 @router.post("/api/agents/sessions/supervise")

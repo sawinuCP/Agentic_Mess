@@ -217,6 +217,16 @@ export interface SymbolInfo {
   language: string;
 }
 
+export interface SessionInfo {
+  id: string;
+  agent_id: string;
+  runtime: string;
+  status: string;
+  started_at: string;
+  heartbeat_at: string | null;
+  finished_at: string | null;
+}
+
 // --- realtime (Wave 3) -------------------------------------------------------
 
 /** Canonical wire envelope v1 — mirrors app/realtime/envelope.py. */

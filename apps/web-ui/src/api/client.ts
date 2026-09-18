@@ -15,6 +15,7 @@ import type {
   RequirementInfo,
   ReviewOutcome,
   SearchMatch,
+  SessionInfo,
   SymbolInfo,
   TaskInfo,
   ToolRunResult,
@@ -231,6 +232,9 @@ export const createAgent = (
     method: "POST",
     body: JSON.stringify(body),
   });
+
+export const listAgentSessions = (agentId: string, limit = 100) =>
+  request<SessionInfo[]>(`/api/agents/${enc(agentId)}/sessions?limit=${limit}`);
 
 export const listTasks = (projectId: string) =>
   request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);

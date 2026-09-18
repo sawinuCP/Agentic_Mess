@@ -3,8 +3,12 @@
 // (communication, worktrees, costs) fetch on first open only. Anything the
 // backend does not record is labeled, never invented.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { glue } from "@typehug/en";
+
+import { listAgentSessions } from "../../api/client";
+import { errorMessage } from "../../api/errors";
+import type { SessionInfo } from "../../types";
 
 import {
   BULK_LABEL,
@@ -52,6 +56,8 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
   const loadTaskCosts = useOffice((s) => s.loadTaskCosts);
   const openFile = useStore((s) => s.openFile);
   const { bulkBusy, runBulk } = useBulkAction();
+  const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   const agent = agents.find((a) => a.id === agentId);
 
@@ -72,6 +78,16 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
     for (const t of owned) void loadTaskCosts(t.id).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owned.map((t) => t.id).join(",")]);
+  useEffect(() => {
+    // Sessions are runtime-owned; the detail reads them, never drives them.
+    let active = true;
+    setSessions(null);
+    setSessionsError(null);
+    listAgentSessions(agentId, 20)
+      .then((rows) => { if (active) setSessions(rows); })
+      .catch((err: unknown) => { if (active) setSessionsError(errorMessage(err)); });
+    return () => { active = false; };
+  }, [agentId]);
 
   if (!agent) {
     return (
@@ -162,6 +178,30 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
             </span>
           )}
         </div>
+      </Section>
+
+      <Section title="Sessions">
+        <div className="small muted">
+          Runtime-owned session history, newest first. The UI reads sessions;
+          it never pauses, resumes, or ends them — lifecycle transitions belong
+          to the runtime, and task workflows own pause/resume/stop.
+        </div>
+        {sessions === null && !sessionsError && (
+          <div className="muted small">Loading sessions…</div>
+        )}
+        {sessionsError && (
+          <div className="error-text small" role="alert">{sessionsError}</div>
+        )}
+        {sessions !== null && sessions.length === 0 && (
+          <div className="muted small">No sessions recorded for this agent.</div>
+        )}
+        {(sessions ?? []).slice(0, 6).map((session) => (
+          <div key={session.id} className="small mono" title={`session ${session.id}`}>
+            {session.runtime} · {session.status}
+            {session.heartbeat_at ? ` · beat ${new Date(session.heartbeat_at).toLocaleTimeString()}` : ""}
+            {session.finished_at ? ` · ended ${new Date(session.finished_at).toLocaleTimeString()}` : ""}
+          </div>
+        ))}
       </Section>
 
       <Section title="Activity">

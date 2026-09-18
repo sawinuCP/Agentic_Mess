@@ -30,3 +30,4 @@ class SessionOut(BaseModel):
     status: str
     started_at: datetime
     heartbeat_at: datetime | None
+    finished_at: datetime | None = None

@@ -113,9 +113,10 @@ Selection (`selectedAgentId/selectedTaskId` in `officeStore`) is the single
 navigation mechanism: cards, task rows, timeline rows, messages, HITL cards,
 and approval links all select rather than navigate away. Contextual actions
 are exactly the existing endpoints (execute/pause/resume/cancel/retry task,
-bulk fan-out, decide HITL, request review, open file/symbol, open panel);
-unavailable actions render disabled with the recorded reason. Destructive
-actions (cancel/stop) confirm. Symbol search is palette/command-only
+bulk fan-out, spawn agent, create task, operator note, session reads, decide
+HITL, request review, open file/symbol, open panel); unavailable actions
+render disabled with the recorded reason. Destructive actions
+(cancel/stop) confirm. Symbol search is palette/command-only
 (browsers reserve Ctrl+T).
 Nothing polls: team/activity state flows from SSE + authoritative resync;
 messages/worktrees/costs load on view open with an explicit refresh action
@@ -149,22 +150,33 @@ BUILT since first writing: bulk pause/resume/stop (fan-out, §6 above);
 failed-task retry (execute endpoint, new Temporal run, attempts preserved;
 cancelled excluded); workspace symbol search (palette + dialog over
 `GET …/symbols`, editor jump); sole-vs-shared cost attribution labels
-(`costAttribution`: a task scope belongs to one agent only when no other
-agent attempted it).
+(`costAttribution`); agent spawn dialog (verified side-effect-free insert,
+honestly labeled); task creation (`POST /api/projects/{id}/tasks` with
+project-scoped validation + `TASK_CREATED` event); operator-to-agent notes
+(sender `system`, never impersonation); session history (`GET
+/api/agents/{id}/sessions` + additive `finished_at` on `SessionOut`).
 
-STILL REFUSED, with evidence:
-1. Agent spawn UI — `create_agent` (`services/orchestration/agents.py:46`)
-   is a bare registry insert; the only activation path, `start_session`,
-   on a taskless agent heartbeats nothing until supervision marks it
-   `lost`/`failed`. Exposing spawn would manufacture failing agents.
-2. Per-agent pause/resume/stop — no endpoints exist; sessions cannot even be
-   listed (no GET sessions route), so there is nothing truthful to act on.
-3. Task creation UI — no POST tasks route exists (only list/get/
-   cancel/pause/resume/execute in `api/routes/planning/tasks.py`).
-4. Message composing — `POST /api/messages` exists but requires choosing a
-   `sender_agent_id`: the UI would impersonate agents. Read-only stands.
-5. Execution Graph / replay / traceability explorer / 3-column shell —
-   separate waves / stopping-condition items, not Wave 7 scope.
+REFUSED with evidence (re-verified 2026-09-18 — completing these would
+create incompleteness, not remove it):
+1. UI-driven agent pause/resume/stop state transitions — REFUSED, and this
+   is final: `agents_runtime/lifecycle.py:1-5` states "The runtime — never
+   the UI and never a model — controls transitions"; transitions execute
+   inside Temporal activities (`set_agent_state_activity`,
+   `durable/activities/agents.py:74`) while execution is owned by
+   `TaskExecutionWorkflow`. An endpoint flipping `agent.state` would display
+   "paused" while the workflow keeps working — fabricated control. The
+   honest per-agent surface (pause/resume/stop the agent's owned task
+   workflows) is built and verified instead.
+2. Message composing as an agent — `POST /api/messages` accepts any
+   `sender_agent_id`, so a freeform composer would impersonate agents.
+   Built instead: operator notes with sender `system`, labeled "You
+   (operator)".
+3. Execution Graph / replay / traceability explorer / 3-column shell —
+   separate waves / stopping-condition items. Scoped, completable subsets
+   were built instead: task dependency map, requirement explorer, wide
+   detail grid. Timeline replay was refused outright: the feed is bounded
+   at 120 events with no pre-window history and no time-travel endpoint,
+   so a stepper would misrepresent state.
 
 1. No `MESSAGE_*` realtime events — comms refresh is manual/on-open.
 2. No per-agent cost aggregation (`ModelInvocation.agent_id` stored, never

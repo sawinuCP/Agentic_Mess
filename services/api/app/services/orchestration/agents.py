@@ -40,7 +40,24 @@ def session_out(session: AgentSession) -> SessionOut:
         status=session.status,
         started_at=session.started_at,
         heartbeat_at=session.heartbeat_at,
+        finished_at=session.finished_at,
     )
+
+
+def list_sessions(db: Session, agent_id: uuid.UUID, limit: int = 100) -> list[SessionOut]:
+    """Session history for one agent, newest first (Wave 7 completion).
+
+    Read-only: sessions are runtime-owned (workers heartbeat, supervision
+    reaps). Ended/lost sessions are distinguishable via finished_at.
+    """
+    _agent_or_404(agent_id, db)
+    rows = db.scalars(
+        select(AgentSession)
+        .where(AgentSession.agent_id == agent_id)
+        .order_by(AgentSession.started_at.desc())
+        .limit(max(1, min(limit, 500)))
+    ).all()
+    return [session_out(row) for row in rows]
 
 
 def create_agent(db: Session, project_id: uuid.UUID, body: AgentIn) -> AgentOut:

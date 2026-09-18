@@ -124,6 +124,17 @@ def main():
             costs = {"invocations": 12, "total_tokens": 45000, "by_model": {"test:model": 45000},
                      "by_role": {"backend": 30000, "tester": 15000}, "task_id": None,
                      "budget_tokens_per_task": 100000}
+            sessions = {
+                "a1": [{"id": "s1", "agent_id": "a1", "runtime": "temporal-worker",
+                        "status": "running", "started_at": "2026-09-18T10:00:00Z",
+                        "heartbeat_at": "2026-09-18T10:05:00Z", "finished_at": None},
+                       {"id": "s0", "agent_id": "a1", "runtime": "local",
+                        "status": "ended", "started_at": "2026-09-18T09:00:00Z",
+                        "heartbeat_at": "2026-09-18T09:30:00Z",
+                        "finished_at": "2026-09-18T09:31:00Z"}],
+                "a2": [],
+                "a3": [],
+            }
             sent_messages = []
             def api(route):
                 path = route.request.url.split("/api/", 1)[1]
@@ -194,6 +205,10 @@ def main():
                     parts = path.split("agents/")
                     agent_id = parts[1].split("/")[0].split("?")[0] if len(parts) > 1 else ""
                     route.fulfill(json=inbox.get(agent_id, []))
+                elif "/sessions" in path:
+                    parts = path.split("agents/")
+                    agent_id = parts[1].split("/")[0].split("?")[0] if len(parts) > 1 else ""
+                    route.fulfill(json=sessions.get(agent_id, []))
                 elif path.endswith("/worktrees"): route.fulfill(json=worktrees)
                 elif "intelligence/costs" in path:
                     route.fulfill(json=costs if "task_id" not in path else {**costs, "task_id": "t1"})
@@ -232,6 +247,8 @@ def main():
             # Agent detail: overview, activity, tasks, tools, files, recovery, cost.
             page.get_by_role("button", name="Inspect agent Backend", exact=True).click()
             expect(page.get_by_text("Current work:", exact=False)).to_be_visible()
+            expect(page.get_by_text("temporal-worker · running", exact=False)).to_be_visible()
+            expect(page.get_by_text("local · ended", exact=False)).to_be_visible()
             expect(page.get_by_text("task execution started", exact=False).first).to_be_visible()
             expect(page.get_by_text("pytest · exit 1 · 40ms", exact=False)).to_be_visible()
             expect(page.get_by_text("tests/test_auth.py", exact=False).first).to_be_visible()
@@ -330,7 +347,7 @@ def main():
 
             assert not errors, errors
             print("PASS: office summary/cards/waiting-duration/recovery; bulk + agent-scoped pause; "
-                  "retry dispatch; spawn agent; create task; detail/tools/files/evidence/attribution; "
+                  "retry dispatch; spawn agent; create task; detail/sessions/tools/files/evidence/attribution; "
                   "dep map navigation; task inspector + requirement explorer; operator compose; "
                   "comms thread + detail; grouped activity with agent/task filters; symbol search to editor; "
                   "approval flow; no page errors")
