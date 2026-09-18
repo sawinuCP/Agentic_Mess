@@ -6,8 +6,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { glue } from "@typehug/en";
 
-import { categories, describeEvent, eventCategory, groupTimeline } from "../../office/selectors";
+import { categories, describeEvent, eventCategory, groupTimeline, replaySteps } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
+import ActivityReplay from "./ActivityReplay";
 
 const KIND_CLASS: Record<string, string> = {
   AGENT_: "kind-agent",
@@ -48,6 +49,7 @@ export default function TimelineTab() {
   const [agentFilter, setAgentFilter] = useState("all");
   const [taskFilter, setTaskFilter] = useState("all");
   const [failuresOnly, setFailuresOnly] = useState(false);
+  const [replaying, setReplaying] = useState(false);
   const activityFilter = useOffice((s) => s.activityFilter);
 
   // The graph's "View activity" seeds these filters; manual changes win after.
@@ -68,8 +70,26 @@ export default function TimelineTab() {
   }, [events, category, agentFilter, taskFilter, failuresOnly]);
 
   const groups = useMemo(() => groupTimeline(filtered), [filtered]);
+  // Frozen on replay entry: live arrivals must not reshuffle the script.
+  const [snapshot, setSnapshot] = useState<ReturnType<typeof replaySteps>>([]);
   const agentName = (id: string | null): string =>
     id ? (agents.find((a) => a.id === id)?.name ?? id.slice(0, 8)) : "?";
+
+  const enterReplay = (): void => {
+    setSnapshot(replaySteps(filtered));
+    setReplaying(true);
+  };
+
+  if (replaying) {
+    return (
+      <div className="stack">
+        <ActivityReplay steps={snapshot} liveTotal={filtered.length} onExit={() => setReplaying(false)} />
+        <div className="small muted pad-h">
+          {glue("Replay uses the snapshot from when it started; filters apply on exit.")}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="stack">
@@ -97,6 +117,14 @@ export default function TimelineTab() {
           onClick={() => setFailuresOnly((v) => !v)}
         >
           failures
+        </button>
+        <button
+          className="chip"
+          disabled={filtered.length === 0}
+          title={filtered.length === 0 ? "No events loaded to replay" : `Replay ${filtered.length} loaded events oldest-first`}
+          onClick={enterReplay}
+        >
+          replay
         </button>
       </div>
       {agents.length > 0 && (

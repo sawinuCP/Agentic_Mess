@@ -424,6 +424,33 @@ export function layoutDeps(tasks: TaskInfo[]): {
   return { nodes, edges, width, height };
 }
 
+// --- event replay ---------------------------------------------------------------
+
+export interface ReplayStep {
+  id: string;
+  event: EventEntry;
+  label: string;
+  agentId: string | null;
+  taskId: string | null;
+}
+
+/**
+ * Chronological replay script over the LOADED event window (newest-first in
+ * the store). Bounded by construction: replaying cannot reach history the
+ * server never sent, and the UI labels that scope everywhere it matters.
+ */
+export function replaySteps(events: EventEntry[]): ReplayStep[] {
+  return [...events]
+    .sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at))
+    .map((e) => ({
+      id: e.id,
+      event: e,
+      label: describeEvent(e),
+      agentId: e.agent_id,
+      taskId: e.task_id,
+    }));
+}
+
 // --- costs -------------------------------------------------------------------
 
 /**

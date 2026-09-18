@@ -18,6 +18,7 @@ import {
   messageSummary,
   recoveryForTask,
   recoveryState,
+  replaySteps,
   summarizeExecution,
   tasksForAgent,
   topEntries,
@@ -178,8 +179,7 @@ describe("execution summary", () => {
   });
 });
 
-describe("event description + grouping", () => {
-  it("describes events in human sentences", () => {
+describe("event description + grouping", () => {  it("describes events in human sentences", () => {
     expect(describeEvent(event({ payload: { detail: "done" } }))).toBe(
       "agent status changed: done",
     );
@@ -247,6 +247,22 @@ describe("cost attribution", () => {
     ] });
     expect(costAttribution(shared, "a1")).toEqual({ sole: false, others: 1 });
     expect(costAttribution(task(), "a1")).toEqual({ sole: false, others: 0 });
+  });
+});
+
+describe("replay script", () => {
+  it("orders oldest-first with labels and links", () => {
+    const steps = replaySteps([
+      event({ id: "new", occurred_at: "2026-09-18T10:01:00Z", event_type: "TASK_COMPLETED", task_id: "t1", agent_id: null, payload: {} }),
+      event({ id: "old", occurred_at: "2026-09-18T10:00:00Z", event_type: "AGENT_STARTED", agent_id: "a1", payload: {} }),
+    ]);
+    expect(steps.map((s) => s.id)).toEqual(["old", "new"]);
+    expect(steps[0]).toMatchObject({ label: "agent started", agentId: "a1", taskId: null });
+    expect(steps[1]).toMatchObject({ label: "task completed", agentId: null, taskId: "t1" });
+  });
+
+  it("is empty for an empty feed", () => {
+    expect(replaySteps([])).toEqual([]);
   });
 });
 

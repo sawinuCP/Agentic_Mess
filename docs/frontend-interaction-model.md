@@ -20,6 +20,17 @@ Ctrl+K / Cmd+K toggles a conditionally mounted palette. Search matches label, ca
 
 Existing Ctrl/Cmd+P and Ctrl/Cmd+S are unchanged. There is no new execution scheduler or simulated agent activity.
 
+### Activity timeline and event replay
+
+The Activity tab groups bursts ("3 × AGENT_STARTED"), filters by category /
+agent / task / failures, and navigates to recorded agents/tasks. The
+**replay** chip steps through the loaded event window oldest-first with
+play/step/speed controls: the snapshot freezes on entry, panels always show
+current state (never reconstructed history — the feed is bounded, not full
+history), new arrivals are disclosed with a re-entry note, Inspect buttons
+reuse office navigation, and reduced-motion users get step-only controls.
+Replay never auto-navigates (that would unmount itself and destroy context).
+
 ### Implemented registry (20 commands)
 
 - Workspace: Open project (includes recent list), Go to file, Search in files, Search symbols…, Show changed files.
@@ -30,7 +41,7 @@ Existing Ctrl/Cmd+P and Ctrl/Cmd+S are unchanged. There is no new execution sche
 
 Symbol search queries the existing code-intel index (`GET /api/projects/{id}/symbols`, debounced) and jumps to file:line in the existing editor; an unindexed project reports no symbols. Browsers reserve Ctrl+T, so symbol search is palette/command-only by design.
 
-Toolchain commands are NOT orchestration lifecycle controls. Timeline is the existing bounded event feed, NOT durable execution history or replay. Office is the existing sidebar, NOT the full Agent Office. Project switching is protected against dirty buffers and clears project-scoped terminal IDs.
+Toolchain commands are NOT orchestration lifecycle controls. Timeline is the existing bounded event feed, NOT durable execution history; the replay chip steps through that bounded feed oldest-first (not full-history time travel). Office is the existing sidebar, NOT the full Agent Office. Project switching is protected against dirty buffers and clears project-scoped terminal IDs.
 
 Additional task-specific commands: Start task execution, Request pause, Send resume signal, Cancel task, Retry task. Task titles/IDs identify the target; guards require unattempted pending/ready tasks with completed dependencies for start. Pause/resume target an active durable workflow. Cancel targets a non-finished task via the existing `POST /api/tasks/{id}/cancel` human-intervention endpoint (FR-014); finished tasks keep their recorded outcome and the command explains why it is unavailable. Retry targets failed tasks only via the existing execute endpoint (Temporal starts a new run under `task-exec-{id}`; recorded attempts are preserved); cancelled tasks are excluded out of respect for the human decision. Confirmation warns about tool/model use for start, checkpoint semantics for pause/resume, history preservation for cancel, and new-run semantics for retry. A signal acknowledgement is explicitly NOT represented as an authoritative paused/running state. Team buttons and palette use the same availability builder and existing POST endpoints, with pending lockout and contextual failures.
 
@@ -82,4 +93,4 @@ Complete the omitted capability list above and live reconnect/editor/terminal/or
 
 Git: prior-wave realtime files and mixed OfficeView changes remain in the working tree intentionally. Separable Wave 6 commits depend on that existing workspace baseline; they are not a standalone clean-clone release. Preserve and review the earlier-wave changes separately.
 
-No complete Agent Office, graph, replay, traceability explorer, or AI Command Center was implemented.
+No complete Agent Office, graph, traceability explorer, or AI Command Center was implemented in that increment (a scoped bounded-window event replay was added later — see "Activity timeline and event replay" above; full-history time travel and the Command Center remain future waves).

@@ -326,6 +326,21 @@ def main():
             expect(page.get_by_text("DEPENDENCY_WAIT_STARTED", exact=False)).to_be_visible()
             expect(page.get_by_text("TOOL_RUN_COMPLETED", exact=False)).to_have_count(0)
 
+            # Replay: frozen snapshot, step navigation, play/pause, exit.
+            page.get_by_role("button", name="all", exact=True).click()
+            page.get_by_role("button", name="replay", exact=True).click()
+            expect(page.get_by_text("Step 1 of 12", exact=False)).to_be_visible()
+            expect(page.get_by_text("agent created", exact=False).first).to_be_visible()
+            expect(page.get_by_role("button", name="Previous event", exact=True)).to_be_disabled()
+            page.get_by_role("button", name="Next event", exact=True).click()
+            expect(page.get_by_text("Step 2 of 12", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Play replay", exact=True).click()
+            expect(page.get_by_role("button", name="Pause replay", exact=True)).to_be_visible()
+            page.get_by_role("button", name="Pause replay", exact=True).click()
+            expect(page.get_by_role("button", name="Play replay", exact=True)).to_be_visible()
+            page.get_by_role("button", name="Exit replay", exact=True).click()
+            expect(page.get_by_text("3 × AGENT_STARTED", exact=False)).to_be_visible()
+
             # Symbol search: palette command → index lookup → editor jump.
             page.keyboard.press("Control+K")
             search_sym = page.get_by_role("combobox", name="Search commands")
@@ -349,8 +364,8 @@ def main():
             print("PASS: office summary/cards/waiting-duration/recovery; bulk + agent-scoped pause; "
                   "retry dispatch; spawn agent; create task; detail/sessions/tools/files/evidence/attribution; "
                   "dep map navigation; task inspector + requirement explorer; operator compose; "
-                  "comms thread + detail; grouped activity with agent/task filters; symbol search to editor; "
-                  "approval flow; no page errors")
+                  "comms thread + detail; grouped activity with agent/task filters; event replay; "
+                  "symbol search to editor; approval flow; no page errors")
             browser.close()
     finally:
         server.terminate()
