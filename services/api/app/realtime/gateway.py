@@ -112,6 +112,14 @@ class RealtimeGateway:
         self.active_connections = m.gauge(
             "harness_realtime_active_connections", "Currently connected SSE clients"
         )
+        self.connections_total = m.counter(
+            "harness_realtime_connections_total",
+            "SSE connections accepted (reconnects appear as new connections)",
+        )
+        self.delivery_latency = m.histogram(
+            "harness_event_delivery_latency_seconds",
+            "Envelope timestamp → gateway fan-out latency",
+        )
         self.consumer_lag = m.gauge(
             "harness_realtime_nats_consumer_lag", "JetStream consumer pending messages"
         )
@@ -147,6 +155,7 @@ class RealtimeGateway:
         )
         self._connections[conn.connection_id] = conn
         self.active_connections.set(len(self._connections))
+        self.connections_total.inc()
         return conn
 
     def unregister(self, conn: Connection) -> None:
@@ -155,6 +164,9 @@ class RealtimeGateway:
 
     def broadcast(self, envelope: EventEnvelope) -> None:
         """Fan one envelope out to matching subscribers (never blocks)."""
+        latency = _delivery_latency_seconds(envelope)
+        if latency is not None:
+            self.delivery_latency.observe(latency)
         for conn in list(self._connections.values()):
             if conn.project_key is not None and envelope.project_id != conn.project_key:
                 continue
@@ -310,6 +322,17 @@ class RealtimeGateway:
                 self._settings.nats_events_stream, self._settings.realtime_consumer_name
             )
             self.consumer_lag.set(getattr(info, "num_pending", 0) or 0)
+
+
+def _delivery_latency_seconds(envelope: EventEnvelope) -> float | None:
+    """Envelope timestamp → now (same-box clock; None when unparseable)."""
+    from datetime import datetime  # noqa: PLC0415 — trivial local import
+
+    try:
+        produced = datetime.fromisoformat(envelope.timestamp)
+    except (ValueError, TypeError):
+        return None
+    return max(0.0, (datetime.now(produced.tzinfo).timestamp() - produced.timestamp()))
 
 
 def _decode(raw: bytes) -> EventEnvelope:

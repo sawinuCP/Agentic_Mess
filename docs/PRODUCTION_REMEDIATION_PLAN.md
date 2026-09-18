@@ -126,4 +126,30 @@ stays an explicit human operation.
 | HITL EXPIRED/CANCELLED | Delivered | `timeout` documented as the expired state; `cancelled` added (`cancel_request` + `POST .../hitl/{id}/cancel`, 409 on decided); waiters treat cancel as rejection (fail-closed); covered in `test_recovery_executor.py` |
 | Automated ROLLBACK | Delivered (evidence-preserving) | Per-attempt HEAD snapshots (`snapshot_attempt_activity`); `rollback_attempt_activity` restores tracked state after preserving pre-reset HEAD on a `recovery/*` branch; wired into the merge-conflict path before integration delegation; `tests/integration/test_rollback.py` (5 tests incl. end-to-end conflict → restore → delegate) |
 | Child follow-through | Verified + proven | Debugger/replan children are born `pending` and the scheduler tick picks them up (`test_spawned_children_are_scheduler_visible`); `request_hitl` scope (last-attempt resource pressure only) retained as deliberate policy |
+
+## Wave 3 verification — 2026-09-18 (realtime event streaming audit)
+
+The Wave 3 architecture was inspected end-to-end (durable events → bridge →
+NATS → gateway → SSE → Zustand reducer) and verified intact against every
+acceptance criterion; three genuine gaps were closed:
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Live NATS path untested | Fixed | All prior realtime tests drove `gateway.broadcast` in-process; the JetStream hop (stream creation, dedup headers, durable pull consumer, decode/ack/fan-out) had zero coverage. New `tests/integration/test_realtime_nats_path.py` runs bus → live NATS → consumer → fan-out on a hermetic stream scope: 300 events / 20 agents / 3 subscribers delivered in order, plus server-side `Nats-Msg-Id` dedup proof. Load numbers (measured, local dev): 300 events → ~2–4 s end-to-end (~100 ev/s incl. consumer startup); gateway-only fan-out of 1000 events to 5 subscribers < 5 s with slow-client drops counted |
+| Missing §22 metrics | Fixed | `harness_realtime_connections_total` (accepts; reconnects appear as new connections) and `harness_event_delivery_latency_seconds` (envelope timestamp → fan-out) added to the gateway; asserted in unit + `/metrics` tests and documented |
+| Garbled architecture doc | Fixed | `docs/REALTIME_EVENTS.md` had sections out of order (backpressure split, stray paragraph) and listed unemitted event types (`AGENT_STARTED/COMPLETED/FAILED`); rewritten in canonical order with the DB-verified 48-type vocabulary |
+| Everything else | Verified intact | Canonical v1 envelope + validation; dense per-project `project_seq` (atomic upsert); SSE-over-fetch transport (bearer headers; documented decision); Wave 1 auth on the stream + project-scoped fan-out (scenario H); replay + `since` cursor + `RESYNC_REQUIRED` (scenarios D/G); reducer dedup/ordering/incremental updates (scenario F + frontend suite); polling removed (only degraded-fallback resync loop + health probe + replay clocks remain); bounded queues/retention/DLQ; 8/8 backend scenarios A–H green |
+
+Deliberate positions retained: no per-tool-start/progress frames (storm avoidance —
+completion summaries + artifact refs only); `request_hitl` scope unchanged;
+`timeout` remains the HITL expired-state name.
+
+## Wave 3 residuals completion — 2026-09-18
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Test NATS consumers accumulate | Fixed | Hermetic tests delete their durable consumer on teardown (`_delete_consumer`); stream purged per test |
+| Spurious `event_bus_disconnected` on close | Fixed | `_on_disconnected` stays quiet when `_closed` (intentional close is not an outage) |
+| No per-command tool lifecycle | Delivered (bounded) | `TOOL_STARTED`/`TOOL_COMPLETED`/`TOOL_FAILED` per shell command (≤2 frames, concise outcome + evidence refs, best-effort write); reducer treats them as timeline-only; covered backend (success + failure) and frontend (reducer) |
+| `request_hitl` scope / `timeout` name / dev-box load numbers | Retained as deliberate policy | Documented; no change |
 LSP/call-graph (deferred register); real-time collaborative editing.

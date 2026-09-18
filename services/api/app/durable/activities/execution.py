@@ -342,6 +342,34 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     else:
         slot = None  # project-less executions are not quota-tracked
 
+    async def _emit_tool_event(event_type: str, payload: dict[str, Any]) -> None:
+        """Durable tool-lifecycle event (STARTED/COMPLETED/FAILED per command).
+
+        Bounded by construction (≤2 per command, concise payload, evidence by
+        artifact id) — the anti-storm rule bans per-token/per-step frames, not
+        per-command lifecycle. Best-effort: event writes must never fail the
+        execution they describe.
+        """
+
+        def _write() -> None:
+            with factory() as session:
+                session.add(
+                    Event(
+                        event_type=event_type,
+                        source="temporal",
+                        project_id=uuid.UUID(project_id) if project_id else None,
+                        task_id=task_id,
+                        agent_id=agent_id or None,
+                        payload=payload,
+                    )
+                )
+                session.commit()
+
+        try:
+            await asyncio.to_thread(_write)
+        except Exception as exc:  # noqa: BLE001 — telemetry must not break execution
+            activity.logger.warning("tool_event_skipped error=%s", exc)
+
     try:
         for index, command in enumerate(commands):
             argv = command.split() if isinstance(command, str) else [str(c) for c in command]
@@ -356,6 +384,15 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 runtime=runtime,
             )
             try:
+                await _emit_tool_event(
+                    "TOOL_STARTED",
+                    {
+                        "tool": "shell",
+                        "command": " ".join(argv)[:500],
+                        "command_index": index,
+                        "attempt_id": input.get("attempt_id"),
+                    },
+                )
                 observation = await gateway_invoke(
                     invocation, invocation.command, store_evidence=_store_evidence
                 )
@@ -400,6 +437,19 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 activity.heartbeat()
             observations.append(observation.to_json())
             evidence_ids.extend(observation.artifact_ids)
+            await _emit_tool_event(
+                "TOOL_COMPLETED" if observation.status == "success" else "TOOL_FAILED",
+                {
+                    "tool": "shell",
+                    "command_index": index,
+                    "attempt_id": input.get("attempt_id"),
+                    "status": observation.status,
+                    "exit_code": observation.exit_code,
+                    "timed_out": observation.status == "timeout",
+                    "duration_ms": observation.duration_ms,
+                    "evidence_artifact_ids": observation.artifact_ids,
+                },
+            )
             if observation.status != "success":
                 overall = "timeout" if observation.status == "timeout" else "failed"
                 # Deterministic evidence for the classifier (§16): exit code

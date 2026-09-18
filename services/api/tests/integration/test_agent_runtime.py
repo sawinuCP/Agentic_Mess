@@ -201,3 +201,88 @@ def test_supervision_marks_stale_sessions_lost(wired: tuple[FastAPI, str, Path])
     assert result["marked_lost"] >= 1
     with app.state.session_factory() as session:
         assert session.get(AgentSession, session_id).status == "lost"
+
+
+def test_tool_lifecycle_events_bracket_each_command(
+    wired: tuple[FastAPI, str, Path],
+) -> None:
+    """Per-command TOOL_STARTED/COMPLETED(/FAILED): bounded lifecycle frames
+    (≤2 per command, concise payload, evidence by artifact id) — the allowed
+    granularity between silence and per-token storms."""
+    from app.db.models import Event
+
+    app, project_id, _tmp_path = wired
+    task_id = _create_task(app, project_id, {"command": [sys.executable, "work.py"]})
+    attempt_id = str(uuid.uuid4())
+
+    async def _flow() -> dict:
+        agent = await start_agent_activity(
+            {"task_id": task_id, "attempt_number": 1, "attempt_id": attempt_id}
+        )
+        return await agent_execute_activity(
+            {
+                "task_id": task_id,
+                "attempt_id": attempt_id,
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
+                "project_id": project_id,
+            }
+        )
+
+    result = asyncio.run(_flow())
+    assert result["outcome"] == "success", result
+    with app.state.session_factory() as session:
+        rows = session.scalars(
+            select(Event).where(
+                Event.task_id == uuid.UUID(task_id),
+                Event.event_type.in_(("TOOL_STARTED", "TOOL_COMPLETED", "TOOL_FAILED")),
+            )
+        ).all()
+        kinds = [row.event_type for row in rows]
+        assert kinds == ["TOOL_STARTED", "TOOL_COMPLETED"]
+        started, completed = (row.payload for row in rows)
+        assert started["tool"] == "shell" and started["attempt_id"] == attempt_id
+        assert "work.py" in started["command"]
+        assert completed["status"] == "success"
+        assert completed["exit_code"] == 0
+        assert all(row.agent_id for row in rows)
+
+
+def test_failed_command_emits_tool_failed(wired: tuple[FastAPI, str, Path]) -> None:
+    from app.db.models import Event
+
+    app, project_id, _tmp_path = wired
+    task_id = _create_task(
+        app,
+        project_id,
+        {"command": [sys.executable, "-c", "import sys; sys.exit(3)"]},
+    )
+    attempt_id = str(uuid.uuid4())
+
+    async def _flow() -> dict:
+        agent = await start_agent_activity(
+            {"task_id": task_id, "attempt_number": 1, "attempt_id": attempt_id}
+        )
+        return await agent_execute_activity(
+            {
+                "task_id": task_id,
+                "attempt_id": attempt_id,
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
+                "project_id": project_id,
+            }
+        )
+
+    result = asyncio.run(_flow())
+    assert result["outcome"] == "failed"
+    with app.state.session_factory() as session:
+        kinds = [
+            row.event_type
+            for row in session.scalars(
+                select(Event).where(
+                    Event.task_id == uuid.UUID(task_id),
+                    Event.event_type.in_(("TOOL_STARTED", "TOOL_COMPLETED", "TOOL_FAILED")),
+                )
+            ).all()
+        ]
+        assert kinds == ["TOOL_STARTED", "TOOL_FAILED"]

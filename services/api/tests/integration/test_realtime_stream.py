@@ -223,3 +223,5 @@ def test_metrics_endpoint_exposes_realtime_instruments(project: tuple, make_enve
     body = client.get("/metrics").text
     assert "# TYPE harness_realtime_active_connections gauge" in body
     assert "harness_events_delivered_total" in body
+    assert "harness_realtime_connections_total" in body
+    assert "harness_event_delivery_latency_seconds" in body

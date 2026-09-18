@@ -559,6 +559,18 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
 
 ## Change log
 
+- 2026-09-18 — Wave 3 residuals: hermetic NATS tests clean up their durable
+  consumers; intentional bus close no longer logs a spurious disconnect;
+  per-command tool lifecycle events (`TOOL_STARTED/COMPLETED/FAILED`, bounded,
+  timeline-only in the reducer) with backend + frontend coverage. Full suite
+  green (see validation below).
+
+- 2026-09-18 — Wave 3 realtime audit: architecture verified end-to-end against
+  all acceptance criteria; closed live-NATS-path coverage (new hermetic e2e +
+  load measurement), two missing §22 metrics, and the garbled
+  `REALTIME_EVENTS.md` (reordered, DB-verified event vocabulary). Full suite
+  green (see validation below).
+
 - 2026-09-18 — Residuals completion: DB-restart recovery proven (best-effort
   heartbeats + `pool_pre_ping`; kill-backend and container-restart-mid-workflow
   chaos tests), HITL `cancelled` state + cancel endpoint (waiters fail closed),

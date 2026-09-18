@@ -65,4 +65,26 @@ describe("event reducer", () => {
     const restored = projectionFromLists(state.agents, state.tasks, state.hitl, state.events);
     expect(restored.lastSequence).toBe(state.lastSequence);
   });
+
+  it("records tool lifecycle frames as timeline entries without touching domain state", () => {
+    const initial = empty();
+    const started = applyEnvelope(
+      initial,
+      event(1, { event_type: "TOOL_STARTED", payload: { tool: "shell", command_index: 0 } }),
+    ).projection;
+    expect(started.events).toHaveLength(1);
+    expect(started.events[0].event_type).toBe("TOOL_STARTED");
+    expect(started.agents).toBe(initial.agents);
+    expect(started.tasks).toBe(initial.tasks);
+    const finished = applyEnvelope(
+      started,
+      event(2, {
+        event_type: "TOOL_FAILED",
+        payload: { tool: "shell", status: "failed", exit_code: 1 },
+      }),
+    ).projection;
+    expect(finished.events).toHaveLength(2);
+    expect(finished.events[0].event_type).toBe("TOOL_FAILED");
+    expect(finished.agents).toBe(initial.agents);
+  });
 });

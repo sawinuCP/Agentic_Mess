@@ -110,3 +110,22 @@ def test_valid_message_fans_out_and_acks() -> None:
     assert msg.acked and not msg.naked
     assert js.published == []
     assert conn.queue.qsize() == 1
+
+
+def test_register_counts_connections_and_broadcast_measures_latency() -> None:
+    from app.core.metrics import MetricsRegistry
+
+    metrics = MetricsRegistry()
+    gw = RealtimeGateway(Settings(), metrics, bus_present=False)
+    gw.register(None)
+    gw.register(None)
+    rendered = metrics.render_prometheus()
+    assert "harness_realtime_connections_total 2.0" in rendered
+
+    envelope = EventEnvelope(
+        event_id=uuid.uuid4().hex,
+        event_type="TASK_CREATED",
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+    gw.broadcast(envelope)
+    assert "harness_event_delivery_latency_seconds" in metrics.render_prometheus()

@@ -174,6 +174,8 @@ class EventBus:
 
     async def _on_disconnected(self) -> None:
         self._connected.clear()
+        if self._closed:
+            return  # intentional close: not an outage, stay quiet
         self.errors.inc(kind="bus_disconnected")
         logger.warning("event_bus_disconnected")
 
