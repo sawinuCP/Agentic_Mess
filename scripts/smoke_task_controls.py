@@ -130,7 +130,8 @@ def main():
             page.keyboard.press("Enter")
             expect(page.locator(".command-palette")).to_have_count(0)
             assert tool_runs == [{"tool": "test"}], tool_runs
-            expect(page.get_by_role("button", name="Last test run", exact=False)).to_be_visible()
+            expect(page.locator(".status-bar").get_by_role("button", name="Last test run", exact=False)).to_be_visible()
+            expect(page.locator(".office-summary").get_by_role("button", name="Last test run", exact=False)).to_be_visible()
             note = page.get_by_role("textbox", name="Approval note: Approve local change?")
             note.fill("Reviewed locally")
             approve = page.get_by_role("button", name="Approve", exact=True)

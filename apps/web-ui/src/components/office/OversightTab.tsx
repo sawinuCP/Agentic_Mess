@@ -37,6 +37,7 @@ export default function OversightTab() {
 
   const coverage = traceability.coverage;
   const allowed = traceability.completion_allowed;
+  const requirements = traceability.requirements ?? [];
 
   return (
     <div className="stack">
@@ -47,14 +48,18 @@ export default function OversightTab() {
             <TextMorph>{allowed ? "allowed" : "blocked"}</TextMorph>
           </span>
         </div>
-        <div className="coverage-row">
-          <span className="coverage-num ok">{coverage.verified}</span>
-          <span className="muted">verified ·</span>
-          <span className="coverage-num warn">{coverage.unknown}</span>
-          <span className="muted">unknown ·</span>
-          <span className="coverage-num down">{coverage.failed}</span>
-          <span className="muted">failed · {coverage.total} total</span>
-        </div>
+        {coverage ? (
+          <div className="coverage-row">
+            <span className="coverage-num ok">{coverage.verified}</span>
+            <span className="muted">verified ·</span>
+            <span className="coverage-num warn">{coverage.unknown}</span>
+            <span className="muted">unknown ·</span>
+            <span className="coverage-num down">{coverage.failed}</span>
+            <span className="muted">failed · {coverage.total} total</span>
+          </div>
+        ) : (
+          <div className="muted small">{glue("Coverage not reported yet.")}</div>
+        )}
         {(traceability.blockers ?? []).map((blocker) => (
           <div key={blocker} className="gate-blocker">
             ⛔ {blocker}
@@ -77,7 +82,10 @@ export default function OversightTab() {
 
       <section>
         <h4 className="office-section-title muted">{glue("Requirements traceability")}</h4>
-        {traceability.requirements.map((requirement) => (
+        {requirements.length === 0 && (
+          <div className="muted small">{glue("No requirements recorded.")}</div>
+        )}
+        {requirements.map((requirement) => (
           <div key={requirement.id} className="requirement-card">
             <div className="row spread">
               <span className="strong">{requirement.title}</span>
@@ -85,7 +93,7 @@ export default function OversightTab() {
                 <TextMorph>{requirement.status}</TextMorph>
               </span>
             </div>
-            {requirement.criteria.map((criterion) => (
+            {(requirement.criteria ?? []).map((criterion) => (
               <div key={criterion.id} className="criterion-row small">
                 <span className={`state-pill tiny ${STATE_CLASS[criterion.state] ?? "muted"}`}>
                   {criterion.state}

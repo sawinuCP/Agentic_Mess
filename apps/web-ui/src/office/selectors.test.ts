@@ -6,7 +6,9 @@ import {
   agentWaitingReason,
   currentTaskForAgent,
   describeEvent,
+  elapsedSince,
   eventCategory,
+  formatDuration,
   formatTokens,
   groupTimeline,
   messageEndpoints,
@@ -18,6 +20,7 @@ import {
   topEntries,
   validCosts,
   waitingReason,
+  waitingSince,
 } from "./selectors";
 import type { CostsSummary } from "../types";
 
@@ -81,6 +84,22 @@ describe("waiting reasons", () => {
     expect(waitingReason(blocked, [blocked, dep])).toBe(
       "Waiting for Migrations (running), missing (unknown)",
     );
+  });
+
+  it("finds the recorded moment waiting started", () => {
+    const wait = event({ id: "w", event_type: "DEPENDENCY_WAIT_STARTED", task_id: "t9", occurred_at: "2026-09-18T10:01:00Z" });
+    const other = event({ id: "x", event_type: "TASK_SCHEDULED", task_id: "t9" });
+    expect(waitingSince("t9", [other, wait])).toBe("2026-09-18T10:01:00Z");
+    expect(waitingSince("t9", [other])).toBeNull();
+  });
+
+  it("formats durations and elapsed times honestly", () => {
+    expect(formatDuration(45_000)).toBe("45s");
+    expect(formatDuration(12 * 60_000)).toBe("12m");
+    expect(formatDuration(3 * 3_600_000 + 4 * 60_000)).toBe("3h 4m");
+    expect(elapsedSince(null)).toBeNull();
+    expect(elapsedSince("not-a-date")).toBeNull();
+    expect(elapsedSince("2026-09-18T10:00:00Z", Date.parse("2026-09-18T10:12:00Z"))).toBe("12m");
   });
 
   it("returns null when every dependency completed", () => {

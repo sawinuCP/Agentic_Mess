@@ -52,7 +52,7 @@ def main():
                  "request": "Add middleware", "status": "running", "priority": 1, "depends_on": [],
                  "attempts": [{"attempt_number": 1, "agent_id": "a1", "outcome": None,
                                "failure_class": None, "failure_detail": None, "evidence_artifact_ids": []}]},
-                {"id": "t2", "project_id": "p", "requirement_id": None, "title": "Integration tests",
+                {"id": "t2", "project_id": "p", "requirement_id": "r1", "title": "Integration tests",
                  "request": "Cover auth", "status": "blocked", "priority": 2, "depends_on": ["t1"],
                  "attempts": [{"attempt_number": 1, "agent_id": "a2", "outcome": None,
                                "failure_class": None, "failure_detail": None, "evidence_artifact_ids": []}]},
@@ -112,6 +112,13 @@ def main():
                           "path": "C:\\local\\.harness\\worktrees\\agent-task-1", "status": "active",
                           "integration_status": "none", "integration_position": None,
                           "created_at": "2026-09-18T10:00:00Z"}]
+            traceability = {"project_id": "p", "generated_at": "2026-09-18T10:00:00Z",
+                            "requirements": [{"id": "r1", "title": "Auth requirement", "priority": "high",
+                                              "status": "in_progress", "implemented": False, "task_ids": ["t2"],
+                                              "criteria": [], "evidence_artifact_ids": [],
+                                              "validation_evidence_artifact_ids": []}],
+                            "coverage": {"total": 1, "verified": 0, "failed": 0, "unknown": 1},
+                            "orphan_task_ids": [], "scope_drift": False}
             costs = {"invocations": 12, "total_tokens": 45000, "by_model": {"test:model": 45000},
                      "by_role": {"backend": 30000, "tester": 15000}, "task_id": None,
                      "budget_tokens_per_task": 100000}
@@ -136,7 +143,7 @@ def main():
                 elif path.endswith("/worktrees"): route.fulfill(json=worktrees)
                 elif "intelligence/costs" in path:
                     route.fulfill(json=costs if "task_id" not in path else {**costs, "task_id": "t1"})
-                elif "traceability" in path: route.fulfill(json={"requirements": []})
+                elif "traceability" in path: route.fulfill(json=traceability)
                 elif path == "healthz": route.fulfill(json={"status": "ok", "version": "test", "environment": "test"})
                 elif "toolchains" in path: route.fulfill(json={"languages": [], "diagnostics": []})
                 elif "terminal/sessions" in path: route.fulfill(status=503, json={"detail": "PTY disabled"})
@@ -151,6 +158,7 @@ def main():
             expect(page.get_by_text("Needs attention", exact=True)).to_be_visible()
             expect(page.get_by_text("3 agents · 3 tasks")).to_be_visible()
             expect(page.get_by_text("45.0k tokens")).to_be_visible()
+            expect(page.locator(".office-summary", has_text="Local")).to_be_visible()
 
             # Team: live work, waiting reason, recovery badge.
             expect(page.get_by_text("▸ Implement auth (running)")).to_be_visible()
@@ -163,6 +171,7 @@ def main():
             expect(page.get_by_text("task execution started", exact=False).first).to_be_visible()
             expect(page.get_by_text("pytest · exit 1 · 40ms", exact=False)).to_be_visible()
             expect(page.get_by_text("tests/test_auth.py", exact=False).first).to_be_visible()
+            expect(page.get_by_text("1 artifact(s)", exact=False)).to_be_visible()
             page.locator("details summary", has_text="Fix flaky test").click()
             expect(page.get_by_text("Attempt 1 failed", exact=False)).to_be_visible()
             expect(page.get_by_text("Recovery decision: retry_if_safe", exact=False)).to_be_visible()
@@ -170,6 +179,13 @@ def main():
 
             # Task inspector with dependency + owner navigation.
             page.get_by_role("button", name="Inspect task Integration tests", exact=True).click()
+            expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
+            expect(page.get_by_text("· waiting", exact=False).first).to_be_visible()
+            # Related requirement jumps to oversight coverage.
+            page.get_by_role("button", name="linked to requirement", exact=False).click()
+            expect(page.get_by_text("Auth requirement", exact=False)).to_be_visible()
+            # Back on Team the inspector selection survived the tab round-trip.
+            page.get_by_role("button", name="Team", exact=False).click()
             expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
             expect(page.get_by_text("Dependencies completed", exact=False)).to_have_count(0)
             page.get_by_role("button", name="Tester", exact=True).click()
@@ -193,6 +209,10 @@ def main():
             page.get_by_label("Filter activity by agent").select_option("a1")
             expect(page.get_by_text("TOOL_RUN_COMPLETED", exact=False)).to_be_visible()
             expect(page.get_by_text("DEPENDENCY_WAIT_STARTED", exact=False)).to_have_count(0)
+            page.get_by_label("Filter activity by agent").select_option("all")
+            page.get_by_label("Filter activity by task").select_option("t2")
+            expect(page.get_by_text("DEPENDENCY_WAIT_STARTED", exact=False)).to_be_visible()
+            expect(page.get_by_text("TOOL_RUN_COMPLETED", exact=False)).to_have_count(0)
 
             # Approval: prominent card with task link, approve refreshes.
             page.get_by_role("button", name="Team", exact=False).click()
@@ -201,9 +221,9 @@ def main():
             expect(page.get_by_text("Approve local change?", exact=False)).to_have_count(0)
 
             assert not errors, errors
-            print("PASS: office summary/cards/waiting/recovery; detail/tools/files; "
-                  "task inspector navigation; comms thread + detail; grouped activity "
-                  "with filters; approval flow; no page errors")
+            print("PASS: office summary/cards/waiting-duration/recovery; detail/tools/files/evidence; "
+                  "task inspector + requirement navigation; comms thread + detail; grouped activity "
+                  "with agent/task filters; approval flow; no page errors")
             browser.close()
     finally:
         server.terminate()

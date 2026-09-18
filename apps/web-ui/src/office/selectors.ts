@@ -49,6 +49,32 @@ export function waitingReason(task: TaskInfo, allTasks: TaskInfo[]): string | nu
   return `Waiting for ${parts.join(", ")}`;
 }
 
+/** Latest recorded moment this task started waiting (event-derived, if any). */
+export function waitingSince(taskId: string, events: EventEntry[]): string | null {
+  const started = events.find(
+    (e) => e.task_id === taskId && e.event_type === "DEPENDENCY_WAIT_STARTED",
+  );
+  return started ? started.occurred_at : null;
+}
+
+/** Compact duration: 45s, 12m, 3h 4m. Negative/clamped to zero. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+/** Elapsed time since an ISO timestamp, or null when unparseable. */
+export function elapsedSince(iso: string | null, nowMs = Date.now()): string | null {
+  if (!iso) return null;
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return null;
+  return formatDuration(nowMs - parsed);
+}
+
 /** Agent-level waiting line via its current task. */
 export function agentWaitingReason(
   agentId: string,

@@ -42,19 +42,22 @@ function isFailure(eventType: string, payload: Record<string, unknown>): boolean
 export default function TimelineTab() {
   const events = useOffice((s) => s.events);
   const agents = useOffice((s) => s.agents);
+  const tasks = useOffice((s) => s.tasks);
   const setOffice = useOffice((s) => s.set);
   const [category, setCategory] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
+  const [taskFilter, setTaskFilter] = useState("all");
   const [failuresOnly, setFailuresOnly] = useState(false);
 
   const filtered = useMemo(() => {
     return events.filter((e) => {
       if (category !== "all" && eventCategory(e.event_type) !== category) return false;
       if (agentFilter !== "all" && e.agent_id !== agentFilter) return false;
+      if (taskFilter !== "all" && e.task_id !== taskFilter) return false;
       if (failuresOnly && !isFailure(e.event_type, e.payload)) return false;
       return true;
     });
-  }, [events, category, agentFilter, failuresOnly]);
+  }, [events, category, agentFilter, taskFilter, failuresOnly]);
 
   const groups = useMemo(() => groupTimeline(filtered), [filtered]);
   const agentName = (id: string | null): string =>
@@ -66,7 +69,7 @@ export default function TimelineTab() {
         <button
           className={`chip ${category === "all" && !failuresOnly ? "active" : ""}`}
           aria-pressed={category === "all" && !failuresOnly}
-          onClick={() => { setCategory("all"); setFailuresOnly(false); }}
+          onClick={() => { setCategory("all"); setFailuresOnly(false); setAgentFilter("all"); setTaskFilter("all"); }}
         >
           all
         </button>
@@ -100,6 +103,22 @@ export default function TimelineTab() {
             <option value="all">all agents</option>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {tasks.length > 0 && (
+        <label className="small muted row gap4">
+          Task
+          <select
+            className="text-input small"
+            value={taskFilter}
+            aria-label="Filter activity by task"
+            onChange={(e) => setTaskFilter(e.target.value)}
+          >
+            <option value="all">all tasks</option>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>{t.title}</option>
             ))}
           </select>
         </label>

@@ -16,11 +16,13 @@ import {
   agentWaitingReason,
   currentTaskForAgent,
   describeEvent,
+  elapsedSince,
   lastAgentEvent,
   recoveryForTask,
   recoveryState,
   tasksForAgent,
   waitingReason,
+  waitingSince,
 } from "../../office/selectors";
 import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
@@ -99,6 +101,7 @@ function TaskInspector({ task, allTasks, agents, events }: {
   const setOffice = useOffice((s) => s.set);
   const owners = [...new Set(task.attempts.map((a) => a.agent_id).filter(Boolean))] as string[];
   const deps = waitingReason(task, allTasks);
+  const waitedMs = waitingSince(task.id, events);
   const steps = recoveryForTask(task, events);
   const evidence = [...new Set(task.attempts.flatMap((a) => a.evidence_artifact_ids))];
 
@@ -107,10 +110,25 @@ function TaskInspector({ task, allTasks, agents, events }: {
       {task.request && <p className="small">{task.request}</p>}
       <div className="small muted">
         priority {task.priority}
-        {task.requirement_id ? " · linked to requirement" : " · no requirement link"}
+        {task.requirement_id ? (
+          <>
+            {" · "}
+            <button
+              className="link"
+              title="Open requirement coverage"
+              onClick={() => setOffice({ tab: "oversight" })}
+            >
+              linked to requirement
+            </button>
+          </>
+        ) : (
+          " · no requirement link"
+        )}
       </div>
       {deps ? (
-        <p className="small warn">⏳ {deps}</p>
+        <p className="small warn">
+          ⏳ {deps}{waitedMs && elapsedSince(waitedMs) ? ` · waiting ${elapsedSince(waitedMs)}` : ""}
+        </p>
       ) : (
         task.depends_on.length > 0 && <p className="small muted">Dependencies completed ✓</p>
       )}
@@ -254,6 +272,7 @@ export default function TeamTab() {
           );
           const recovery = recoveryState(task, events);
           const waiting = task.status === "blocked" ? waitingReason(task, tasks) : null;
+          const waitedMs = task.status === "blocked" ? waitingSince(task.id, events) : null;
           const actions = available.filter((c) => c.id.startsWith(`task.${task.id}.`));
           const expanded = selectedTaskId === task.id;
           return (
@@ -269,7 +288,11 @@ export default function TeamTab() {
                 </button>
                 <StatusLabel state={task.status} />
               </div>
-              {waiting && <div className="small warn pad-h">⏳ {waiting}</div>}
+              {waiting && (
+                <div className="small warn pad-h">
+                  ⏳ {waiting}{waitedMs && elapsedSince(waitedMs) ? ` · waiting ${elapsedSince(waitedMs)}` : ""}
+                </div>
+              )}
               {recovery && (
                 <div className="pad-h">
                   <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>

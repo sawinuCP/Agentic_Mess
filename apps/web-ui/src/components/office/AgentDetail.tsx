@@ -9,6 +9,7 @@ import { glue } from "@typehug/en";
 import {
   currentTaskForAgent,
   describeEvent,
+  elapsedSince,
   firstAgentEvent,
   formatTokens,
   recoveryForTask,
@@ -82,6 +83,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
 
   const activity = events.filter((e) => e.agent_id === agent.id).slice(0, 8);
   const since = firstAgentEvent(events, agent.id);
+  const activeFor = since ? elapsedSince(since.occurred_at) : null;
   const agentMessages = messages
     .filter((m) => m.sender_agent_id === agent.id || m.recipient_agent_id === agent.id)
     .slice(0, 10);
@@ -95,6 +97,13 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
     toolRuns.map((e) => e.payload.path).filter((p): p is string => typeof p === "string"),
   )].slice(0, 10);
   const evidenceIds = [...new Set(owned.flatMap((t) => t.attempts.flatMap((a) => a.evidence_artifact_ids)))];
+  const validationEvents = events.filter(
+    (e) =>
+      (e.task_id !== null && ownedIds.has(e.task_id)) &&
+      (e.event_type.startsWith("REVIEW_") ||
+        e.event_type.startsWith("DECISION_") ||
+        e.event_type === "SECURITY_SCAN_COMPLETED"),
+  ).slice(0, 6);
   const recoveryTasks = owned.filter((t) => recoveryForTask(t, events).length > 0);
   const depLines = owned
     .filter((t) => !["completed", "cancelled", "failed"].includes(t.status))
@@ -135,6 +144,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           </span>
           <span className="muted">
             Active since: {since ? new Date(since.occurred_at).toLocaleString() : "first recorded event not in feed"}
+            {activeFor ? ` (active for ${activeFor})` : ""}
           </span>
           {agent.capabilities.length > 0 && (
             <span className="muted">Capabilities: {agent.capabilities.join(", ")}</span>
@@ -191,7 +201,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
       </Section>
 
       <Section title="Files">
-        {toolPaths.length === 0 && evidenceIds.length === 0 && (
+        {toolPaths.length === 0 && (
           <div className="muted small">No touched files recorded.</div>
         )}
         {toolPaths.map((path) => (
@@ -202,9 +212,27 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
             </button>
           </div>
         ))}
-        {evidenceIds.length > 0 && (
-          <div className="small muted">{evidenceIds.length} evidence artifact(s) recorded</div>
+      </Section>
+
+      <Section title="Evidence">
+        {evidenceIds.length === 0 && validationEvents.length === 0 && (
+          <div className="muted small">No tests, artifacts, or validation evidence recorded.</div>
         )}
+        {evidenceIds.length > 0 && (
+          <div className="small">
+            {evidenceIds.length} artifact(s):{" "}
+            <span className="mono muted">
+              {evidenceIds.slice(0, 8).map((id) => id.slice(0, 8)).join(", ")}
+              {evidenceIds.length > 8 ? "…" : ""}
+            </span>
+          </div>
+        )}
+        {validationEvents.map((e) => (
+          <div key={e.id} className="small" title={new Date(e.occurred_at).toLocaleString()}>
+            <span className="mono muted">{new Date(e.occurred_at).toLocaleTimeString()}</span>{" "}
+            {describeEvent(e)}
+          </div>
+        ))}
       </Section>
 
       <Section title="Dependencies">
@@ -257,7 +285,10 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
       </Section>
 
       <Section title="Cost">
-        <div className="small muted">Per-agent token accounting is not exposed by the backend.</div>
+        <div className="small muted">
+          Per-agent token accounting is not exposed by the backend; recorded
+          cost in USD is not exposed by the costs endpoint either.
+        </div>
         {owned.map((t) => {
           const summary = validCosts(taskCosts[t.id]) ? taskCosts[t.id] : null;
           if (!summary) return null;

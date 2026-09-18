@@ -48,6 +48,8 @@ const CONNECTION_CLASS: Record<string, string> = {
 
 export default function OfficeView() {
   const project = useStore((s) => s.project);
+  const lastRun = useStore((s) => s.output);
+  const setWorkspace = useStore((s) => s.set);
   const officeProjectId = useOffice((s) => s.projectId);
   const tab = useOffice((s) => s.tab);
   const connectionState = useOffice((s) => s.connectionState);
@@ -122,6 +124,7 @@ export default function OfficeView() {
         )}
       </div>
       <div className="office-summary" role="status" aria-label="Execution summary">
+        <span className="strong small" title={project.root_path}>{project.name}</span>
         <span className={`state-pill ${summary.tone}`} title={`${summary.running} running · ${summary.waiting} waiting · ${summary.failed} failed · ${summary.total} total`}>
           {summary.label}
         </span>
@@ -137,6 +140,17 @@ export default function OfficeView() {
           <span className="small muted" title={topRole ? `top role ${topRole[0]}: ${topRole[1]} tokens` : "model token usage"}>
             {formatTokens(costData.total_tokens)} tokens
           </span>
+        )}
+        {lastRun && (
+          <button
+            className="status-item clickable small"
+            title={lastRun.command.length > 0 ? `$ ${lastRun.command.join(" ")}` : "Show tool output"}
+            aria-label={`Last ${lastRun.tool} run: exit ${lastRun.exit_code ?? "unknown"}. Show tool output.`}
+            onClick={() => setWorkspace({ panelOpen: true, panelTab: "output" })}
+          >
+            <span className={`status-dot ${lastRun.exit_code === 0 ? "ok" : "down"}`} aria-hidden="true" />{" "}
+            {lastRun.tool} {lastRun.exit_code === 0 ? "✓" : `✗ ${lastRun.exit_code ?? "—"}`}
+          </button>
         )}
       </div>
       {notice && (

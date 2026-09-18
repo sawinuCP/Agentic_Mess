@@ -99,7 +99,10 @@ gap (see §8). The Office never invents them.
   messaging from the UI would fake provenance — explicitly out of scope.
 - `AgentDetail` (new) — lazy sections: Overview, Activity, Tasks, Tools,
   Files, Dependencies, Communication, Recovery, Evidence, Cost. Messages,
-  worktrees, and costs fetch on first open only.
+  worktrees, and costs fetch on first open only. Message detail shows payload
+  *keys*, never values: payloads may carry secrets and there is no backend
+  field marking them safe (§22). Requirement jumps land on the existing
+  Oversight tab (no duplicate pages).
 - Reused Wave 6: `StatusLabel` tones, `UiState`, `useDialogFocus`,
   `ViewBoundary`, resizable/persisted panels, command palette (plus an "Open
   communication" navigation command).
@@ -153,3 +156,10 @@ ARIA soup.
    actions remain where they are valid. Bulk signals would invent semantics.
 7. `TaskOut` omits `constraints/acceptance_criteria/allowed_tools/deadline`
    — detail shows `request/expected_output/priority/retry_policy` only.
+8. Events carry no `requirement_id`, so the Activity view filters by agent
+   and task but not by requirement; requirement navigation jumps to the
+   Oversight tab instead.
+9. The Office is sidebar-hosted: the single-column layout with
+   selection-preserving detail *is* the narrow transformation. A large-screen
+   three-column (Agents | Activity | Detail) arrangement needs a shell
+   rework and is deferred — not a Wave 7 regression, an explicit constraint.
