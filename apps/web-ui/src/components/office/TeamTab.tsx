@@ -4,12 +4,13 @@ import { useMemo, useRef, useState } from "react";
 import { taskCommands, type TaskAction } from "../../commands/taskCommands";
 import { errorMessage } from "../../api/errors";
 import { glue } from "@typehug/en";
-import { controlTask } from "../../api/client";
+import { cancelTask, controlTask } from "../../api/client";
 import { useOffice } from "../../state/officeStore";
 import { StatusLabel } from "../shell/UiState";
 
 const ACTION_LABELS: Record<TaskAction, string> = {
   execute: "Start execution", pause: "Request pause", resume: "Send resume signal",
+  cancel: "Cancel task",
 };
 
 export default function TeamTab() {
@@ -31,14 +32,21 @@ export default function TeamTab() {
     if (!current || current.disabledReason) return;
     if (!window.confirm(action === "execute"
       ? "Start this task? This may run tools and use configured model providers."
-      : `Send ${action} signal? The workflow applies it at a safe checkpoint.`)) return;
+      : action === "cancel"
+        ? "Cancel this task? Its history is preserved and the status becomes cancelled."
+        : `Send ${action} signal? The workflow applies it at a safe checkpoint.`)) return;
     inFlight.current = true;
     setPending(current.id);
     setControlError(null);
     setFeedback(null);
     try {
-      await controlTask(taskId, action);
+      if (action === "cancel") {
+        await cancelTask(taskId);
+      } else {
+        await controlTask(taskId, action);
+      }
       setFeedback(action === "execute" ? "Execution request accepted. Refreshing task state."
+        : action === "cancel" ? "Cancellation recorded. Refreshing task state."
         : `${action} signal sent. The workflow applies it at a safe checkpoint.`);
       await refresh();
     } catch (err) {

@@ -31,6 +31,15 @@ def main():
             page.on("pageerror", lambda e: errors.append(e.stack or str(e)))
             page.on("dialog", lambda dialog: dialog.accept())
             decisions = []
+            tool_runs = []
+            toolchains = {"languages": [{"id": "py", "name": "Python", "monaco_language": "python",
+                                          "manifests": [], "file_count": 1, "tools": ["test"],
+                                          "availability": {}}],
+                          "diagnostics": [], "override_file": False}
+            tool_result = {"language": "Python", "tool": "test", "command": ["pytest", "-q"],
+                           "exit_code": 0, "timed_out": False, "truncated": False,
+                           "duration_ms": 12, "stdout": "1 passed", "stderr": "",
+                           "diagnostics": [], "file_content": None}
             approvals = [{"id": "h", "task_id": "t", "status": "pending", "risk": "high",
                           "kind": "approval", "question": "Approve local change?", "choices": []}]
             task = {"id": "t", "project_id": "p", "requirement_id": None, "title": "Local task",
@@ -53,7 +62,10 @@ def main():
                     route.fulfill(content_type="text/event-stream", body='data: {"kind":"GATEWAY_STATUS","state":"live"}\n\n')
                 elif "traceability" in path: route.fulfill(json={"requirements": []})
                 elif path == "healthz": route.fulfill(json={"status": "ok", "version": "test", "environment": "test"})
-                elif "toolchains" in path: route.fulfill(json={"languages": [], "diagnostics": []})
+                elif path.endswith("toolchains/run"):
+                    tool_runs.append(route.request.post_data_json)
+                    route.fulfill(json=tool_result)
+                elif "toolchains" in path: route.fulfill(json=toolchains)
                 elif "terminal/sessions" in path: route.fulfill(status=503, json={"detail": "PTY disabled in fixture"})
                 elif "git/status" in path: route.fulfill(json={"branch": "main", "entries": []})
                 else: route.fulfill(json=[])
@@ -99,6 +111,26 @@ def main():
             expect(search).to_have_count(0)
             assert requests == [("POST", "tasks/t/execute"), ("POST", "tasks/t/pause"),
                 ("POST", "tasks/t/resume"), ("POST", "tasks/t/resume"), ("POST", "tasks/t/pause")], requests
+            # Cancellation is a terminal human intervention: confirm, POST the
+            # real cancel endpoint, then show the recorded outcome.
+            cancel = page.get_by_role("button", name="Cancel task: Local task", exact=True)
+            expect(cancel).to_be_enabled()
+            cancel.click()
+            assert requests[-1] == ("POST", "tasks/t/cancel"), requests
+            task["status"] = "cancelled"
+            held.pop(0).fulfill(json=task)
+            expect(page.get_by_text("Cancellation recorded.", exact=False)).to_be_visible()
+            expect(cancel).to_be_disabled()
+            expect(cancel).to_have_attribute("title", "Task is already finished")
+            # A real toolchain run through the palette surfaces its status in
+            # the shell: project test status becomes visible app-wide.
+            page.keyboard.press("Control+K")
+            search_run = page.get_by_role("combobox", name="Search commands")
+            search_run.fill("Run tests")
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_have_count(0)
+            assert tool_runs == [{"tool": "test"}], tool_runs
+            expect(page.get_by_role("button", name="Last test run", exact=False)).to_be_visible()
             note = page.get_by_role("textbox", name="Approval note: Approve local change?")
             note.fill("Reviewed locally")
             approve = page.get_by_role("button", name="Approve", exact=True)
@@ -117,7 +149,7 @@ def main():
             assert [d["decision"] for d in decisions] == ["approved", "rejected"]
             assert all(d["note"] == "Reviewed locally" for d in decisions)
             assert not errors, errors
-            print("PASS: TeamTab + palette task adapters; pending/403/retry; approval note, lockout, failure and reject refresh; no page errors")
+            print("PASS: TeamTab + palette task adapters incl. cancel; pending/403/retry; palette test run with shell status; approval note, lockout, failure and reject refresh; no page errors")
             browser.close()
     finally:
         server.terminate()

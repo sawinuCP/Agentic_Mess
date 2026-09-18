@@ -7,7 +7,7 @@ describe("task commands", () => {
   it("exposes real actions and unique task-scoped IDs", async () => {
     const control = vi.fn().mockResolvedValue(undefined);
     const commands = taskCommands([task, { ...task, id: "other" }], control);
-    expect(new Set(commands.map((c) => c.id)).size).toBe(6);
+    expect(new Set(commands.map((c) => c.id)).size).toBe(8);
     await commands[0].run();
     expect(control).toHaveBeenCalledWith("t", "execute");
   });
@@ -20,5 +20,20 @@ describe("task commands", () => {
     expect(commands[0].disabledReason).toBeTruthy();
     expect(commands[1].disabledReason).toBeUndefined();
     expect(commands[2].disabledReason).toBeUndefined();
+  });
+  it("offers cancellation for live tasks and blocks it for finished ones", async () => {
+    const control = vi.fn().mockResolvedValue(undefined);
+    const running = taskCommands([{ ...task, status: "running" }], control);
+    const cancel = running.find((c) => c.id === "task.t.cancel");
+    expect(cancel?.label).toContain("Cancel task");
+    expect(cancel?.disabledReason).toBeUndefined();
+    await cancel?.run();
+    expect(control).toHaveBeenCalledWith("t", "cancel");
+    for (const status of ["completed", "cancelled", "failed"]) {
+      const finished = taskCommands([{ ...task, status }], vi.fn());
+      expect(finished.find((c) => c.id === "task.t.cancel")?.disabledReason).toBe(
+        "Task is already finished",
+      );
+    }
   });
 });

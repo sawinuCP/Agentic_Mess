@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../../state/store";
-import { controlTask } from "../../api/client";
+import { cancelTask, controlTask } from "../../api/client";
 import { errorMessage } from "../../api/errors";
 import { taskCommands } from "../../commands/taskCommands";
 import { runningAgents, useOffice } from "../../state/officeStore";
@@ -63,6 +63,7 @@ export default function CommandPalette() {
           hasFormatter:
             toolchains?.languages.some((l) => l.tools.includes("format")) ?? false,
           hasRunner: toolchains?.languages.some((l) => l.tools.includes("run")) ?? false,
+          hasBuilder: toolchains?.languages.some((l) => l.tools.includes("build")) ?? false,
           activeFilePath:
             tabs.find((t) => t.kind === "file" && t.path === activePath && !t.isBinary)
               ?.path ?? null,
@@ -91,8 +92,15 @@ export default function CommandPalette() {
       if (current?.disabledReason) throw new Error(current.disabledReason);
       const message = action === "execute"
         ? `Start execution of ${task.title}? This may run tools and use configured model providers.`
-        : `Send ${action} to ${task.title}? Acknowledgement does not mean the workflow has reached a checkpoint.`;
+        : action === "cancel"
+          ? `Cancel ${task.title}? Its history is preserved and the status becomes cancelled.`
+          : `Send ${action} to ${task.title}? Acknowledgement does not mean the workflow has reached a checkpoint.`;
       if (!window.confirm(message)) return;
+      if (action === "cancel") {
+        await cancelTask(id);
+        useStore.getState().set({ notice: `Task cancelled: ${task.title}. Follow its recorded state in Office.` });
+        return;
+      }
       await controlTask(id, action);
       useStore.getState().set({ notice: action === "execute"
         ? `Execution dispatch acknowledged for ${task.title}. Follow its recorded state in Office.`

@@ -36,6 +36,7 @@ export default function StatusBar() {
   }, []);
 
   const dirtyCount = useStore((s) => s.tabs.filter((t) => t.kind === "file" && t.content !== t.savedContent).length);
+  const output = useStore((s) => s.output);
   const languages = toolchains?.languages.map((l) => l.name).slice(0, 3) ?? [];
   const agents = useOffice((s) => s.agents);
   const pendingHitl = useOffice((s) => s.hitl.length);
@@ -56,6 +57,20 @@ export default function StatusBar() {
       {dirtyCount > 0 && <span className="status-item warn">{dirtyCount} unsaved</span>}
       <OfficeConnectionStatus />
       <OfficeResyncAction />
+      {output && (
+        <button
+          className="status-item clickable"
+          title={output.command.length > 0 ? `$ ${output.command.join(" ")}` : "Show tool output"}
+          aria-label={`Last ${output.tool} run: exit ${output.exit_code ?? "unknown"}. Show tool output.`}
+          onClick={() => setFn({ panelOpen: true, panelTab: "output" })}
+        >
+          <span
+            className={`status-dot ${output.exit_code === 0 ? "ok" : "down"}`}
+            aria-hidden="true"
+          />{" "}
+          {output.tool} {output.exit_code === 0 ? "✓" : `✗ ${output.exit_code ?? "—"}`}
+        </button>
+      )}
       {(running > 0 || pendingHitl > 0) && (
         <button
           className="status-item clickable office-status"

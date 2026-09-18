@@ -16,6 +16,7 @@ const ctxFull = {
   hasLinter: true,
   hasFormatter: true,
   hasRunner: true,
+  hasBuilder: true,
   activeFilePath: "src/app.ts",
 };
 
@@ -25,6 +26,7 @@ const ctxEmpty = {
   hasLinter: false,
   hasFormatter: false,
   hasRunner: false,
+  hasBuilder: false,
   activeFilePath: null,
 };
 
@@ -71,7 +73,7 @@ describe("buildCommands", () => {
 
   it("explains missing tools for file-bound commands", () => {
     const commands = buildCommands(
-      { ...ctxFull, hasFormatter: false, hasTestRunner: false },
+      { ...ctxFull, hasFormatter: false, hasTestRunner: false, hasBuilder: false },
       makeActions(),
     );
     expect(commands.find((c) => c.id === "execution.format-file")?.disabledReason).toBe(
@@ -80,6 +82,18 @@ describe("buildCommands", () => {
     expect(commands.find((c) => c.id === "execution.run-tests")?.disabledReason).toBe(
       "No test runner detected",
     );
+    expect(commands.find((c) => c.id === "execution.build")?.disabledReason).toBe(
+      "No build system detected",
+    );
+  });
+
+  it("runs the build tool when a builder is detected", () => {
+    const actions = makeActions();
+    const commands = buildCommands(ctxFull, actions);
+    const build = commands.find((c) => c.id === "execution.build");
+    expect(build?.disabledReason).toBeUndefined();
+    build?.run();
+    expect(actions.runTool).toHaveBeenCalledWith("build");
   });
 
   it("requires an active file for file-bound commands", () => {

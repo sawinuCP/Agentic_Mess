@@ -223,10 +223,15 @@ export const listTasks = (projectId: string) =>
   request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);
 
 // Existing durable task endpoints. Signal acknowledgement is NOT a state change.
+// Cancellation (FR-014) is a direct human intervention: it marks the task
+// cancelled without destroying its history and returns the updated task.
 export const controlTask = (taskId: string, action: "execute" | "pause" | "resume") =>
   request<{ started: boolean; workflow_id: string } | void>(
     `/api/tasks/${enc(taskId)}/${action}`, { method: "POST" },
   );
+
+export const cancelTask = (taskId: string) =>
+  request<TaskInfo>(`/api/tasks/${enc(taskId)}/cancel`, { method: "POST" });
 
 export const listRequirements = (projectId: string) =>
   request<RequirementInfo[]>(`/api/projects/${projectId}/requirements`);

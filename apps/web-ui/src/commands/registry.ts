@@ -4,8 +4,9 @@
 // suite. Every command maps to an existing real frontend action and checks
 // availability with a disabled reason. Commands that would require backend
 // capabilities the client does not expose (per-agent pause/resume/stop, task
-// creation, execution start/stop, symbol search, settings/runtime views) are
-// deliberately absent — see docs/frontend-interaction-model.md.
+// creation, workspace symbol search, settings/runtime views) are deliberately
+// absent — see docs/frontend-interaction-model.md. Task-level stop is covered
+// separately by taskCommands ("Cancel task" via POST /api/tasks/{id}/cancel).
 
 import type { ViewId } from "../state/store";
 
@@ -28,6 +29,7 @@ export interface CommandContext {
   hasLinter: boolean;
   hasFormatter: boolean;
   hasRunner: boolean;
+  hasBuilder: boolean;
   activeFilePath: string | null;
 }
 
@@ -135,6 +137,18 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
           : "No test runner detected"
         : NO_PROJECT,
       run: () => a.runTool("test"),
+    },
+    {
+      id: "execution.build",
+      label: "Run build",
+      category: "Execution",
+      keywords: ["build", "compile", "package"],
+      disabledReason: ctx.hasProject
+        ? ctx.hasBuilder
+          ? undefined
+          : "No build system detected"
+        : NO_PROJECT,
+      run: () => a.runTool("build"),
     },
     {
       id: "execution.show-output",

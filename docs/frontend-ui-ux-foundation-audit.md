@@ -44,6 +44,10 @@ Extensive uncommitted earlier-wave work exists: preserve it, never stage whole r
 
 Implemented: token layer; searchable palette; App-owned monitoring; offline precedence and snapshot notices; resizable/collapsible persisted panels; retained terminal mounts and ResizeObserver cleanup; dirty-switch/beforeunload guards; project-scoped response checks; duplicate-tab prevention; focus-managed dialogs; view error boundaries; approval pending/error feedback; task execute/pause/resume adapters; granular Explorer selectors and keyboard buttons. The resize separator uses dedicated resize-sidebar/resize-bottom classes to avoid colliding with sidebar layout rules. See frontend-interaction-model.md for limitations and the exact acceptance results. No backend orchestration behavior was changed in this wave.
 
+## Follow-up increment (2026-09-18)
+
+Closed three remaining foundation gaps without backend changes: `execution.build` palette command (existing toolchain endpoint, builder-detected guard); task "Cancel task" in TeamTab and palette via existing FR-014 cancel endpoint (non-finished tasks only, finished tasks keep recorded outcome); last-toolchain-run status in the shell status bar (recorded result + output-panel action, never a live-progress claim). Vitest 35 → 37, task-controls smoke extended for cancel and shell run status; typecheck/lint/palette/shell smokes green. Retry of failed tasks, durable execution history, task creation, agent lifecycle commands, symbol search, and problems/runtime/settings views remain explicit gaps (no safe contract or no placeholder policy).
+
 ## Validation plan
 
 First fix: deterministic Python Playwright using intercepted project/initialization APIs and submitted-path assertions, no backend/model calls. Run Vitest, TypeScript, lint, production build. Extend browser coverage for palette search/focus/disabled actions, dialogs, desktop/narrow layout, connection transitions, terminal retention and approvals when implemented. Mocked tests do not replace live smokes. Record unfinished work explicitly. Light theme not applicable.
