@@ -391,6 +391,55 @@ export const searchSymbols = (projectId: string, q: string, limit = 50) =>
     `/api/projects/${projectId}/symbols?q=${enc(q)}&limit=${limit}`,
   );
 
+export const fileSymbols = (projectId: string, path: string) =>
+  request<SymbolInfo[]>(`/api/projects/${projectId}/symbols/file?path=${enc(path)}`);
+
+export interface RetrievalHit {
+  path: string;
+  name: string;
+  kind: string;
+  start_line: number;
+  end_line: number;
+  signature: string | null;
+  score: number;
+  matched: string;
+}
+
+export const retrieveRelated = (projectId: string, q: string, k = 6) =>
+  request<{ query: string; hits: RetrievalHit[] }>(
+    `/api/projects/${projectId}/intelligence/retrieve?q=${enc(q)}&k=${k}`,
+  );
+
+export interface ResearchResult {
+  title: string;
+  url: string;
+  source: string;
+}
+
+export const researchSearch = (projectId: string, query: string, maxResults = 5) =>
+  request<{ query: string; results: ResearchResult[] }>(
+    `/api/projects/${projectId}/research/search`,
+    { method: "POST", body: JSON.stringify({ query, max_results: maxResults }) },
+  );
+
+export interface ResearchFetch {
+  url: string;
+  final_url: string;
+  title: string;
+  fetched_at: string;
+  sha256: string;
+  excerpt: string;
+  artifact_id: string;
+  context_item_id: string;
+  confidence: number;
+}
+
+export const researchFetch = (projectId: string, url: string, note?: string) =>
+  request<ResearchFetch>(`/api/projects/${projectId}/research/fetch`, {
+    method: "POST",
+    body: JSON.stringify({ url, note }),
+  });
+
 // --- diagnostics (Phase 10) -----------------------------------------------
 
 export interface DiagnosticsReport {

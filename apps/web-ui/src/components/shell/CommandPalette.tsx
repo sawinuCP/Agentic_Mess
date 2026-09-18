@@ -25,6 +25,8 @@ export default function CommandPalette() {
   const toolchains = useStore((s) => s.toolchains);
   const tabs = useStore((s) => s.tabs);
   const activePath = useStore((s) => s.activePath);
+  const selection = useStore((s) => s.selection);
+  const output = useStore((s) => s.output);
   const setFn = useStore((s) => s.set);
   const runTool = useStore((s) => s.runTool);
   const openTerminal = useStore((s) => s.createTerminal);
@@ -67,12 +69,20 @@ export default function CommandPalette() {
           activeFilePath:
             tabs.find((t) => t.kind === "file" && t.path === activePath && !t.isBinary)
               ?.path ?? null,
+          hasSelection: selection !== null,
+          hasFailure:
+            (output?.exit_code !== null && output?.exit_code !== undefined && output.exit_code !== 0) ||
+            tasks.some((t) => t.status === "failed"),
         },
         {
           setView: (view) => setFn({ view, sidebarOpen: true }),
           setOfficeTab: (tab) => setOffice({ tab }),
           openQuickOpen: () => setFn({ quickOpen: true }),
           openSymbolSearch: () => setFn({ symbolSearch: true }),
+          openCommandCenter: (prefill) => {
+            if (prefill) setFn({ centerPrefill: prefill });
+            setFn({ view: "command", sidebarOpen: true });
+          },
           openSpawnDialog: () => {
             setFn({ view: "office", sidebarOpen: true });
             setOffice({ tab: "team", spawnDialog: true });
@@ -88,7 +98,7 @@ export default function CommandPalette() {
           runTool: (tool, path) => runTool(tool, path),
         },
       ),
-    [project, toolchains, tabs, activePath, setFn, setOffice, runTool, openTerminal],
+    [project, toolchains, tabs, activePath, selection, output, tasks, setFn, setOffice, runTool, openTerminal],
   );
 
   const executionCommands = useMemo(() => taskCommands(
@@ -171,7 +181,12 @@ export default function CommandPalette() {
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      execute(filtered[selected]);
+      // Recompute from the live input value: the highlighted index can lag a
+      // fast keystroke behind the rendered list, which would run the wrong
+      // command (or nothing). The DOM value is always current.
+      const live = (event.target as HTMLInputElement).value;
+      const fresh = filterCommands([...commands, ...executionCommands], live);
+      execute(fresh[firstSelectable(fresh)] ?? undefined);
     }
   };
 

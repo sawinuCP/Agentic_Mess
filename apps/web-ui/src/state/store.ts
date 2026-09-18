@@ -3,11 +3,12 @@
 import { create } from "zustand";
 
 import * as api from "../api/client";
+import type { CenterEntry } from "../command/types";
 import type { GitStatus, ProjectInfo, ProjectToolchains, ToolRunResult, TreeNode } from "../types";
 import { monacoLanguageFor } from "../util/languages";
 import { readLayout, saveLayout } from "./layout";
 
-export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" | "history";
+export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" | "history" | "command";
 
 export interface FileTab {
   kind: "file";
@@ -27,6 +28,15 @@ export interface DiffTab {
 }
 
 export type Tab = FileTab | DiffTab;
+
+export interface EditorSelection {
+  path: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  text: string;
+}
 
 interface AppState {
   project: ProjectInfo | null;
@@ -51,6 +61,12 @@ interface AppState {
   projectDialog: boolean;
   diagnosticsOpen: boolean;
   output: ToolRunResult | null;
+  selection: EditorSelection | null;
+  centerPrefill: string | null;
+  centerEntries: CenterEntry[];
+  centerReq: string;
+  centerTask: string;
+  centerAgent: string;
 
   openProject: (rootPath: string) => Promise<void>;
   refreshToolchains: () => Promise<void>;
@@ -92,6 +108,12 @@ export const useStore = create<AppState>((set, get) => ({
   projectDialog: false,
   diagnosticsOpen: false,
   output: null,
+  selection: null,
+  centerPrefill: null,
+  centerEntries: [],
+  centerReq: "",
+  centerTask: "",
+  centerAgent: "",
 
   set: (partial) => set(partial),
 
@@ -107,7 +129,8 @@ export const useStore = create<AppState>((set, get) => ({
       throw new Error("A file changed while opening the project. Save it before switching.");
     }
     set({ project, tree: {}, expanded: { "": true }, tabs: [], activePath: null,
-      terminalIds: [], activeTerminal: null, toolchains: null, git: null, output: null, notice: null });
+      terminalIds: [], activeTerminal: null, toolchains: null, git: null, output: null, notice: null,
+      selection: null });
     const results = await Promise.allSettled([
       get().refreshTree(), get().refreshToolchains(), get().refreshGit(), get().createTerminal(),
     ]);
@@ -212,7 +235,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ tabs, activePath });
   },
 
-  setActive: (path) => set({ activePath: path }),
+  setActive: (path) => set({ activePath: path, selection: null }),
 
   updateContent: (path, content) => {
     set({

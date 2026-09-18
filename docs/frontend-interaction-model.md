@@ -31,13 +31,15 @@ history), new arrivals are disclosed with a re-entry note, Inspect buttons
 reuse office navigation, and reduced-motion users get step-only controls.
 Replay never auto-navigates (that would unmount itself and destroy context).
 
-### Implemented registry (20 commands)
+### Implemented registry (23 commands)
 
 - Workspace: Open project (includes recent list), Go to file, Search in files, Search symbols…, Show changed files.
-- Navigation: Show explorer, Show run and toolchains, Open engineering office.
-- Execution/tooling: Run active file, Format active file, Run tests, Run build, Show tool output, Open terminal.
+- Navigation: Show explorer, Show run and toolchains, Open engineering office, Open execution graph, Open execution history, Ask AI… (Command Center).
+- Execution/tooling: Run active file, Format active file, Run tests, Run build, Show tool output, Open terminal, Create task….
 - Validation: Run linter, Show system diagnostics.
-- Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight).
+- Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight), Spawn agent…, Explain selection (needs editor selection), Investigate failure (needs a recorded failure).
+
+Ctrl+K toggles the palette everywhere except inside Monaco, which reserves Ctrl+K as a chord prefix — there the palette opens via its activity-bar button. No other new shortcuts were added: Ctrl+J (browser downloads) and Ctrl+E-class bindings conflict with browser/Monaco behavior, so command access stays palette-driven by design.
 
 Symbol search queries the existing code-intel index (`GET /api/projects/{id}/symbols`, debounced) and jumps to file:line in the existing editor; an unindexed project reports no symbols. Browsers reserve Ctrl+T, so symbol search is palette/command-only by design.
 

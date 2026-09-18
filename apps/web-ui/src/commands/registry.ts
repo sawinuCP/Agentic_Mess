@@ -19,6 +19,7 @@ export interface CommandActions {
   openSymbolSearch: () => void;
   openSpawnDialog: () => void;
   openTaskDialog: () => void;
+  openCommandCenter: (prefill?: string) => void;
   openProjectDialog: () => void;
   openTerminal: () => void | Promise<void>;
   showToolOutput: () => void;
@@ -34,6 +35,8 @@ export interface CommandContext {
   hasRunner: boolean;
   hasBuilder: boolean;
   activeFilePath: string | null;
+  hasSelection: boolean;
+  hasFailure: boolean;
 }
 
 export interface Command {
@@ -135,6 +138,38 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       keywords: ["history", "timeline", "replay", "events", "audit", "debug"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("history"),
+    },
+    {
+      id: "nav.command",
+      label: "Ask AI…",
+      category: "Navigation",
+      keywords: ["ai", "assistant", "ask", "command center", "help", "howto"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.openCommandCenter(),
+    },
+    {
+      id: "ai.explain-selection",
+      label: "Explain selection",
+      category: "Agents",
+      keywords: ["explain", "selection", "code", "what does"],
+      disabledReason: !ctx.hasProject
+        ? NO_PROJECT
+        : !ctx.hasSelection
+          ? "Select code in the editor first"
+          : undefined,
+      run: () => a.openCommandCenter("Explain this"),
+    },
+    {
+      id: "ai.investigate-failure",
+      label: "Investigate failure",
+      category: "Agents",
+      keywords: ["investigate", "failure", "debug", "broken", "error", "flaky"],
+      disabledReason: !ctx.hasProject
+        ? NO_PROJECT
+        : !ctx.hasFailure
+          ? "No failed task or tool run recorded"
+          : undefined,
+      run: () => a.openCommandCenter("Investigate this failure"),
     },
     // --- execution ----------------------------------------------------------
     {

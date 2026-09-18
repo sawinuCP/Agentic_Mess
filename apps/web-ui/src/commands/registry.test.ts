@@ -18,6 +18,8 @@ const ctxFull = {
   hasRunner: true,
   hasBuilder: true,
   activeFilePath: "src/app.ts",
+  hasSelection: true,
+  hasFailure: true,
 };
 
 const ctxEmpty = {
@@ -28,6 +30,8 @@ const ctxEmpty = {
   hasRunner: false,
   hasBuilder: false,
   activeFilePath: null,
+  hasSelection: false,
+  hasFailure: false,
 };
 
 function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>> {
@@ -38,6 +42,7 @@ function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>
     openSymbolSearch: vi.fn(),
     openSpawnDialog: vi.fn(),
     openTaskDialog: vi.fn(),
+    openCommandCenter: vi.fn(),
     openProjectDialog: vi.fn(),
     openTerminal: vi.fn(),
     showToolOutput: vi.fn(),
@@ -98,6 +103,24 @@ describe("buildCommands", () => {
     );
     expect(withoutProject.find((c) => c.id === "task.create")?.disabledReason).toBe(
       "Open a project first",
+    );
+  });
+
+  it("opens the command center with availability-gated contextual entries", () => {
+    const actions = makeActions();
+    const commands = buildCommands(ctxFull, actions);
+    commands.find((c) => c.id === "nav.command")?.run();
+    expect(actions.openCommandCenter).toHaveBeenCalledWith();
+    commands.find((c) => c.id === "ai.explain-selection")?.run();
+    expect(actions.openCommandCenter).toHaveBeenCalledWith("Explain this");
+    commands.find((c) => c.id === "ai.investigate-failure")?.run();
+    expect(actions.openCommandCenter).toHaveBeenCalledWith("Investigate this failure");
+    const bare = buildCommands({ ...ctxFull, hasSelection: false, hasFailure: false }, makeActions());
+    expect(bare.find((c) => c.id === "ai.explain-selection")?.disabledReason).toBe(
+      "Select code in the editor first",
+    );
+    expect(bare.find((c) => c.id === "ai.investigate-failure")?.disabledReason).toBe(
+      "No failed task or tool run recorded",
     );
   });
 

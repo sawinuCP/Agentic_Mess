@@ -79,6 +79,15 @@ export default function BottomPanel() {
                 ))}
                 {output.stdout && <pre>{output.stdout}</pre>}
                 {output.stderr && <pre className="err">{output.stderr}</pre>}
+                {(output.exit_code !== null && output.exit_code !== 0) || output.diagnostics.length > 0 ? (
+                  <button
+                    className="btn btn-small"
+                    title="Investigate this failure in the Command Center"
+                    onClick={() => setFn({ view: "command", sidebarOpen: true, centerPrefill: "Investigate this failure" })}
+                  >
+                    Investigate failure
+                  </button>
+                ) : null}
               </>
             )}
           </div>

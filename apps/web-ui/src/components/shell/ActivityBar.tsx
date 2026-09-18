@@ -48,6 +48,11 @@ const ICONS: Record<string, JSX.Element> = {
       <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
     </svg>
   ),
+  command: (
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="m3 5 3.5 3.5L3 12M7.5 12.5H13" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   terminal: (
     <svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6">
       <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
@@ -64,6 +69,7 @@ const MAIN_VIEWS: { id: ViewId; title: string }[] = [
   { id: "office", title: "Engineering Office" },
   { id: "graph", title: "Execution Graph" },
   { id: "history", title: "Execution History" },
+  { id: "command", title: "Command Center" },
 ];
 
 export default function ActivityBar() {

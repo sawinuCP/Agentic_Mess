@@ -152,6 +152,16 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           >
             Graph
           </button>
+          <button
+            className="btn btn-small"
+            title="Ask the Command Center about this agent"
+            onClick={() => {
+              setOffice({ selectedAgentId: agent.id, selectedTaskId: null });
+              useStore.getState().set({ view: "command", sidebarOpen: true, centerPrefill: `What is blocking ${agent.name}?` });
+            }}
+          >
+            Ask AI
+          </button>
           <StatusLabel state={agent.state} />
         </span>
       </div>

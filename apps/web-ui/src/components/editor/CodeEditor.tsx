@@ -29,6 +29,26 @@ export default function CodeEditor({ tab }: { tab: FileTab }) {
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
           void useStore.getState().saveActive();
         });
+        // Track text selection for the Command Center ("this" resolution).
+        // Capped at 2000 chars; cleared on cursor-only moves and unmount.
+        // The path resolves live from the store: this mount outlives tab switches.
+        editor.onDidChangeCursorSelection((e) => {
+          const model = editor.getModel();
+          const text = e.selection.isEmpty() ? "" : (model?.getValueInRange(e.selection) ?? "").slice(0, 2000);
+          const activePath = useStore.getState().activePath;
+          useStore.getState().set({
+            selection: text && activePath
+              ? {
+                  path: activePath,
+                  startLine: e.selection.startLineNumber,
+                  startColumn: e.selection.startColumn,
+                  endLine: e.selection.endLineNumber,
+                  endColumn: e.selection.endColumn,
+                  text,
+                }
+              : null,
+          });
+        });
       }}
       options={{
         fontSize: 13,

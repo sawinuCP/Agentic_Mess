@@ -1587,6 +1587,97 @@ fieldset.stack legend {
   }
 }
 
+/*
+ * 14. command center (Wave 10) — deterministic command surface on Wave 6
+ * tokens. Dense cards, no chat bubbles, no fake typing: request, intent,
+ * plan, findings, dispatches, live handoff.
+ */
+.command-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface-workspace);
+}
+
+.cc-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.cc-input-row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.cc-input-row .text-input {
+  flex: 1;
+}
+
+.cc-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cc-entry {
+  background: var(--surface-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cc-entry p {
+  margin: 0;
+}
+
+.cc-steps {
+  margin: var(--space-1) 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cc-finding {
+  border-left: 2px solid var(--accent);
+  background: var(--surface-panel);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-1) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cc-dispatch {
+  border-left: 2px solid var(--ok);
+  padding-left: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cc-dispatch.warn {
+  border-left-color: var(--warn);
+}
+
+.cc-entry .warn {
+  color: var(--warn);
+}
+
 /* Wide windows: the detail panel breathes into two columns instead of
    stacking everything. The sidebar shell itself is unchanged (no rework). */
 .agent-detail {

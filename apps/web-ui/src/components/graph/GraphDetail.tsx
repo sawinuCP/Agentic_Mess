@@ -94,6 +94,10 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
           outgoing={outgoing}
           onSelect={onSelect}
           openInOffice={openInOffice}
+          analyze={(title) => {
+            setOffice({ selectedRequirementId: node.requirementId, selectedTaskId: null, selectedAgentId: null });
+            setWorkspace({ view: "command", sidebarOpen: true, centerPrefill: `Analyze coverage for ${title}` });
+          }}
         />
       )}
       {node.type === "task" && (
@@ -170,13 +174,14 @@ function asPaths(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-function RequirementDetail({ node, tasks, rawRequirements, outgoing, onSelect, openInOffice }: {
+function RequirementDetail({ node, tasks, rawRequirements, outgoing, onSelect, openInOffice, analyze }: {
   node: GraphNode;
   tasks: TaskInfo[];
   rawRequirements: RequirementInfo[];
   outgoing: (type: string) => GraphNode[];
   onSelect: (node: GraphNode | null) => void;
   openInOffice: (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight" }) => void;
+  analyze: (title: string) => void;
 }) {
   const raw = rawRequirements.find((r) => r.id === node.requirementId);
   const criteria = (node.metadata.criteria ?? []) as { id: string; description: string; kind: string; mandatory: boolean; state: string }[];
@@ -240,6 +245,11 @@ function RequirementDetail({ node, tasks, rawRequirements, outgoing, onSelect, o
             : "Incomplete evidence: task completion without validated criteria stays UNKNOWN."}
       </span>
       <Jump label="Open in Office oversight" title="Open requirement coverage" onJump={() => openInOffice({ selectedRequirementId: node.requirementId, tab: "oversight" })} />
+      <Jump
+        label="Analyze in Command Center"
+        title="Open the Command Center scoped to this requirement"
+        onJump={() => analyze(node.label)}
+      />
     </div>
   );
 }

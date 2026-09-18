@@ -118,6 +118,16 @@ export default function OversightTab() {
             >
               Open in graph
             </button>
+            <button
+              className="btn btn-small"
+              title="Analyze this requirement in the Command Center"
+              onClick={() => {
+                setOffice({ selectedRequirementId: requirement.id, selectedTaskId: null, selectedAgentId: null });
+                useStore.getState().set({ view: "command", sidebarOpen: true, centerPrefill: `Analyze coverage for ${requirement.title}` });
+              }}
+            >
+              Analyze
+            </button>
             {(requirement.criteria ?? []).map((criterion) => (
               <div key={criterion.id} className="criterion-row small">
                 <span className={`state-pill tiny ${STATE_CLASS[criterion.state] ?? "muted"}`}>
