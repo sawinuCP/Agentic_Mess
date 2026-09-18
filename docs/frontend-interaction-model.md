@@ -20,13 +20,13 @@ Ctrl+K / Cmd+K toggles a conditionally mounted palette. Search matches label, ca
 
 Existing Ctrl/Cmd+P and Ctrl/Cmd+S are unchanged. There is no new execution scheduler or simulated agent activity.
 
-### Implemented registry (18 commands)
+### Implemented registry (19 commands)
 
 - Workspace: Open project (includes recent list), Go to file, Search in files, Show changed files.
 - Navigation: Show explorer, Show run and toolchains, Open engineering office.
 - Execution/tooling: Run active file, Format active file, Run tests, Run build, Show tool output, Open terminal.
 - Validation: Run linter, Show system diagnostics.
-- Agents/oversight: View active agents (Team), Open event timeline, Open requirement coverage (Oversight).
+- Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight).
 
 Toolchain commands are NOT orchestration lifecycle controls. Timeline is the existing bounded event feed, NOT durable execution history or replay. Office is the existing sidebar, NOT the full Agent Office. Project switching is protected against dirty buffers and clears project-scoped terminal IDs.
 
