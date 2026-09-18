@@ -221,6 +221,22 @@ class GitClient:
         await self._run("add", "-A")
         return (await self._run("commit", "-m", message)).strip()
 
+    async def head_sha(self) -> str:
+        """Current HEAD commit sha (recovery snapshots)."""
+        return (await self._run("rev-parse", "HEAD")).strip()
+
+    async def create_branch_at(self, name: str, sha: str) -> None:
+        """Create ``name`` at ``sha`` without checking it out (evidence branches)."""
+        await self._run("branch", name, sha)
+
+    async def reset_hard(self, ref: str) -> None:
+        """Reset worktree + index to ``ref``, discarding uncommitted changes.
+
+        Recovery-only: callers must first preserve the pre-reset HEAD on an
+        evidence branch — this primitive itself keeps no backup.
+        """
+        await self._run("reset", "--hard", ref)
+
     # --- Worktrees (spec §17: parallel agents work in isolated worktrees) ---
 
     async def worktree_add(self, path: str, branch: str, *, create_branch: bool = True) -> None:

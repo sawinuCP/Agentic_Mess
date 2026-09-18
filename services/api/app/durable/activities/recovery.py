@@ -17,12 +17,14 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from temporalio import activity
 
+from app.core.observability import trace_activity
 from app.db.models import Agent, AgentSession, Event, Task
 from app.durable.activities._context import current_settings, load_task_row, refs
 
@@ -52,6 +54,7 @@ def _task_event(session: Session, task: Task, event_type: str, payload: dict[str
 
 
 @activity.defn
+@trace_activity
 async def recovery_budget_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Check the remaining task token budget before an expensive recovery action.
 
@@ -77,6 +80,7 @@ async def recovery_budget_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def spawn_child_task_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Create a durable child task carrying structured failure evidence.
 
@@ -135,6 +139,7 @@ async def spawn_child_task_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def replan_task_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Create the durable REPLAN follow-up (REC-003, prompt §7 REPLAN_TASK).
 
@@ -196,6 +201,7 @@ async def replan_task_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def terminal_failure_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Record the durable terminal failure with evidence (prompt §7 FAIL_TERMINALLY).
 
@@ -251,6 +257,7 @@ async def terminal_failure_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def end_agent_session_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Stop/drain the failed agent's session (prompt §11 replacement safety).
 
@@ -262,8 +269,10 @@ async def end_agent_session_activity(input: dict[str, Any]) -> dict[str, Any]:
 
     def _end() -> dict[str, Any]:
         with factory() as session:
-            session_id = str(input.get("session_id", ""))
-            agent_id = str(input.get("agent_id", ""))
+            session_id = str(input.get("session_id") or "")
+            agent_id = str(input.get("agent_id") or "")
+            if not session_id and not agent_id:
+                return {"ended": False}  # nothing to drain (defensive; workflow passes real ids)
             if session_id:
                 row = session.get(AgentSession, uuid.UUID(session_id))
                 if row is not None and row.status == "running":
@@ -280,6 +289,7 @@ async def end_agent_session_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def task_dependents_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Ids of tasks that depend on the given task (for dependency-resume signals)."""
     factory, _store = refs()
@@ -296,3 +306,178 @@ async def task_dependents_activity(input: dict[str, Any]) -> dict[str, Any]:
             return {"dependent_task_ids": [str(row) for row in rows]}
 
     return await asyncio.to_thread(_dependents)
+
+
+#: Task statuses after which nothing will ever signal again.
+_TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
+@activity.defn
+@trace_activity
+async def dependency_status_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Unfinished blocking dependencies of a task (durable pre-wait check).
+
+    A dependency that already completed before the waiter parks would never
+    signal again — without this check the waiter would hang until its deadline.
+    Read-only: safe to call on every wait entry.
+    """
+    factory, _store = refs()
+
+    def _status() -> dict[str, Any]:
+        with factory() as session:
+            from app.db.models import TaskDependency  # noqa: PLC0415
+
+            dep_ids = session.scalars(
+                select(TaskDependency.depends_on_task_id).where(
+                    TaskDependency.task_id == uuid.UUID(input["task_id"])
+                )
+            ).all()
+            unfinished = [
+                str(row.id)
+                for row in session.scalars(select(Task).where(Task.id.in_(dep_ids))).all()
+                if row.status not in _TERMINAL_TASK_STATUSES
+            ]
+            return {"unfinished_dependency_ids": unfinished}
+
+    return await asyncio.to_thread(_status)
+
+
+def _project_root(session: Session, task_id: uuid.UUID) -> tuple[Task, str | None]:
+    """Task plus its project root (None when the project is gone)."""
+    from app.db.models import Project  # noqa: PLC0415
+
+    task = load_task_row(session, task_id)
+    project = session.get(Project, task.project_id) if task.project_id else None
+    root = str(project.root_path) if project and project.root_path else None
+    return task, root
+
+
+def _latest_snapshot(session: Session, task_id: uuid.UUID, attempt_id: str) -> Event | None:
+    """Newest SNAPSHOT_CREATED event for an attempt (rollback source of truth)."""
+    return session.scalars(
+        select(Event)
+        .where(
+            Event.task_id == task_id,
+            Event.event_type == "SNAPSHOT_CREATED",
+            Event.payload["attempt_id"].astext == attempt_id,
+        )
+        .order_by(Event.occurred_at.desc(), Event.id.desc())
+        .limit(1)
+    ).first()
+
+
+@activity.defn
+@trace_activity
+async def snapshot_attempt_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Record the pre-attempt HEAD sha of the project repo (rollback anchor).
+
+    Git repos only — anything else returns ``snapshotted: False`` and the
+    rollback step later becomes a graceful no-op. Idempotent per key: a replay
+    returns the originally recorded sha (the anchor must never move).
+    """
+    from app.gitops.client import GitClient, GitError  # noqa: PLC0415
+
+    factory, _store = refs()
+    task_id = uuid.UUID(input["task_id"])
+    attempt_id = str(input["attempt_id"])
+    idempotency_key = str(input["idempotency_key"])
+
+    def _snapshot() -> dict[str, Any]:
+        with factory() as session:
+            task, root = _project_root(session, task_id)
+            existing = _event_exists(session, "SNAPSHOT_CREATED", idempotency_key)
+            if existing is not None and existing.payload.get("sha"):
+                return {
+                    "snapshotted": True,
+                    "sha": str(existing.payload["sha"]),
+                    "replayed": True,
+                }
+            if not root:
+                return {"snapshotted": False, "reason": "no_project_root"}
+            try:
+                sha = asyncio.run(GitClient(Path(root)).head_sha())
+            except GitError as exc:
+                return {"snapshotted": False, "reason": exc.kind}
+            _task_event(
+                session,
+                task,
+                "SNAPSHOT_CREATED",
+                {
+                    "idempotency_key": idempotency_key,
+                    "attempt_id": attempt_id,
+                    "sha": sha,
+                    "root": root,
+                },
+            )
+            session.commit()
+            return {"snapshotted": True, "sha": sha, "replayed": False}
+
+    return await asyncio.to_thread(_snapshot)
+
+
+@activity.defn
+@trace_activity
+async def rollback_attempt_activity(input: dict[str, Any]) -> dict[str, Any]:
+    """Restore the project worktree to the pre-attempt snapshot (ROLLBACK).
+
+    Evidence-preserving by construction: the pre-reset HEAD is kept on a
+    ``recovery/<task>-<attempt>`` branch and referenced from ROLLBACK_COMPLETED
+    — history and evidence are never deleted, only the working state is
+    restored. No snapshot (or no git repo) is a graceful no-op, never an error.
+    Idempotent per key: a replay after a crash between reset and event-commit
+    reuses the evidence branch and converges on the same state.
+    """
+    from app.gitops.client import GitClient, GitError  # noqa: PLC0415
+
+    factory, _store = refs()
+    task_id = uuid.UUID(input["task_id"])
+    attempt_id = str(input["attempt_id"])
+    idempotency_key = str(input["idempotency_key"])
+
+    def _rollback() -> dict[str, Any]:
+        with factory() as session:
+            task, root = _project_root(session, task_id)
+            existing = _event_exists(session, "ROLLBACK_COMPLETED", idempotency_key)
+            if existing is not None:
+                return {
+                    "rolled_back": True,
+                    "replayed": True,
+                    "to_sha": existing.payload.get("to_sha"),
+                    "evidence_branch": existing.payload.get("evidence_branch"),
+                }
+            snapshot = _latest_snapshot(session, task_id, attempt_id)
+            if snapshot is None or not snapshot.payload.get("sha") or not root:
+                return {"rolled_back": False, "reason": "no_snapshot"}
+            to_sha = str(snapshot.payload["sha"])
+            branch = f"recovery/{task_id.hex[:8]}-{attempt_id[:8]}"
+            client = GitClient(Path(root))
+            try:
+                current = asyncio.run(client.head_sha())
+                if current == to_sha and not asyncio.run(client.status()).entries:
+                    return {"rolled_back": True, "noop": True, "to_sha": to_sha}
+                try:
+                    asyncio.run(client.create_branch_at(branch, current))
+                except GitError as exc:
+                    if "already exists" not in str(exc.message).lower():
+                        raise
+                    # Retry after a crash between branch-create and reset: the
+                    # branch is ours (same deterministic name) — converge.
+                asyncio.run(client.reset_hard(to_sha))
+            except GitError as exc:
+                return {"rolled_back": False, "reason": exc.kind}
+            _task_event(
+                session,
+                task,
+                "ROLLBACK_COMPLETED",
+                {
+                    "idempotency_key": idempotency_key,
+                    "attempt_id": attempt_id,
+                    "from_sha": current,
+                    "to_sha": to_sha,
+                    "evidence_branch": branch,
+                },
+            )
+            session.commit()
+            return {"rolled_back": True, "to_sha": to_sha, "evidence_branch": branch}
+
+    return await asyncio.to_thread(_rollback)

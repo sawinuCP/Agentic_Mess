@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_files_service, get_project
@@ -27,11 +27,22 @@ def _worktree_root(files: ProjectFiles) -> Path:
 @router.post("/api/projects/{project_id}/worktrees", response_model=WorktreeOut, status_code=201)
 async def create_worktree(
     body: WorktreeCreateIn,
+    response: Response,
     project: Project = Depends(get_project),
     files: ProjectFiles = Depends(get_files_service),
     db: Session = Depends(get_db),
 ) -> WorktreeOut:
-    """Give an agent an isolated worktree on a fresh branch (spec §17)."""
+    """Give an agent an isolated worktree on a fresh branch (spec §17).
+
+    With ``body.idempotency_key``, a retried create returns the live worktree
+    (HTTP 200) without touching git again.
+    """
+    key = (body.idempotency_key or "").strip() or None
+    if key is not None:
+        replay = await asyncio.to_thread(worktree_service.live_by_key, db, project.id, key)
+        if replay is not None:
+            response.status_code = 200
+            return worktree_service.worktree_out(replay)
     branch = worktree_service.sanitize_branch(body.branch or f"agent/task-{uuid.uuid4().hex[:8]}")
     # Isolation pre-check BEFORE touching git: never take an active branch.
     await asyncio.to_thread(worktree_service.ensure_branch_free, db, project.id, branch)
@@ -40,7 +51,13 @@ async def create_worktree(
     worktree_path = _worktree_root(files) / branch.replace("/", "-")
     await git.worktree_add(str(worktree_path), branch, create_branch=True)
     return await asyncio.to_thread(
-        worktree_service.register, db, project.id, body.task_id, branch, str(worktree_path)
+        worktree_service.register,
+        db,
+        project.id,
+        body.task_id,
+        branch,
+        str(worktree_path),
+        key,
     )
 
 

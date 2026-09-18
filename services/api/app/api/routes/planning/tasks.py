@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
@@ -43,9 +43,12 @@ async def create_task(
 async def list_tasks(
     project: Project = Depends(get_project),
     status: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[TaskOut]:
-    return await asyncio.to_thread(task_service.list_tasks, db, project.id, status)
+    """One stable page (priority, created_at, id); related rows are scoped to the page."""
+    return await asyncio.to_thread(task_service.list_tasks, db, project.id, status, limit, offset)
 
 
 @router.get("/api/tasks/{task_id}", response_model=TaskOut)

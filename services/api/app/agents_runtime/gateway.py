@@ -1,9 +1,9 @@
 """Tool gateway: policy enforcement + normalized observations (SEC-001/002, FR-023).
 
 Every agent tool invocation passes through here — never around it. Policy:
-task allowlist, global deny patterns, approval-required patterns (surfaced to the
-HITL gate), and per-call timeouts. Raw output goes to artifacts; the model sees
-only the compressed observation.
+agent capability scopes, task allowlist, global deny patterns,
+approval-required patterns (surfaced to the HITL gate), and per-call timeouts.
+Raw output goes to artifacts; the model sees only the compressed observation.
 """
 
 from __future__ import annotations
@@ -38,6 +38,32 @@ APPROVAL_PATTERNS: tuple[str, ...] = (
     "npm publish",
 )
 
+# Capability scopes (ordered): read < write < admin. An agent holds the scopes
+# granted at creation (see ``default_capabilities_for``); every invocation must
+# carry a scope at or above the tool's floor.
+SCOPES: tuple[str, ...] = ("read", "write", "admin")
+
+# Minimum scope per tool. ``shell`` mutates the workspace, so read-only agents
+# (reviewers) cannot invoke it. Unknown tools default to ``admin``
+# (deny-by-default: no role is granted admin unless explicitly configured).
+TOOL_MIN_SCOPE: dict[str, str] = {"shell": "write"}
+
+# Roles whose agents only observe: they may read evidence and context but never
+# execute. Every other role defaults to read+write (admin is never defaulted).
+READ_ONLY_ROLES: frozenset[str] = frozenset({"reviewer", "critic", "security", "evidence_verifier"})
+
+
+def min_scope_for(tool: str) -> str:
+    """Floor scope for a tool; unknown tools require admin (fail-closed)."""
+    return TOOL_MIN_SCOPE.get(tool, "admin")
+
+
+def default_capabilities_for(role: str) -> frozenset[str]:
+    """Scopes granted to a freshly created agent of ``role`` (policy, not model)."""
+    if role in READ_ONLY_ROLES:
+        return frozenset({"read"})
+    return frozenset({"read", "write"})
+
 
 class PolicyViolation(Exception):
     """Raised when a tool invocation violates policy; fail-closed."""
@@ -56,6 +82,7 @@ class ToolInvocation:
     cwd: str
     timeout_seconds: float = 120.0
     allowed_tools: frozenset[str] = frozenset()
+    capabilities: frozenset[str] = frozenset()  # agent's granted scopes; empty = deny all
     pre_approved: bool = False  # HITL gate approved this exact command (SEC-004)
     runtime: object | None = None  # RuntimeSpec | None (None = local runner, Phase 1-3 path)
 
@@ -71,11 +98,21 @@ class RawOutcome:
 
 
 def check_policy(invocation: ToolInvocation, command: list[str]) -> None:
-    """Validate allowlist + deny/approval patterns. Raises PolicyViolation (fail-closed)."""
+    """Validate capabilities + allowlist + deny/approval patterns (fail-closed)."""
     joined = " ".join(command).lower()
     for pattern in GLOBAL_DENY_PATTERNS:
         if pattern in joined:
             raise PolicyViolation(f"Command denied by global policy: matches '{pattern}'")
+    unknown = set(invocation.capabilities) - set(SCOPES)
+    if unknown:
+        raise PolicyViolation(f"Unknown capability scopes: {sorted(unknown)}")
+    needed = min_scope_for(invocation.tool)
+    held = max((SCOPES.index(scope) for scope in invocation.capabilities), default=-1)
+    if held < SCOPES.index(needed):
+        raise PolicyViolation(
+            f"Tool '{invocation.tool}' requires '{needed}' capability "
+            f"(agent holds {sorted(invocation.capabilities) or 'none'})"
+        )
     if invocation.allowed_tools and invocation.tool not in invocation.allowed_tools:
         raise PolicyViolation(
             f"Tool '{invocation.tool}' is not in the task allowlist "

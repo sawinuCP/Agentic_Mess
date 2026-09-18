@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -72,6 +73,34 @@ def test_an_active_branch_cannot_be_taken_twice(wired: tuple) -> None:
     second = client.post(f"/api/projects/{project_id}/worktrees", json={"branch": "agent/task-1"})
     assert second.status_code == 409
     assert "active worktree" in second.json()["detail"]
+
+
+def test_create_with_idempotency_key_replays_without_touching_git(wired: tuple) -> None:
+    _app, client, project_id, _root = wired
+    key = f"op-{uuid.uuid4().hex}"
+    first = client.post(
+        f"/api/projects/{project_id}/worktrees",
+        json={"branch": "agent/task-idem", "idempotency_key": key},
+    )
+    assert first.status_code == 201
+    second = client.post(
+        f"/api/projects/{project_id}/worktrees",
+        json={"branch": "agent/task-idem", "idempotency_key": key},
+    )
+    assert second.status_code == 200  # replay, not a second git worktree
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["path"] == first.json()["path"]
+
+    from app.db.models import Worktree
+
+    with _app.state.session_factory() as session:
+        rows = (
+            session.query(Worktree)
+            .filter_by(project_id=uuid.UUID(project_id), branch="agent/task-idem")
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].idempotency_key == key
 
 
 def test_invalid_branch_names_rejected(wired: tuple) -> None:

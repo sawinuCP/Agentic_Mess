@@ -10,6 +10,7 @@ still work — fail-closed applies to the fan-out, never to the durable record.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -107,15 +108,30 @@ class NatsJetStreamBroker:
             return self._js
         try:
             import nats  # noqa: PLC0415 — heavy import, on demand
+            from nats.js.api import RetentionPolicy, StreamConfig  # noqa: PLC0415
         except ImportError as exc:  # pragma: no cover — dependency is declared
             raise BrokerUnavailable(f"nats-py is not installed: {exc}") from None
         try:
-            self._nc = await nats.connect(self._settings.nats_url)
+            self._nc = await nats.connect(
+                self._settings.nats_url,
+                # Bounded initial connect: a blackholed server must surface as
+                # BrokerUnavailable (503), never hang the request. This broker
+                # is request-scoped (built + closed per deliver-pending pass),
+                # so background reconnects are disabled — a failure now simply
+                # leaves the message pending for the next pass.
+                connect_timeout=max(1, int(self._settings.readiness_timeout_seconds)),
+                allow_reconnect=False,
+            )
             self._js = self._nc.jetstream()
             prefix = self._settings.nats_delivery_subject_prefix
             try:
                 await self._js.add_stream(
-                    self._settings.nats_delivery_stream, subjects=[f"{prefix}.>"]
+                    StreamConfig(
+                        name=self._settings.nats_delivery_stream,
+                        subjects=[f"{prefix}.>"],
+                        retention=RetentionPolicy.LIMITS,
+                        duplicate_window=120.0,  # server-side Nats-Msg-Id dedup window
+                    )
                 )
             except Exception as exc:  # noqa: BLE001 — "already exists" is fine
                 if "already" not in str(exc).lower():
@@ -131,7 +147,14 @@ class NatsJetStreamBroker:
         return self._js
 
     async def publish(self, envelope: MessageEnvelope) -> None:
-        js = await self._ensure()
+        timeout = max(1.0, float(self._settings.readiness_timeout_seconds))
+        try:
+            js = await asyncio.wait_for(self._ensure(), timeout=timeout)
+        except TimeoutError as exc:
+            await self.close()
+            raise BrokerUnavailable(
+                f"NATS connect timed out after {timeout:g}s at {self._settings.nats_url}: {exc}"
+            ) from None
         subject = subject_for(envelope, self._settings.nats_delivery_subject_prefix)
         try:
             await js.publish(

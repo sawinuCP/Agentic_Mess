@@ -17,9 +17,12 @@ from app.durable.activities.agents import (
 from app.durable.activities.execution import agent_execute_activity
 from app.durable.activities.hitl import hitl_gate, hitl_recovery_gate_activity
 from app.durable.activities.recovery import (
+    dependency_status_activity,
     end_agent_session_activity,
     recovery_budget_activity,
     replan_task_activity,
+    rollback_attempt_activity,
+    snapshot_attempt_activity,
     spawn_child_task_activity,
     task_dependents_activity,
     terminal_failure_activity,
@@ -35,6 +38,7 @@ from app.durable.activities.tasks import (
 
 __all__ = [
     "agent_execute_activity",
+    "dependency_status_activity",
     "end_agent_session_activity",
     "execute_work_activity",
     "finish_attempt_activity",
@@ -46,8 +50,10 @@ __all__ = [
     "recovery_budget_activity",
     "record_event_activity",
     "replan_task_activity",
+    "rollback_attempt_activity",
     "set_agent_state_activity",
     "set_task_status_activity",
+    "snapshot_attempt_activity",
     "spawn_child_task_activity",
     "start_agent_activity",
     "start_attempt_activity",

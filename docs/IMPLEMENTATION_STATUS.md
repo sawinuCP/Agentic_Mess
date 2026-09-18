@@ -559,6 +559,41 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
 
 ## Change log
 
+- 2026-09-18 — Residuals completion: DB-restart recovery proven (best-effort
+  heartbeats + `pool_pre_ping`; kill-backend and container-restart-mid-workflow
+  chaos tests), HITL `cancelled` state + cancel endpoint (waiters fail closed),
+  evidence-preserving automated rollback (per-attempt snapshots, `recovery/*`
+  evidence branches, merge-conflict wiring; 5 rollback tests), scheduler
+  follow-through proven for debugger/replan children. Full suite green (see
+  validation below).
+
+- 2026-09-18 — Wave 2 recovery-execution audit: verified the Temporal
+  coordinator end-to-end and closed five genuine gaps (unreachable
+  `replace_agent`/`spawn_debugger`/`request_hitl` decisions now emitted on the
+  final attempt; replacement chain + session drain fixed; spawn terminals the
+  parent with a child reference instead of a dead wait; policy denials are
+  contained outcomes that classify to `SECURITY_BLOCK`; failure details carry
+  exit code + stderr; dependency pre-wait check against already-finished deps).
+  New `tests/integration/test_recovery_workflow.py` (7 Temporal tests:
+  time-skipping + local test server). Full suite green: 296 unit, 162
+  integration, 7 evals; ruff/mypy clean. No automated ROLLBACK by design
+  (evidence preservation; documented in `docs/RECOVERY.md`). DB-restart chaos
+  remains the only residual.
+
+- 2026-09-18 — Production-blocker remediation (prioritized list from the Wave 1
+  verification): per-IP rate limiting (429 + `Retry-After`), provider
+  retry/backoff with jitter + per-route timeouts, per-agent/per-execution token
+  budgets, diagnostics off-loop probes + docker hardening flags (`--cap-drop ALL`,
+  `--pids-limit`, `--read-only`, optional `--user`), realtime DLQ, port/worktree
+  idempotency keys (alembic `0011`, live DB migrated), OTel spans on all 15 worker
+  activities, kill-9 + NATS-loss chaos tests, context truncate-before-drop
+  compaction, agent capability scopes (`read < write < admin`, SR-14), task-list
+  pagination, curated OpenAPI surface. Incidental finds fixed: broker nats-py 2.x
+  `add_stream` incompatibility (delivery always 503'd) and unbounded NATS
+  connects. Docs: `OPERATIONS.md` §§2.7–2.8/5–6, risk register SR-06/SR-07/SR-14,
+  remediation-plan delivery log with variances. Deferred register below unchanged
+  except prompt-injection *response* (still detector-only) and DB-restart chaos.
+
 - 2026-09-16 — Phase 10 hardening & packaging: failure classification into the eleven
   spec §26 classes with bounded recovery plans wired into the execution activity,
   restart-recovery integration proof (AC-016/PERF-005), secret-redacting log filter

@@ -26,6 +26,10 @@ class Worktree(Base):
     branch: Mapped[str] = mapped_column(String(200))
     path: Mapped[str] = mapped_column(String(1024))
     status: Mapped[str] = mapped_column(String(30), default="active")  # active|merged|abandoned
+    # Client-supplied idempotency key: a retried create with the same key
+    # returns the live worktree instead of touching git again (partial unique
+    # index in migration 0011; NULL keys never collide).
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), default=None)
     # Integration queue (FR-012, spec §17): controlled, ordered integration; conflicts
     # become explicit tasks instead of silent canonical-branch writes.
     integration_status: Mapped[str] = mapped_column(

@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 class WorktreeCreateIn(BaseModel):
     task_id: UUID | None = None
     branch: str | None = Field(None, max_length=200)  # default: agent/task-<short-id>
+    # Client-generated per logical operation: a retried create with the same
+    # key returns the live worktree (HTTP 200) instead of re-running git.
+    idempotency_key: str | None = Field(None, max_length=64)
 
 
 class WorktreeOut(BaseModel):

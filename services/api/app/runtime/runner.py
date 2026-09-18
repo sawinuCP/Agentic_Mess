@@ -8,6 +8,7 @@ Phase 6 replaces this with sandboxed runtimes for AI-generated code; the interfa
 from __future__ import annotations
 
 import asyncio
+import codecs
 import logging
 import os
 import signal
@@ -51,6 +52,8 @@ async def run_process(
     Raises ``FileNotFoundError`` when the executable itself is missing (callers turn
     that into actionable diagnostics, LANG-003).
     """
+    if output_limit < 0:
+        raise ValueError("output_limit must be non-negative")
     started = time.perf_counter()
     from app.runtime.env_sandbox import (
         build_agent_environment,  # noqa: PLC0415 — no import cycle at load
@@ -65,17 +68,36 @@ async def run_process(
         stderr=asyncio.subprocess.PIPE,
         start_new_session=(os.name != "nt"),
     )
+    assert proc.stdout is not None and proc.stderr is not None
+    stdout_capture = _OutputCapture(output_limit)
+    stderr_capture = _OutputCapture(output_limit)
+    readers = [
+        asyncio.create_task(stdout_capture.drain(proc.stdout)),
+        asyncio.create_task(stderr_capture.drain(proc.stderr)),
+    ]
+    completion = asyncio.gather(*readers, proc.wait())
     timed_out = False
     try:
-        raw_out, raw_err = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+        # Shield the drains: killing a noisy process must not leave full pipes
+        # preventing its exit. Capture memory stays bounded even after the cap.
+        await asyncio.wait_for(asyncio.shield(completion), timeout=timeout_seconds)
     except TimeoutError:
         timed_out = True
         await _kill_process_tree(proc)
-        raw_out, raw_err = b"", b""
+    except BaseException:
+        await _kill_process_tree(proc)
+        raise
+    finally:
+        if not completion.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(completion), timeout=5)
+            except TimeoutError:
+                completion.cancel()
+        await asyncio.gather(completion, return_exceptions=True)
     duration_ms = int((time.perf_counter() - started) * 1000)
-    stdout = raw_out.decode("utf-8", errors="replace")
-    stderr = raw_err.decode("utf-8", errors="replace")
-    truncated = len(stdout) > output_limit or len(stderr) > output_limit
+    stdout = "".join(stdout_capture.parts)
+    stderr = "".join(stderr_capture.parts)
+    truncated = stdout_capture.truncated or stderr_capture.truncated
     return ExecResult(
         command=list(argv),
         cwd=os.fspath(cwd),
@@ -87,6 +109,29 @@ async def run_process(
         timed_out=timed_out,
         truncated=truncated,
     )
+
+
+class _OutputCapture:
+    """Retain a character-limited prefix; drain excess without accumulating it."""
+
+    def __init__(self, limit: int) -> None:
+        self.remaining = limit
+        self.parts: list[str] = []
+        self.truncated = False
+
+    async def drain(self, stream: asyncio.StreamReader) -> None:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        while True:
+            chunk = await stream.read(65536)
+            text = decoder.decode(chunk, final=not chunk)
+            kept = text[: self.remaining]
+            if kept:
+                self.parts.append(kept)
+                self.remaining -= len(kept)
+            if len(text) > len(kept):
+                self.truncated = True
+            if not chunk:
+                return
 
 
 async def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:

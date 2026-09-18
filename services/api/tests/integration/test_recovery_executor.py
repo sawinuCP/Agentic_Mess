@@ -300,3 +300,117 @@ def test_hitl_recovery_gate_timeout_fails_closed(wired: tuple[FastAPI, str]) -> 
     )
     assert gate["approved"] is False
     assert gate["status"] == "timeout"
+
+
+def test_cancelled_request_fails_closed_for_waiters(wired: tuple[FastAPI, str]) -> None:
+    import threading
+
+    from app.core.errors import DomainError
+
+    app, project_id = wired
+    task_id = _create_task(app, project_id)
+    result_box: dict[str, Any] = {}
+
+    def _gate() -> None:
+        result_box["gate"] = asyncio.run(
+            hitl_recovery_gate(
+                project_id=project_id,
+                task_id=uuid.UUID(task_id),
+                decision={
+                    "recovery_id": f"rec-hitl-{uuid.uuid4().hex[:8]}",
+                    "action": "request_hitl",
+                    "failure_class": "RESOURCE_LIMIT",
+                    "action_reason": "needs an operator",
+                },
+                failure_detail="disk quota exceeded",
+                evidence_artifact_ids=[],
+                timeout_seconds=15,
+                poll_seconds=0.2,
+            )
+        )
+
+    thread = threading.Thread(target=_gate)
+    thread.start()
+    request_id = None
+    for _ in range(100):
+        with app.state.session_factory() as session:
+            mine = [
+                r
+                for r in hitl_service.list_requests(session, status="pending")
+                if str(r.task_id) == task_id
+            ]
+            if mine:
+                request_id = mine[0].id
+                break
+        thread.join(timeout=0.2)
+    assert request_id is not None, "gate did not create a durable request"
+    with app.state.session_factory() as session:
+        cancelled = hitl_service.cancel_request(session, request_id, "operator")
+        assert cancelled.status == "cancelled"
+        # Terminal requests cannot be cancelled again — or decided.
+        with pytest.raises(DomainError):
+            hitl_service.cancel_request(session, request_id, "operator")
+    thread.join(timeout=20)
+    gate = result_box["gate"]
+    assert gate["approved"] is False
+    assert gate["status"] == "cancelled"
+
+
+def test_cancel_endpoint_withdraws_pending_requests(project: tuple) -> None:
+    _app, client, project_id, _tmp = project
+    with _app.state.session_factory() as session:
+        request = hitl_service.create_request(
+            session,
+            project_id=uuid.UUID(project_id),
+            kind="approve_command",
+            question="May I proceed?",
+        )
+        request_id = str(request.id)
+    cancelled = client.post(
+        f"/api/projects/{project_id}/hitl/{request_id}/cancel",
+        json={"decided_by": "operator"},
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    again = client.post(
+        f"/api/projects/{project_id}/hitl/{request_id}/cancel",
+        json={"decided_by": "operator"},
+    )
+    assert again.status_code == 409
+
+
+def test_spawned_children_are_scheduler_visible(wired: tuple[FastAPI, str]) -> None:
+    """Child follow-through: debugger/replan children are born `pending`, so
+    the next scheduler tick picks them up for durable execution — they do not
+    dangle as dead rows."""
+    from app.services.orchestration.scheduler import SchedulingLimits, plan_schedule
+
+    app, project_id = wired
+    task_id = _create_task(app, project_id)
+    for kind in ("debug", "replan"):
+        _run(
+            spawn_child_task_activity(
+                {
+                    "idempotency_key": f"child:{task_id}:{kind}",
+                    "task_id": task_id,
+                    "child_kind": kind,
+                    "failure_class": "TASK_FAILURE",
+                    "failure_detail": "command failed",
+                    "attempt_id": str(uuid.uuid4()),
+                    "evidence_artifact_ids": [],
+                }
+            )
+        )
+    with app.state.session_factory() as session:
+        tick = plan_schedule(
+            session,
+            uuid.UUID(project_id),
+            SchedulingLimits(max_concurrency=4, role_limits={}, spawn_max_depth=2),
+        )
+        scheduled_ids = {entry.task_id for entry in tick.scheduled}
+        children = session.scalars(
+            select(Task).where(Task.parent_task_id == uuid.UUID(task_id))
+        ).all()
+        assert len(children) == 2
+        assert all(child.status == "pending" for child in children)
+        assert {child.id for child in children} <= scheduled_ids

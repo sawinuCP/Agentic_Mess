@@ -73,14 +73,59 @@ class Settings(BaseSettings):
     nats_delivery_stream: str = "harness-messages"
     nats_delivery_subject_prefix: str = "harness.msg"
 
+    # --- Realtime event streaming (Wave 3) ------------------------------------
+    # PostgreSQL remains the authoritative event store; NATS JetStream is the
+    # low-latency delivery hop and the SSE gateway is the fan-out. Live delivery
+    # is at-most-once: a missed event is recovered by replay/resync from the
+    # durable API, never from the bus.
+    nats_events_enabled: bool = True
+    nats_events_stream: str = "harness-events"
+    nats_events_subject_prefix: str = "harness.events"
+    # Bounded JetStream retention (the durable history lives in PostgreSQL).
+    nats_events_max_age_seconds: int = 86_400
+    nats_events_max_msgs: int = 100_000
+    nats_events_max_bytes: int = 268_435_456  # 256 MiB
+    # Publisher-side bounded queue. Overflow DROPS the live copy (never blocks
+    # execution) and is counted in metrics; clients resync from PostgreSQL.
+    realtime_publish_queue_size: int = 4096
+    realtime_max_payload_bytes: int = 32_768
+    # SSE gateway: connection limits, per-client bounded queues, slow-client policy.
+    realtime_enabled: bool = True
+    realtime_max_connections: int = 50
+    realtime_connection_queue_size: int = 256
+    realtime_heartbeat_seconds: float = 15.0
+    realtime_consumer_name: str = "realtime-gateway"
+    realtime_fetch_batch: int = 64
+    realtime_fetch_timeout_seconds: float = 1.0
+    realtime_max_ack_pending: int = 512
+    realtime_max_deliver: int = 3
+    realtime_slow_client_max_drops: int = 50
+    realtime_replay_page_cap: int = 500
+
+    # --- Retention (Wave 3): bounded, explicit, boring. 0 disables. ----------
+    retention_events_days: int = 0  # authoritative audit history: deletion requires explicit opt-in
+    retention_artifacts_days: int = 0
+    retention_interval_seconds: int = 3600
+    retention_batch_size: int = 1000
+
     # Code intelligence (Phase 5): index caps + context retrieval (T3 tier).
     index_max_files: int = 5000
     index_max_file_bytes: int = 512_000
     context_retrieval_enabled: bool = True
     retrieval_k: int = 6
 
-    # Model budget gate (spec §32): cumulative tokens per task; 0 = unlimited.
+    # Model budget gates (spec §32 bounded cost): cumulative tokens per task
+    # (original gate), plus per-agent tokens and per-task/per-agent invocation
+    # counts. A per-task gate also bounds each execution run, because ledger
+    # rows are task-scoped across runs. 0 = unlimited for every gate.
     model_budget_tokens_per_task: int = 0
+    model_budget_tokens_per_agent: int = 0
+    model_budget_invocations_per_task: int = 0
+    model_budget_invocations_per_agent: int = 0
+    # Model provider resilience (spec §32): attempts per role before the route
+    # fallback runs. Transient errors (timeouts, 429/5xx) back off using the
+    # recovery_backoff_* policy above; permanent errors fail fast to fallback.
+    model_provider_max_attempts: int = 3
 
     # Execution plane (Phase 6, spec §19): runtime backend + isolation defaults.
     runtime_backend: str = "local"  # local | docker
@@ -88,6 +133,13 @@ class Settings(BaseSettings):
     docker_network: str = "none"  # untrusted code gets no network by default (SEC-005)
     docker_memory: str = "512m"
     docker_cpus: str = "1.0"
+    # Docker hardening (SEC-005, settings-only — task payloads cannot relax it):
+    # PID cap (fork-bomb containment), read-only root fs with a /tmp tmpfs, and
+    # an optional explicit "--user uid:gid" (empty = daemon default; set
+    # HARNESS_DOCKER_USER to pin a non-root user, verifying workspace writes).
+    docker_pids_limit: int = 256
+    docker_readonly: bool = True
+    docker_user: str = ""
     exec_timeout_cap_seconds: float = 900.0
     exec_max_concurrent_per_project: int = 2
 
@@ -106,6 +158,13 @@ class Settings(BaseSettings):
     mcp_timeout_seconds: float = 60.0
 
     # --- Security (Wave 1) ---------------------------------------------------
+    # Per-IP fixed-window rate limit (W1-RATE-1): fail-closed against brute-force
+    # and accidental client hot-loops. Public paths (health/docs) and CORS
+    # preflight are exempt so probes and browsers never trip the limiter.
+    # 0 requests = limiter disabled (in addition to the enabled flag).
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_window: int = 600
+    rate_limit_window_seconds: float = 60.0
     # API bearer token (HARNESS_API_TOKEN). Empty = auth disabled, which is only
     # acceptable for the local desktop posture (host defaults to loopback and
     # startup refuses non-loopback binding without a token). Never commit a

@@ -13,6 +13,7 @@ from typing import Any
 
 from temporalio import activity
 
+from app.core.observability import trace_activity
 from app.db.models import Event
 from app.durable.activities._context import refs
 
@@ -185,6 +186,7 @@ async def hitl_recovery_gate(
 
 
 @activity.defn
+@trace_activity
 async def hitl_recovery_gate_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Activity wrapper for :func:`hitl_recovery_gate` (worker-registered)."""
     return await hitl_recovery_gate(

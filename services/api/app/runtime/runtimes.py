@@ -3,7 +3,8 @@
 Every agent execution occurs inside a controlled runtime. Two backends:
 ``local`` (the Phase-1/3 subprocess runner — trusted editor-equivalent work) and
 ``docker`` (untrusted code: filesystem isolated to the mounted workspace, no
-network by default, memory/CPU caps, no-new-privileges). The backend is chosen
+network by default, memory/CPU caps, no-new-privileges, all capabilities
+dropped, PID-capped, read-only root filesystem). The backend is chosen
 from settings and can be overridden per task via the payload ``runtime`` block —
 policy decisions stay outside the model (spec §48).
 """
@@ -29,6 +30,9 @@ class RuntimeSpec:
     memory: str = "512m"
     cpus: str = "1.0"
     container_workdir: str = "/workspace"
+    pids_limit: int = 256  # fork-bomb containment (settings-only, not payload-overridable)
+    user: str = ""  # e.g. "65532:65532"; empty = daemon default (document the choice)
+    readonly: bool = True  # read-only root fs; /workspace bind mount stays writable
 
 
 def resolve_spec(settings: Any, payload: dict[str, Any] | None) -> RuntimeSpec:
@@ -50,6 +54,10 @@ def resolve_spec(settings: Any, payload: dict[str, Any] | None) -> RuntimeSpec:
         network=str(payload_runtime.get("network") or getattr(settings, "docker_network", "none")),
         memory=str(payload_runtime.get("memory") or getattr(settings, "docker_memory", "512m")),
         cpus=str(payload_runtime.get("cpus") or getattr(settings, "docker_cpus", "1.0")),
+        # Hardening below is settings-only: a task payload may not relax it.
+        pids_limit=int(getattr(settings, "docker_pids_limit", 256) or 256),
+        user=str(getattr(settings, "docker_user", "") or ""),
+        readonly=bool(getattr(settings, "docker_readonly", True)),
     )
 
 
@@ -58,10 +66,14 @@ def docker_argv(spec: RuntimeSpec, argv: list[str], cwd: str | Path) -> list[str
 
     Isolation posture (SEC-005): the workspace is bind-mounted at
     ``/workspace`` (the only host path the container sees), the network is
-    disabled unless explicitly configured, memory/CPU are capped, and
-    privilege escalation is blocked.
+    disabled unless explicitly configured, memory/CPU are capped, privilege
+    escalation is blocked, all Linux capabilities are dropped, PIDs are capped
+    (fork-bomb containment), and the root filesystem is read-only — writable
+    scratch lives on a ``/tmp`` tmpfs (with ``HOME`` pointed there) while the
+    ``/workspace`` bind mount stays writable. An explicit ``user`` (uid:gid)
+    is passed only when configured, so the choice stays visible.
     """
-    return [
+    flags: list[str] = [
         "docker",
         "run",
         "--rm",
@@ -73,6 +85,19 @@ def docker_argv(spec: RuntimeSpec, argv: list[str], cwd: str | Path) -> list[str
         spec.cpus,
         "--security-opt",
         "no-new-privileges",
+        "--cap-drop",
+        "ALL",
+        "--pids-limit",
+        str(spec.pids_limit),
+        "-e",
+        "HOME=/tmp",
+    ]
+    if spec.readonly:
+        flags += ["--read-only", "--tmpfs", "/tmp:rw,nosuid,size=64m"]
+    if spec.user:
+        flags += ["--user", spec.user]
+    return [
+        *flags,
         "-v",
         f"{Path(cwd)}:{spec.container_workdir}",
         "-w",

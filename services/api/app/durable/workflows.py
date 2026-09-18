@@ -104,13 +104,30 @@ class TaskExecutionWorkflow:
         )
 
     async def _wait_for_dependency(self, task_id: str, max_wait: float) -> bool:
-        """Durable dependency wait: signal-resumed, never busy-looping (§12)."""
+        """Durable dependency wait: signal-resumed, never busy-looping (§12).
+
+        A dependency that finished before the waiter parks would never signal
+        again, so an unfinished check comes first — an already-satisfied wait
+        resumes immediately instead of hanging until the deadline.
+        """
+        blocking = await workflow.execute_activity(
+            "dependency_status_activity",
+            {"task_id": task_id},
+            start_to_close_timeout=_ACTIVITY_TIMEOUT,
+            retry_policy=RETRY_DB,
+        )
         self._dependency_completed = False
         await self._record(
             task_id,
             "DEPENDENCY_WAIT_STARTED",
-            {"max_wait_seconds": max_wait},
+            {
+                "max_wait_seconds": max_wait,
+                "unfinished_dependency_ids": blocking.get("unfinished_dependency_ids", []),
+            },
         )
+        if not blocking.get("unfinished_dependency_ids"):
+            await self._record(task_id, "DEPENDENCY_RESUMED", {"already_satisfied": True})
+            return True
         await self._set_status(task_id, "blocked")
         try:
             await workflow.wait_condition(
@@ -148,7 +165,6 @@ class TaskExecutionWorkflow:
         }
         recovery_params: dict[str, Any] = {}
         prev_agent_id: str | None = None
-        prev_session_id: str = ""
         for attempt_number in range(1, max_attempts + 1):
             summary["attempts"] = attempt_number
             attempt = await workflow.execute_activity(
@@ -178,6 +194,16 @@ class TaskExecutionWorkflow:
             )
 
             await self._checkpoint(agent_id)
+            await workflow.execute_activity(
+                "snapshot_attempt_activity",
+                {
+                    "task_id": input.task_id,
+                    "attempt_id": attempt["id"],
+                    "idempotency_key": f"snapshot:{attempt['id']}",
+                },
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_DB,
+            )
             result = await workflow.execute_activity(
                 "agent_execute_activity",
                 {
@@ -359,19 +385,35 @@ class TaskExecutionWorkflow:
                 break
 
             if action in ("spawn_debugger", "create_integration_task"):
-                # Durable child task with structured failure evidence (§7), then
-                # wait for its completion via the dependency signal (§12).
-                await workflow.execute_activity(
+                # Durable child task with structured failure evidence (§7). The
+                # child is independent (nothing auto-executes it), so the
+                # parent terminates WITH a reference instead of waiting on a
+                # signal nobody sends. For merge conflicts the attempt's mess
+                # is first rolled back to its pre-attempt snapshot (evidence
+                # kept on a recovery branch) so integration starts clean.
+                if action == "create_integration_task":
+                    await workflow.execute_activity(
+                        "rollback_attempt_activity",
+                        {
+                            "task_id": input.task_id,
+                            "attempt_id": str(attempt["id"]),
+                            "idempotency_key": f"rollback:{decision['recovery_id']}",
+                        },
+                        start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                        retry_policy=RETRY_DB,
+                    )
+                child_kind = str(
+                    decision["parameters"].get(
+                        "child_kind",
+                        "debug" if action == "spawn_debugger" else "integration_task",
+                    )
+                )
+                child = await workflow.execute_activity(
                     "spawn_child_task_activity",
                     {
                         "idempotency_key": f"child:{decision['recovery_id']}",
                         "task_id": input.task_id,
-                        "child_kind": str(
-                            decision["parameters"].get(
-                                "child_kind",
-                                "debug" if action == "spawn_debugger" else "integration_task",
-                            )
-                        ),
+                        "child_kind": child_kind,
                         "failure_class": decision["failure_class"],
                         "failure_detail": failure_detail,
                         "attempt_id": str(attempt["id"]),
@@ -380,26 +422,70 @@ class TaskExecutionWorkflow:
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=RETRY_DB,
                 )
-                if not await self._wait_for_dependency(input.task_id, dep_wait):
-                    break
+                child_id = str(child.get("child_task_id", ""))
+                await workflow.execute_activity(
+                    "terminal_failure_activity",
+                    {
+                        "idempotency_key": f"terminal:{decision['recovery_id']}",
+                        "task_id": input.task_id,
+                        "recovery_id": decision["recovery_id"],
+                        "action": action,
+                        "failure_class": decision["failure_class"],
+                        "failure_detail": (
+                            f"{failure_detail} | follow-up {child_kind} task: {child_id}"
+                        ),
+                        "evidence_artifact_ids": evidence_ids,
+                        "recommended_action": (
+                            f"Continue in child task {child_id}, spawned with the failure evidence"
+                        ),
+                    },
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=RETRY_DB,
+                )
+                break
 
             elif action == "wait_for_dependency":
                 if not await self._wait_for_dependency(input.task_id, dep_wait):
                     break
 
+            elif action == "request_hitl":
+                # Operator guidance for resource pressure: approved falls
+                # through to the generic retryable path below (RETRY_STARTED +
+                # backoff + next attempt); rejected/timed-out terminates.
+                if not await _hitl_gate(decision, failure_detail, evidence_ids):
+                    await workflow.execute_activity(
+                        "terminal_failure_activity",
+                        {
+                            "idempotency_key": f"terminal:{decision['recovery_id']}",
+                            "task_id": input.task_id,
+                            "recovery_id": decision["recovery_id"],
+                            "action": action,
+                            "failure_class": decision["failure_class"],
+                            "failure_detail": failure_detail,
+                            "evidence_artifact_ids": evidence_ids,
+                            "recommended_action": (
+                                "Resolve the resource pressure, then retry the task"
+                            ),
+                        },
+                        start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                        retry_policy=RETRY_DB,
+                    )
+                    break
+
             elif action == "replace_agent":
-                # Old agent drained (session ended), replacement recorded (§11):
-                # the next start_agent_activity carries replaces_agent_id.
+                # Drain the just-failed agent's session (it is the current
+                # agent_id — prev_* still point at the attempt before); the
+                # replacement recorded below carries replaces_agent_id (§11).
                 await workflow.execute_activity(
                     "end_agent_session_activity",
-                    {"agent_id": prev_agent_id, "session_id": prev_session_id},
+                    {"agent_id": agent_id, "session_id": agent.get("session_id", "")},
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=RETRY_DB,
                 )
                 await self._record(
                     input.task_id,
                     "AGENT_REPLACED",
-                    {"recovery_id": decision["recovery_id"], "agent_id": prev_agent_id},
+                    {"recovery_id": decision["recovery_id"], "agent_id": agent_id},
                 )
             elif action in ("retry_alternate_model", "escalate_model"):
                 await self._record(
@@ -443,6 +529,10 @@ class TaskExecutionWorkflow:
                         },
                     )
                     await workflow.sleep(float(decision["backoff_seconds"]))  # durable timer
+            # Track the just-finished agent so the next iteration records the
+            # replacement chain (FR-008). (Session draining targets the
+            # current agent inside the replace_agent branch above.)
+            prev_agent_id = agent_id
 
         final_status = "completed" if summary["outcome"] == "success" else "failed"
         await self._set_status(input.task_id, final_status)

@@ -1,9 +1,12 @@
-"""Model cost ledger (spec §32): per-call token accounting + budget gate.
+"""Model cost ledger (spec §32): per-call token accounting + budget gates.
 
 Every model call is recorded as a durable ``model_invocations`` row (task, agent,
-role, provider, tokens, latency). Budgets are enforced at the call site: when
-``HARNESS_MODEL_BUDGET_TOKENS_PER_TASK`` is set and the task's cumulative token
-count reaches it, the next model call fails closed with ``BUDGET_EXCEEDED``.
+role, provider, tokens, latency). Budgets are enforced at the call site before
+each model call: per-task tokens (the original gate), plus per-agent tokens,
+per-task invocations, and per-agent invocations. A per-task gate also bounds a
+single execution run's spend, because ledger rows are task-scoped across
+workflow runs and attempts. Any exhausted budget fails closed with
+``BUDGET_EXCEEDED`` (a non-retryable stop). All budgets are 0 = unlimited.
 """
 
 from __future__ import annotations
@@ -57,6 +60,42 @@ def tokens_for_task(db: Session, task_id: uuid.UUID) -> int:
             select(func.coalesce(func.sum(ModelInvocation.total_tokens), 0)).where(
                 ModelInvocation.task_id == task_id
             )
+        )
+        or 0
+    )
+
+
+def tokens_for_agent(db: Session, agent_id: uuid.UUID) -> int:
+    """Cumulative model tokens charged to an agent across all its tasks."""
+    return int(
+        db.scalar(
+            select(func.coalesce(func.sum(ModelInvocation.total_tokens), 0)).where(
+                ModelInvocation.agent_id == agent_id
+            )
+        )
+        or 0
+    )
+
+
+def invocations_for_task(db: Session, task_id: uuid.UUID) -> int:
+    """Model call count charged to a task (bounds tool-call volume per task)."""
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(ModelInvocation)
+            .where(ModelInvocation.task_id == task_id)
+        )
+        or 0
+    )
+
+
+def invocations_for_agent(db: Session, agent_id: uuid.UUID) -> int:
+    """Model call count charged to an agent across all its tasks."""
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(ModelInvocation)
+            .where(ModelInvocation.agent_id == agent_id)
         )
         or 0
     )

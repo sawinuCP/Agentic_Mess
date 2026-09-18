@@ -8,13 +8,24 @@ from app.agents_runtime.gateway import (
     PolicyViolation,
     ToolInvocation,
     check_policy,
+    default_capabilities_for,
+    min_scope_for,
     normalize_outcome,
 )
 from app.agents_runtime.observations import normalize_tool_observation
 
 
-def _invocation(allowed: frozenset[str] = frozenset()) -> ToolInvocation:
-    return ToolInvocation(tool="shell", command=["echo", "hi"], cwd=".", allowed_tools=allowed)
+def _invocation(
+    allowed: frozenset[str] = frozenset(),
+    capabilities: frozenset[str] = frozenset({"read", "write"}),
+) -> ToolInvocation:
+    return ToolInvocation(
+        tool="shell",
+        command=["echo", "hi"],
+        cwd=".",
+        allowed_tools=allowed,
+        capabilities=capabilities,
+    )
 
 
 def test_normalizer_success_observation_is_compact() -> None:
@@ -63,6 +74,52 @@ def test_gateway_flags_commands_needing_approval() -> None:
 
 def test_gateway_permits_normal_commands() -> None:
     check_policy(_invocation(allowed=frozenset({"shell"})), ["pytest", "-q"])
+
+
+def test_gateway_denies_shell_without_write_capability() -> None:
+    with pytest.raises(PolicyViolation) as excinfo:
+        check_policy(
+            _invocation(allowed=frozenset({"shell"}), capabilities=frozenset({"read"})),
+            ["pytest", "-q"],
+        )
+    assert "requires 'write' capability" in excinfo.value.message
+    assert not excinfo.value.needs_approval
+
+
+def test_gateway_denies_everything_without_capabilities() -> None:
+    with pytest.raises(PolicyViolation) as excinfo:
+        check_policy(_invocation(capabilities=frozenset()), ["echo", "hi"])
+    assert "requires 'write' capability" in excinfo.value.message
+
+
+def test_gateway_rejects_unknown_capability_scopes() -> None:
+    with pytest.raises(PolicyViolation) as excinfo:
+        check_policy(_invocation(capabilities=frozenset({"shell"})), ["echo", "hi"])
+    assert "Unknown capability" in excinfo.value.message
+
+
+def test_gateway_unknown_tools_require_admin() -> None:
+    assert min_scope_for("shell") == "write"
+    assert min_scope_for("time-machine") == "admin"
+    with pytest.raises(PolicyViolation):
+        check_policy(
+            ToolInvocation(
+                tool="time-machine",
+                command=["go"],
+                cwd=".",
+                allowed_tools=frozenset({"time-machine"}),
+                capabilities=frozenset({"read", "write"}),
+            ),
+            ["go"],
+        )
+
+
+def test_default_capabilities_are_role_derived() -> None:
+    assert default_capabilities_for("reviewer") == frozenset({"read"})
+    assert default_capabilities_for("security") == frozenset({"read"})
+    assert default_capabilities_for("worker") == frozenset({"read", "write"})
+    assert default_capabilities_for("supervisor") == frozenset({"read", "write"})
+    assert "admin" not in default_capabilities_for("supervisor")  # never defaulted
 
 
 def test_normalize_outcome_bridge() -> None:

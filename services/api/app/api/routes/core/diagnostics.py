@@ -31,9 +31,14 @@ STATUS_DOWN = "down"
 
 
 async def _probe(timeout: float, fn: Any) -> tuple[str, Any]:
-    """Run a sync probe; returns (status, detail) — dict details pass through."""
+    """Run a sync probe off the event loop with a hard timeout.
+
+    Returns (status, detail) — dict details pass through. Blocking DB/file
+    calls must never stall the server loop, and a hung probe degrades to
+    ``down`` instead of hanging the endpoint.
+    """
     try:
-        return STATUS_OK, fn()
+        return STATUS_OK, await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout)
     except Exception as exc:  # noqa: BLE001 — diagnostics never fails
         return STATUS_DOWN, f"{type(exc).__name__}: {exc}"
 

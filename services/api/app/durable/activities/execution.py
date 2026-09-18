@@ -21,8 +21,8 @@ from app.agents_runtime.gateway import PolicyViolation, ToolInvocation
 from app.agents_runtime.gateway import invoke as gateway_invoke
 from app.agents_runtime.models_registry import ModelRegistry, extract_commands
 from app.agents_runtime.providers import ModelRequest
-from app.core.errors import DomainError
-from app.db.models import Artifact, Event, Memory, Project, TaskAttempt
+from app.core.observability import trace_activity
+from app.db.models import Agent, Artifact, Event, Memory, Project, TaskAttempt
 from app.durable.activities._context import current_settings, load_task_row, refs
 from app.durable.activities.agents import heartbeat_session
 from app.durable.activities.hitl import hitl_gate
@@ -87,14 +87,24 @@ async def _retrieve_code(factory, project_id: str | None, query: str, settings) 
         return ""
 
 
-def _within_budget(factory, task_id: uuid.UUID, budget: int) -> bool:  # type: ignore[no-untyped-def]
+def _budget_status(
+    factory: Any, task_id: uuid.UUID, agent_id: str | None
+) -> tuple[int, int, int, int]:
+    """One thread-hop snapshot: (task tokens, agent tokens, task calls, agent calls)."""
     from app.services.intelligence import costs as cost_service  # noqa: PLC0415
 
     with factory() as session:
-        return cost_service.tokens_for_task(session, task_id) < budget
+        task_tokens = cost_service.tokens_for_task(session, task_id)
+        task_calls = cost_service.invocations_for_task(session, task_id)
+        agent_uuid = uuid.UUID(agent_id) if agent_id else None
+        agent_tokens = cost_service.tokens_for_agent(session, agent_uuid) if agent_uuid else 0
+        agent_calls = cost_service.invocations_for_agent(session, agent_uuid) if agent_uuid else 0
+        return task_tokens, agent_tokens, task_calls, agent_calls
 
 
-async def _record_budget_exceeded(factory, project_id: str | None, task_id: uuid.UUID) -> None:  # type: ignore[no-untyped-def]
+async def _record_budget_exceeded(
+    factory: Any, project_id: str | None, task_id: uuid.UUID, scope: str = "task tokens"
+) -> None:
     def _write() -> None:
         with factory() as session:
             session.add(
@@ -103,7 +113,7 @@ async def _record_budget_exceeded(factory, project_id: str | None, task_id: uuid
                     source="temporal",
                     project_id=uuid.UUID(project_id) if project_id else None,
                     task_id=task_id,
-                    payload={},
+                    payload={"scope": scope},
                 )
             )
             session.commit()
@@ -135,6 +145,7 @@ async def _record_invocation(factory, *, project_id, task_id, agent_id, role, re
 
 
 @activity.defn
+@trace_activity
 async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
     factory, store = refs()
     settings = current_settings()
@@ -148,6 +159,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         with factory() as session:
             task = load_task_row(session, task_id)
             project = session.get(Project, task.project_id) if task.project_id else None
+            agent_row = session.get(Agent, uuid.UUID(agent_id)) if agent_id else None
             memories = session.scalars(
                 select(Memory).where(Memory.project_id == task.project_id).limit(20)
             ).all()
@@ -157,6 +169,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 "request": task.request,
                 "expected_output": task.expected_output,
                 "allowed_tools": list(task.allowed_tools or []),
+                "agent_capabilities": list((agent_row.capabilities if agent_row else None) or []),
                 "payload": task.payload or {},
                 "project_name": project.name if project else "",
                 "project_root": project.root_path if project else ".",
@@ -198,20 +211,57 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         prompt=bundle.render() + "\n\n" + _run_markers(payload),
         max_output_tokens=1024,
     )
-    budget = int(getattr(settings, "model_budget_tokens_per_task", 0) or 0)
-    if budget and not await asyncio.to_thread(_within_budget, factory, task_id, budget):
-        await _record_budget_exceeded(factory, project_id, task_id)
-        return {
-            "outcome": "failed",
-            "failure_class": "BUDGET_EXCEEDED",
-            "failure_detail": (
-                f"Model budget exhausted for this task ({budget} tokens/task); "
-                "spec §32 bounded-cost policy."
-            ),
-            "evidence_artifact_ids": [],
-        }
+    task_token_budget = int(getattr(settings, "model_budget_tokens_per_task", 0) or 0)
+    agent_token_budget = int(getattr(settings, "model_budget_tokens_per_agent", 0) or 0)
+    task_call_budget = int(getattr(settings, "model_budget_invocations_per_task", 0) or 0)
+    agent_call_budget = int(getattr(settings, "model_budget_invocations_per_agent", 0) or 0)
+    if task_token_budget or agent_token_budget or task_call_budget or agent_call_budget:
+        task_tokens, agent_tokens, task_calls, agent_calls = await asyncio.to_thread(
+            _budget_status, factory, task_id, agent_id or None
+        )
+        violated: str | None = None
+        violation_detail = ""
+        if task_token_budget and task_tokens >= task_token_budget:
+            violated, violation_detail = (
+                "task tokens",
+                f"Model budget exhausted for this task ({task_token_budget} tokens/task); "
+                "spec §32 bounded-cost policy.",
+            )
+        elif agent_token_budget and agent_tokens >= agent_token_budget:
+            violated, violation_detail = (
+                "agent tokens",
+                f"Model budget exhausted for this agent ({agent_token_budget} tokens/agent); "
+                "spec §32 bounded-cost policy.",
+            )
+        elif task_call_budget and task_calls >= task_call_budget:
+            violated, violation_detail = (
+                "task invocations",
+                f"Model invocation budget exhausted for this task ({task_call_budget} calls/task); "
+                "spec §32 bounded-cost policy.",
+            )
+        elif agent_call_budget and agent_calls >= agent_call_budget:
+            violated, violation_detail = (
+                "agent invocations",
+                f"Model invocation budget exhausted for this agent "
+                f"({agent_call_budget} calls/agent); spec §32 bounded-cost policy.",
+            )
+        if violated is not None:
+            await _record_budget_exceeded(factory, project_id, task_id, violated)
+            return {
+                "outcome": "failed",
+                "failure_class": "BUDGET_EXCEEDED",
+                "failure_detail": violation_detail,
+                "evidence_artifact_ids": [],
+            }
 
-    registry = ModelRegistry.load(Path(getattr(settings, "models_config_path", "") or "") or None)
+    registry = ModelRegistry.load(
+        Path(getattr(settings, "models_config_path", "") or "") or None,
+        max_attempts=int(getattr(settings, "model_provider_max_attempts", 3) or 3),
+        backoff_base_seconds=float(getattr(settings, "recovery_backoff_base_seconds", 2.0) or 2.0),
+        backoff_factor=float(getattr(settings, "recovery_backoff_factor", 2.0) or 2.0),
+        backoff_max_seconds=float(getattr(settings, "recovery_backoff_max_seconds", 60.0) or 60.0),
+        backoff_jitter_ratio=float(getattr(settings, "recovery_jitter_ratio", 0.25) or 0.25),
+    )
     # Recovery (Wave 2): SWITCH_MODEL/ESCALATE_MODEL route the next attempt to
     # the configured alternate model (the route's policy-defined fallback_role)
     # — never an unapproved provider (prompt §10).
@@ -302,6 +352,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 cwd=str(payload.get("cwd") or context_data["project_root"]),
                 timeout_seconds=min(requested_timeout, timeout_cap),
                 allowed_tools=allowed,
+                capabilities=frozenset(context_data["agent_capabilities"]),
                 runtime=runtime,
             )
             try:
@@ -310,7 +361,13 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                 )
             except PolicyViolation as exc:
                 if not exc.needs_approval:
-                    raise DomainError(exc.reason, 422) from None
+                    # Fail-closed failure outcome (never an escaping exception):
+                    # a policy denial must flow into recovery classification
+                    # (SECURITY_BLOCK → stop → terminal), not crash the
+                    # workflow and leave the task stuck running.
+                    overall, failure_class = "failed", "SECURITY_BLOCK"
+                    failure_detail = exc.reason[:500]
+                    break
                 # HITL gate (SEC-004): create a durable request and fail closed on timeout.
                 gate = await hitl_gate(
                     project_id=project_id,
@@ -345,7 +402,15 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
             evidence_ids.extend(observation.artifact_ids)
             if observation.status != "success":
                 overall = "timeout" if observation.status == "timeout" else "failed"
-                failure_detail = f"command {index} failed: {observation.summary[:200]}"
+                # Deterministic evidence for the classifier (§16): exit code
+                # plus the compressed error lines — stdout-only summaries miss
+                # the stderr signal (e.g. "tool X missing", "quota exceeded").
+                errors = "; ".join(observation.relevant_errors[:3])
+                failure_detail = (
+                    f"command {index} failed (exit {observation.exit_code}): "
+                    f"{observation.summary[:200]}"
+                    + (f" | stderr: {errors[:200]}" if errors else "")
+                )
                 failure_class = classify_failure(
                     failure_detail, timed_out=observation.status == "timeout"
                 )

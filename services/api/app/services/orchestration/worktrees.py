@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
@@ -20,7 +21,7 @@ from app.schemas.orchestration.worktrees import WorktreeOut
 VALID_BRANCH_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-")
 
 
-def _wt_out(worktree: Worktree) -> WorktreeOut:
+def worktree_out(worktree: Worktree) -> WorktreeOut:
     return WorktreeOut(
         id=worktree.id,
         project_id=worktree.project_id,
@@ -72,14 +73,35 @@ def ensure_branch_free(db: Session, project_id: uuid.UUID, branch: str) -> None:
         raise DomainError(f"branch {branch!r} is already an active worktree ({existing.path})", 409)
 
 
+def live_by_key(db: Session, project_id: uuid.UUID, key: str) -> Worktree | None:
+    """The active worktree for an idempotency key, if the create is a replay."""
+    return db.scalar(
+        select(Worktree).where(
+            Worktree.project_id == project_id,
+            Worktree.idempotency_key == key,
+            Worktree.status == "active",
+        )
+    )
+
+
 def register(
     db: Session,
     project_id: uuid.UUID,
     task_id: uuid.UUID | None,
     branch: str,
     path: str,
+    idempotency_key: str | None = None,
 ) -> WorktreeOut:
-    """Record a freshly created worktree (or re-activate an abandoned one)."""
+    """Record a freshly created worktree (or re-activate an abandoned one).
+
+    With ``idempotency_key``, a retried create returns the live worktree
+    instead of recording a duplicate; a lost race replays the winner's row.
+    """
+    key = (idempotency_key or "").strip() or None
+    if key is not None:
+        replay = live_by_key(db, project_id, key)
+        if replay is not None:
+            return worktree_out(replay)
     existing = db.scalar(
         select(Worktree).where(Worktree.project_id == project_id, Worktree.branch == branch)
     )
@@ -89,10 +111,20 @@ def register(
     worktree.status = "active"
     worktree.integration_status = "none"
     worktree.integration_position = None
+    if key is not None:
+        worktree.idempotency_key = key
     db.add(worktree)
     _emit(db, "WORKTREE_CREATED", worktree, {})
-    db.commit()
-    return _wt_out(worktree)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if key is not None:
+            replay = live_by_key(db, project_id, key)
+            if replay is not None:
+                return worktree_out(replay)
+        raise
+    return worktree_out(worktree)
 
 
 def list_worktrees(
@@ -103,7 +135,7 @@ def list_worktrees(
         .where(Worktree.project_id == project_id)
         .order_by(Worktree.created_at.desc())
     ).all()
-    out = [_wt_out(w) for w in rows]
+    out = [worktree_out(w) for w in rows]
     if status is not None:
         out = [w for w in out if w.status == status]
     return out[:limit]
@@ -118,7 +150,7 @@ def _worktree_or_404(db: Session, worktree_id: uuid.UUID) -> Worktree:
 
 def get_worktree(db: Session, worktree_id: uuid.UUID) -> WorktreeOut:
     """Fetch one worktree record (404 when unknown)."""
-    return _wt_out(_worktree_or_404(db, worktree_id))
+    return worktree_out(_worktree_or_404(db, worktree_id))
 
 
 def release(db: Session, worktree_id: uuid.UUID, *, merged: bool) -> WorktreeOut:
@@ -129,7 +161,7 @@ def release(db: Session, worktree_id: uuid.UUID, *, merged: bool) -> WorktreeOut
         db.add(worktree)
         _emit(db, "WORKTREE_RELEASED", worktree, {"merged": merged})
         db.commit()
-    return _wt_out(worktree)
+    return worktree_out(worktree)
 
 
 def enqueue(db: Session, worktree_id: uuid.UUID) -> WorktreeOut:
@@ -138,7 +170,7 @@ def enqueue(db: Session, worktree_id: uuid.UUID) -> WorktreeOut:
     if worktree.status != "active":
         raise DomainError("only active worktrees can be queued for integration", 409)
     if worktree.integration_status == "queued":
-        return _wt_out(worktree)  # idempotent
+        return worktree_out(worktree)  # idempotent
     if worktree.integration_status == "integrating":
         raise DomainError("worktree integration is already in progress", 409)
     if worktree.integration_status == "conflict":
@@ -155,7 +187,7 @@ def enqueue(db: Session, worktree_id: uuid.UUID) -> WorktreeOut:
     db.add(worktree)
     _emit(db, "WORKTREE_QUEUED", worktree, {"position": worktree.integration_position})
     db.commit()
-    return _wt_out(worktree)
+    return worktree_out(worktree)
 
 
 def next_queued(db: Session, project_id: uuid.UUID) -> Worktree | None:
@@ -188,7 +220,7 @@ def mark_integration(db: Session, worktree_id: uuid.UUID, status: str) -> Worktr
         _emit(db, "INTEGRATION_STARTED", worktree, {})
     db.add(worktree)
     db.commit()
-    return _wt_out(worktree)
+    return worktree_out(worktree)
 
 
 def create_conflict_task(db: Session, worktree: Worktree, detail: str) -> Task:

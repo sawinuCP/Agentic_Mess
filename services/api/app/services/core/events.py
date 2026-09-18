@@ -22,6 +22,9 @@ def _write(
     task_id: uuid.UUID | None,
     payload: Mapping[str, Any] | None,
     source: str | None,
+    agent_id: str | None,
+    execution_id: str | None,
+    correlation_id: str | None,
 ) -> None:
     with factory() as session:
         session.add(
@@ -30,6 +33,9 @@ def _write(
                 source=source or "api",
                 project_id=project_id,
                 task_id=task_id,
+                agent_id=agent_id,
+                execution_id=execution_id,
+                correlation_id=correlation_id,
                 payload=dict(payload or {}),
             )
         )
@@ -42,11 +48,29 @@ async def record_event(
     *,
     project_id: uuid.UUID | None = None,
     task_id: uuid.UUID | None = None,
+    agent_id: str | None = None,
+    execution_id: str | None = None,
+    correlation_id: str | None = None,
     payload: Mapping[str, Any] | None = None,
     source: str | None = None,
 ) -> None:
-    """Persist an event off the event loop; failures are logged, never raised."""
+    """Persist an event off the event loop; failures are logged, never raised.
+
+    Realtime delivery is handled by the event bridge on commit (Wave 3) — this
+    function stays authoritative-write-only and never touches the bus directly.
+    """
     try:
-        await asyncio.to_thread(_write, factory, event_type, project_id, task_id, payload, source)
+        await asyncio.to_thread(
+            _write,
+            factory,
+            event_type,
+            project_id,
+            task_id,
+            payload,
+            source,
+            agent_id,
+            execution_id,
+            correlation_id,
+        )
     except Exception as exc:  # noqa: BLE001 — observability must not break requests
         logger.warning("event_write_failed type=%s error=%s", event_type, exc)

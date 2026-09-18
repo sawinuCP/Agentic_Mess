@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   python:
@@ -48,6 +49,62 @@ jobs:
         run: alembic upgrade head
       - name: Tests (pytest)
         run: pytest -q
+      - name: Fast offline evaluation (EVAL-001)
+        run: python -m app.evaluation run --fast --output "$GITHUB_WORKSPACE/evaluation-fast.json"
+
+  evaluation-full:
+    name: Full offline evaluation (manual)
+    needs: python
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: harness
+          POSTGRES_PASSWORD: harness
+          POSTGRES_DB: harness
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U harness -d harness"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      HARNESS_DATABASE_URL: postgresql+psycopg://harness:harness@localhost:5432/harness
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web-ui/package-lock.json
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Install fixture TypeScript compiler
+        run: npm ci --prefix ../../apps/web-ui
+      - name: Full offline evaluation dataset
+        run: |
+          python -m app.evaluation run --full \
+            --case-timeout 300 \
+            --output "$GITHUB_WORKSPACE/evaluation-full.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation-report
+          path: evaluation-full.json
+          if-no-files-found: error
 
   web-ui:
     name: Web UI — lint + build
@@ -64,6 +121,7 @@ jobs:
           cache-dependency-path: apps/web-ui/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test
       - run: npm run build
 
   compose:

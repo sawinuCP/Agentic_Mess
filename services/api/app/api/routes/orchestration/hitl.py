@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.schemas.orchestration.hitl import DecideIn
+from app.schemas.orchestration.hitl import CancelIn, DecideIn
 from app.services.orchestration import hitl as hitl_service
 
 router = APIRouter(tags=["hitl"])
@@ -44,4 +44,18 @@ async def decide_hitl(
     request = await asyncio.to_thread(
         hitl_service.decide_request, db, request_id, body.decision, body.decided_by, body.note
     )
+    return hitl_service.request_out(request)
+
+
+@router.post("/api/projects/{project_id}/hitl/{request_id}/cancel")
+async def cancel_hitl(
+    project_id: uuid.UUID,
+    request_id: uuid.UUID,
+    body: CancelIn,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Withdraw a pending request. Waiters treat cancellation as rejection
+    (fail-closed); decided/timed-out requests cannot be cancelled (409)."""
+    _ = project_id  # scoping only; the request id is globally unique
+    request = await asyncio.to_thread(hitl_service.cancel_request, db, request_id, body.decided_by)
     return hitl_service.request_out(request)

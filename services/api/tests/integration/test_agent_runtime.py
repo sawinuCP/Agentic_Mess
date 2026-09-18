@@ -48,6 +48,45 @@ def _create_task(app: FastAPI, project_id: str, payload: dict) -> str:
         return str(task.id)
 
 
+def test_reviewer_agent_cannot_execute_shell(wired: tuple[FastAPI, str, Path]) -> None:
+    """Read-only roles observe but never execute: the gateway denies shell."""
+    from app.db.models import Agent, Task
+
+    app, project_id, _tmp = wired
+    task_id = _create_task(app, project_id, {"command": [sys.executable, "work.py"]})
+    # Reviewers are created read-only (policy, not model choice).
+    with app.state.session_factory() as session:
+        task = session.get(Task, uuid.UUID(task_id))
+        assert task is not None
+        task.payload = {**(task.payload or {}), "agent_role": "reviewer"}
+        session.commit()
+
+    async def _flow() -> dict:
+        agent = await start_agent_activity(
+            {"task_id": task_id, "attempt_number": 1, "attempt_id": str(uuid.uuid4())}
+        )
+        with app.state.session_factory() as session:
+            row = session.get(Agent, uuid.UUID(agent["agent_id"]))
+            assert row is not None
+            assert sorted(row.capabilities) == ["read"]
+        return await agent_execute_activity(
+            {
+                "task_id": task_id,
+                "attempt_id": str(uuid.uuid4()),
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
+                "project_id": project_id,
+            }
+        )
+
+    # Policy denial is a contained failure outcome (recovery classifies it),
+    # never an escaping exception that would strand the workflow.
+    result = asyncio.run(_flow())
+    assert result["outcome"] == "failed"
+    assert result["failure_class"] == "SECURITY_BLOCK"
+    assert "capability" in result["failure_detail"]
+
+
 def test_hitl_gate_approves_and_executes(wired: tuple[FastAPI, str, Path]) -> None:
     app, project_id, tmp_path = wired
     task_id = _create_task(
@@ -103,12 +142,15 @@ def test_hitl_gate_fails_closed_on_timeout(wired: tuple[FastAPI, str, Path]) -> 
     )
 
     async def _flow() -> dict:
+        agent = await start_agent_activity(
+            {"task_id": task_id, "attempt_number": 1, "attempt_id": str(uuid.uuid4())}
+        )
         return await agent_execute_activity(
             {
                 "task_id": task_id,
                 "attempt_id": str(uuid.uuid4()),
-                "agent_id": str(uuid.uuid4()),
-                "session_id": "",
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
                 "project_id": project_id,
                 "payload": {"command": ["echo", "DROP TABLE users"], "timeout_seconds": 60},
             }

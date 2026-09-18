@@ -89,6 +89,25 @@ Structured log events (JSON, request-ID correlated): `AUTHENTICATION_FAILED`,
 `SSRF_BLOCKED` (`ip_literal` / `hostname` / `resolved_private` / `unresolvable`).
 None of them ever contain token or secret values.
 
+### 2.7 Rate limiting — `HARNESS_RATE_LIMIT_*`
+
+Per-IP fixed-window buckets (`RateLimitMiddleware`): `HARNESS_RATE_LIMIT_ENABLED`
+(default true), `HARNESS_RATE_LIMIT_REQUESTS_PER_WINDOW` (default 600),
+`HARNESS_RATE_LIMIT_WINDOW_SECONDS` (default 60). Over-limit responses are 429
+JSON with a `Retry-After` header and still carry `X-Request-ID`. Public paths
+(`/healthz`, `/readyz`, docs) and CORS preflight are exempt so probes and
+browsers never trip the limiter. Buckets are in-memory per process — correct for
+the single-process deployment below, not for multi-replica.
+
+### 2.8 Agent capability scopes
+
+Tool execution additionally requires a capability scope (`read < write < admin`).
+`shell` requires `write`; unknown tools require `admin` (deny-by-default).
+Agents are granted scopes at creation from their role: `reviewer`, `critic`,
+`security`, `evidence_verifier` get `read` (observe-only — a reviewer task that
+reaches execution fails closed); all other roles get `read`+`write`. `admin` is
+never granted by default. Unknown scope strings are rejected fail-closed.
+
 ## 3. Verification
 
 ```bash
@@ -104,8 +123,60 @@ powershell -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1
 
 ## 4. Known limitations (post-Wave 1)
 
-- Single shared bearer token; no per-user identity/RBAC yet (SR-13 in the security register).
-- No rate limiting / request size caps yet (SR-07).
+- Single shared bearer token; no per-user identity/RBAC yet (SR-13/SR-14 in the security register).
+- Rate limiting is per-process memory (SR-07 residual); no request-size caps.
 - SSRF validation is at request time; TOCTOU DNS-rebinding connection pinning is deferred.
-- Docker sandbox hardening (`--user`, pids/disk limits) is SR-06, planned next wave.
+- Docker `--user` defaults to unset (SR-06 residual); pin `HARNESS_DOCKER_USER` where workspace writes allow. No disk quota.
 - Web UI token entry is via `localStorage` (`harness.api_token`); a settings UX is Wave 6+.
+
+## 5. Single-process deployment (production posture)
+
+The control plane is one API process plus managed infrastructure — no replica
+coordination exists, and the following depend on it:
+
+- **PostgreSQL is the sole source of truth** (durable state, ledger, queues).
+  Redis holds leases only; NATS is transport only (live fan-out), never authority;
+  Temporal is opt-in (`HARNESS_TEMPORAL_ENABLED`).
+- **In-memory state is per-process**: rate-limit buckets, SSE connection registry.
+  Do not run two API processes against one database (double delivery, split buckets).
+- **Migrations**: `alembic upgrade head` from `services/api` against
+  `HARNESS_DATABASE_URL` (live schema head: `0011` — port/worktree idempotency keys).
+- **Bounded cost**: `HARNESS_MODEL_BUDGET_TOKENS_PER_TASK`,
+  `HARNESS_MODEL_BUDGET_TOKENS_PER_AGENT`,
+  `HARNESS_MODEL_BUDGET_INVOCATIONS_PER_TASK`,
+  `HARNESS_MODEL_BUDGET_INVOCATIONS_PER_AGENT` (0 = unlimited); exhausted budgets
+  stop the attempt with `BUDGET_EXCEEDED` (non-retryable) and a
+  `MODEL_BUDGET_EXCEEDED` event carrying the scope.
+- **Provider resilience**: `HARNESS_MODEL_PROVIDER_MAX_ATTEMPTS` (default 3);
+  transient errors (timeouts, 429/5xx) back off on the `HARNESS_RECOVERY_BACKOFF_*`
+  policy, then escalate once via the route `fallback_role`. Per-route
+  `timeout_seconds` lives in the models config.
+- **Idempotent creates**: port allocate and worktree create accept
+  `idempotency_key` (client-generated per logical operation); replays return the
+  live row (worktree replay answers HTTP 200).
+- **Task lists are paginated** (`limit` 1–500 default 100, `offset` default 0;
+  stable order priority/created_at/id). EXPLAIN on the hot query shows an index
+  scan on `ix_tasks_project_status` (~0.4 ms); related rows are scoped to the page.
+- **Dead letters**: undecodable or exhaustively-crashing realtime messages are
+  retained verbatim on `<prefix>.dlq` (same stream subjects) and counted as
+  `dead_lettered`; nothing redelivers forever.
+- **Recovery ladder**: `retry_policy.max_attempts` on the task (clamped 1–10);
+  final-attempt specializations (`replace_agent`, `spawn_debugger`,
+  `request_hitl`); backoff on `HARNESS_RECOVERY_BACKOFF_*`; budget-sensitive
+  actions gate on the cost ledger then the durable HITL gate
+  (`HARNESS_HITL_TIMEOUT_SECONDS`, fail-closed; requests cancellable via
+  `POST .../hitl/{id}/cancel`); dependency waits park on a durable signal
+  with a pre-check for already-finished deps. Rollback: per-attempt HEAD
+  snapshots with evidence-preserving restore (`recovery/*` branches) on the
+  merge-conflict path; untracked files are never deleted.
+- **NATS endpoints**: prefer `127.0.0.1` over `localhost` in `HARNESS_NATS_URL` —
+  on hosts where IPv6 `::1` blackholes instead of refusing, clients can hang
+  past their own timeouts (observed with nats-py; the broker additionally caps
+  connects with `asyncio.wait_for` on the readiness timeout).
+
+## 6. Diagnostics
+
+`GET /api/diagnostics` is fail-soft (never fails): per-component `ok`/`down`
+plus detail, with sync probes run off the event loop under the readiness
+timeout. It is safe to curl during incidents; `/readyz` remains the fail-closed
+gate.

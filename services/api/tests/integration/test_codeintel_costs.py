@@ -86,6 +86,58 @@ def test_model_calls_are_recorded_in_the_ledger(wired: tuple) -> None:
     assert body["task_id"] == task_id
 
 
+def test_agent_token_budget_gate_spans_tasks(wired: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
+    app, client, project_id = wired
+    task_id = _add_task(app, project_id)
+    other_task_id = _add_task(app, project_id)
+
+    async def _flow() -> dict:
+        agent = await start_agent_activity(
+            {"task_id": task_id, "attempt_number": 1, "attempt_id": str(uuid.uuid4())}
+        )
+        # Pre-charge the AGENT on a *different* task: the agent gate must still trip.
+        factory: sessionmaker = app.state.session_factory
+        with factory() as session:
+            cost_service.record_invocation(
+                session,
+                project_id=uuid.UUID(project_id),
+                task_id=uuid.UUID(other_task_id),
+                agent_id=uuid.UUID(agent["agent_id"]),
+                role="worker",
+                provider="rehearsal",
+                model="rehearsal-1",
+                prompt_tokens=10_000,
+                completion_tokens=10_000,
+            )
+        return await agent_execute_activity(
+            {
+                "task_id": task_id,
+                "attempt_id": str(uuid.uuid4()),
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
+                "project_id": project_id,
+                "payload": {"command": [sys.executable, "work.py"], "timeout_seconds": 60},
+            }
+        )
+
+    monkeypatch.setattr(app.state.settings, "model_budget_tokens_per_agent", 100)
+    result = asyncio.run(_flow())
+    assert result["outcome"] == "failed"
+    assert result["failure_class"] == "BUDGET_EXCEEDED"
+    assert "agent" in result["failure_detail"]
+
+    from app.db.models import Event
+
+    factory: sessionmaker = app.state.session_factory
+    with factory() as session:
+        event = (
+            session.query(Event)
+            .filter_by(task_id=uuid.UUID(task_id), event_type="MODEL_BUDGET_EXCEEDED")
+            .one()
+        )
+        assert event.payload == {"scope": "agent tokens"}
+
+
 def test_budget_gate_fails_closed_when_exhausted(
     wired: tuple, monkeypatch: pytest.MonkeyPatch
 ) -> None:

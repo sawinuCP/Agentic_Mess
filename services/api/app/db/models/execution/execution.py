@@ -24,6 +24,10 @@ class PortAllocation(Base):
     port: Mapped[int] = mapped_column(Integer, unique=True)
     purpose: Mapped[str] = mapped_column(String(50))  # preview|service|debug
     holder: Mapped[str | None] = mapped_column(String(200), default=None)
+    # Client-supplied idempotency key: retried creates with the same key return
+    # the live allocation instead of reserving a second port (partial unique
+    # index in migration 0011; NULL keys never collide).
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), default=None)
     ttl_seconds: Mapped[int] = mapped_column(Integer, default=3600)
     allocated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -30,6 +30,8 @@ services/api/data/
 # --- Logs / temp ---
 *.log
 tmp/
+# Root-level scratch output from local validation / smoke runs.
+/tmp-*
 
 # --- IDE / OS ---
 .idea/

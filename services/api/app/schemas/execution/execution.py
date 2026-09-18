@@ -12,6 +12,9 @@ class PortAllocateIn(BaseModel):
     holder: str | None = Field(None, max_length=200)
     ttl_seconds: int = Field(3600, ge=10, le=86_400)
     preferred_port: int | None = Field(None, ge=1, le=65_535)
+    # Client-generated per logical operation: retried calls with the same key
+    # return the live allocation instead of reserving a second port.
+    idempotency_key: str | None = Field(None, max_length=64)
 
 
 class PortRenewIn(BaseModel):

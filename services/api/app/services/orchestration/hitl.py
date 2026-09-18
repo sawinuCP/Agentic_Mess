@@ -1,4 +1,11 @@
-"""HITL service: approval gates that fail closed (spec §25, SEC-004)."""
+"""HITL service: approval gates that fail closed (spec §25, SEC-004).
+
+Lifecycle: ``pending`` → ``approved`` | ``rejected`` | ``modified`` (human),
+``pending`` → ``timeout`` (fail-closed wait expiry — the ``expired`` state of
+the wave-2 taxonomy), ``pending`` → ``cancelled`` (operator withdrawal).
+Terminal states are never re-decided; waiters treat every non-``approved``
+terminal state as rejection.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import DomainError
 from app.db.models import HitlRequest
 
-TERMINAL_STATUSES = ("approved", "rejected", "modified", "timeout")
+TERMINAL_STATUSES = ("approved", "rejected", "modified", "timeout", "cancelled")
 
 
 def _request_or_404(request_id: uuid.UUID, db: Session) -> HitlRequest:
@@ -90,6 +97,21 @@ def decide_request(
     request.status = decision
     request.decided_by = decided_by
     request.decision_note = note
+    request.decided_at = datetime.now(UTC)
+    db.commit()
+    return request
+
+
+def cancel_request(db: Session, request_id: uuid.UUID, decided_by: str) -> HitlRequest:
+    """Withdraw a pending request (operator cancel). A cancelled gate behaves
+    like a rejection for every waiter — fail-closed. Terminal requests (incl.
+    timed-out) cannot be cancelled."""
+    request = _request_or_404(request_id, db)
+    if request.status in TERMINAL_STATUSES:
+        raise DomainError(f"Request already decided: {request.status}", 409)
+    request.status = "cancelled"
+    request.decided_by = decided_by
+    request.decision_note = "withdrawn by operator"
     request.decided_at = datetime.now(UTC)
     db.commit()
     return request

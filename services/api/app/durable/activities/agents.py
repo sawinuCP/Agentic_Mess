@@ -9,12 +9,15 @@ from typing import Any
 
 from temporalio import activity
 
+from app.agents_runtime.gateway import default_capabilities_for
 from app.agents_runtime.lifecycle import assert_transition
+from app.core.observability import trace_activity
 from app.db.models import Agent, AgentSession, Event, TaskAttempt
 from app.durable.activities._context import load_task_row, refs
 
 
 @activity.defn
+@trace_activity
 async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Create the agent for this attempt (spec §11: agents are disposable).
 
@@ -34,7 +37,9 @@ async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
                 name=f"agent-{task_id.hex[:8]}-a{input['attempt_number']}",
                 role=role,
                 model=None,  # resolved by the model registry at execution time
-                capabilities=["shell"],
+                # Scopes are policy (role-derived), never model-chosen: readers
+                # observe, writers execute; admin is never defaulted.
+                capabilities=sorted(default_capabilities_for(role)),
                 state="created",
             )
             session.add(agent)
@@ -71,6 +76,7 @@ async def start_agent_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def set_agent_state_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Validate + apply an agent lifecycle transition (spec §12) and emit an event."""
     factory, _store = refs()
@@ -99,7 +105,13 @@ async def set_agent_state_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 async def heartbeat_session(session_id: str) -> None:
-    """Refresh an agent session heartbeat (spec §12: mandatory while running)."""
+    """Refresh an agent session heartbeat (spec §12: mandatory while running).
+
+    Best-effort by design: a transient database blip must not fail a
+    hours-long execution. The durable writes (attempts, events, terminal
+    state) carry their own retry policies and surface persistent outages;
+    supervision already treats a missing heartbeat as a lost session.
+    """
     if not session_id:
         return
     factory, _store = refs()
@@ -111,4 +123,7 @@ async def heartbeat_session(session_id: str) -> None:
                 row.heartbeat_at = datetime.now(UTC)
                 session.commit()
 
-    await asyncio.to_thread(_beat)
+    try:
+        await asyncio.to_thread(_beat)
+    except Exception as exc:  # noqa: BLE001 — heartbeat is ephemeral signal, never load-bearing
+        activity.logger.warning("heartbeat_skipped session=%s error=%s", session_id[:8], exc)

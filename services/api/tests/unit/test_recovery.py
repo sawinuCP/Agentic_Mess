@@ -77,18 +77,49 @@ def test_hard_policy_failures_never_retry(failure_class: str) -> None:
     assert decision["budget_sensitive"] is False
 
 
-def test_tool_failure_ladder_retries_then_replans() -> None:
+def test_tool_failure_ladder_retries_then_replaces_then_replans() -> None:
     first = recovery_decision("TOOL_FAILURE", 1, max_attempts=3)
     assert first["action"] == "retry_if_safe"
     assert first["retryable"] is True
     assert first["budget_sensitive"] is False
     assert first["backoff_seconds"] > 0
 
+    last_retry = recovery_decision("TOOL_FAILURE", 2, max_attempts=3)
+    assert last_retry["action"] == "replace_agent"
+    assert last_retry["retryable"] is True
+    assert last_retry["budget_sensitive"] is True  # a fresh agent costs tokens
+
     exhausted = recovery_decision("TOOL_FAILURE", 3, max_attempts=3)
     assert exhausted["action"] == "escalate_or_replan"
     assert exhausted["retryable"] is False
     assert exhausted["parameters"]["child_kind"] == "replan"
     assert exhausted["budget_sensitive"] is True  # replanning costs tokens
+
+
+def test_task_failure_spawns_debugger_on_final_retry() -> None:
+    first = recovery_decision("TASK_FAILURE", 1, max_attempts=3)
+    assert first["action"] == "retry_then_replan"
+    assert first["retryable"] is True
+
+    last_retry = recovery_decision("TASK_FAILURE", 2, max_attempts=3)
+    assert last_retry["action"] == "spawn_debugger"
+    assert last_retry["parameters"]["child_kind"] == "debug"
+    assert last_retry["retryable"] is False  # parent terminates with a child reference
+    assert last_retry["budget_sensitive"] is True
+
+
+def test_resource_limit_requests_hitl_on_final_retry() -> None:
+    first = recovery_decision("RESOURCE_LIMIT", 1, max_attempts=3)
+    assert first["action"] == "throttle_then_retry"
+    assert first["retryable"] is True
+
+    last_retry = recovery_decision("RESOURCE_LIMIT", 2, max_attempts=3)
+    assert last_retry["action"] == "request_hitl"
+    assert last_retry["retryable"] is True
+
+    exhausted = recovery_decision("RESOURCE_LIMIT", 3, max_attempts=3)
+    assert exhausted["action"] == "escalate_or_replan"
+    assert exhausted["retryable"] is False
 
 
 def test_model_failure_escalates_on_the_final_retry() -> None:

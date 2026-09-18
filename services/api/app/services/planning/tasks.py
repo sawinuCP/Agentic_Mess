@@ -65,29 +65,40 @@ def _task_out(task: Task, depends_on: list[uuid.UUID], attempts: Sequence[TaskAt
     )
 
 
-def list_tasks(db: Session, project_id: uuid.UUID, status: str | None) -> list[TaskOut]:
-    query = select(Task).where(Task.project_id == project_id)
+def list_tasks(
+    db: Session,
+    project_id: uuid.UUID,
+    status: str | None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[TaskOut]:
+    """One page of tasks (stable order: priority, created_at, id — the id
+    tiebreaker keeps LIMIT/OFFSET pages from duplicating or skipping rows
+    when timestamps collide) plus dependencies and attempts scoped to exactly
+    that page — every query is bounded by the page size, never by the
+    project's total task count."""
+    page = select(Task).where(Task.project_id == project_id)
     if status:
-        query = query.where(Task.status == status)
-    rows = db.scalars(query.order_by(Task.priority, Task.created_at)).all()
+        page = page.where(Task.status == status)
+    rows = db.scalars(
+        page.order_by(Task.priority, Task.created_at, Task.id)
+        .limit(max(1, limit))
+        .offset(max(0, offset))
+    ).all()
     if not rows:
         return []
-    # Keep the related-data query scope identical to the task filter, without
-    # materializing an unbounded IN parameter list or doing two queries per row.
-    selected_ids = select(Task.id).where(Task.project_id == project_id)
-    if status:
-        selected_ids = selected_ids.where(Task.status == status)
+    page_ids = [task.id for task in rows]  # bounded by the page size by construction
     dependencies: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
     for task_id, dependency_id in db.execute(
         select(TaskDependency.task_id, TaskDependency.depends_on_task_id).where(
-            TaskDependency.task_id.in_(selected_ids)
+            TaskDependency.task_id.in_(page_ids)
         )
     ):
         dependencies[task_id].append(dependency_id)
     attempts: dict[uuid.UUID, list[TaskAttempt]] = defaultdict(list)
     for attempt in db.scalars(
         select(TaskAttempt)
-        .where(TaskAttempt.task_id.in_(selected_ids))
+        .where(TaskAttempt.task_id.in_(page_ids))
         .order_by(TaskAttempt.task_id, TaskAttempt.attempt_number)
     ):
         attempts[attempt.task_id].append(attempt)

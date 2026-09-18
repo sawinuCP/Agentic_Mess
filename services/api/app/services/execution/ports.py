@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
@@ -89,6 +90,22 @@ def _candidate_ports(low: int, high: int, preferred: int | None) -> Iterator[int
             yield port
 
 
+def _live_by_key(
+    db: Session, project_id: uuid.UUID | None, key: str, now: datetime
+) -> PortAllocation | None:
+    """The live allocation for an idempotency key, if the retry is a replay."""
+    row = db.scalar(
+        select(PortAllocation).where(
+            PortAllocation.project_id == project_id,
+            PortAllocation.idempotency_key == key,
+            PortAllocation.released_at.is_(None),
+        )
+    )
+    if row is not None and allocation_status(row, now) == STATUS_ACTIVE:
+        return row
+    return None
+
+
 def allocate(
     db: Session,
     project_id: uuid.UUID | None,
@@ -99,8 +116,14 @@ def allocate(
     port_low: int,
     port_high: int,
     preferred_port: int | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    """Reserve the first free, bindable port in the configured range."""
+    """Reserve the first free, bindable port in the configured range.
+
+    ``idempotency_key`` (client-generated per logical operation): a retried
+    call with the same key returns the live allocation instead of reserving a
+    second port. A lost race replays the winner's row (fail-safe, never 500).
+    """
     if purpose not in VALID_PURPOSES:
         raise DomainError(f"purpose must be one of {VALID_PURPOSES}", 422)
     if port_low > port_high:
@@ -108,6 +131,11 @@ def allocate(
     if preferred_port is not None and not (port_low <= preferred_port <= port_high):
         raise DomainError(f"preferred port {preferred_port} is outside the configured range", 422)
     now = datetime.now(UTC)
+    key = (idempotency_key or "").strip() or None
+    if key is not None:
+        replay = _live_by_key(db, project_id, key, now)
+        if replay is not None:
+            return _out(replay)
 
     active = {
         row.port
@@ -127,10 +155,22 @@ def allocate(
             holder=holder,
             ttl_seconds=ttl_seconds,
             expires_at=now + timedelta(seconds=ttl_seconds),
+            idempotency_key=key,
         )
         db.add(allocation)
         _emit(db, "PORT_ALLOCATED", allocation, {"ttl_seconds": ttl_seconds})
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Lost a race: an idempotency-key collision replays the winner's
+            # row; a port collision (concurrent allocator) tries the next port.
+            db.rollback()
+            if key is not None:
+                replay = _live_by_key(db, project_id, key, datetime.now(UTC))
+                if replay is not None:
+                    return _out(replay)
+            active.add(port)
+            continue
         return _out(allocation)
 
     raise DomainError(

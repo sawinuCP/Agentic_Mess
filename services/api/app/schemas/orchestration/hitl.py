@@ -27,3 +27,7 @@ class DecideIn(BaseModel):
     decided_by: str = "user"
     note: str | None = None
     payload_patch: dict[str, Any] | None = None
+
+
+class CancelIn(BaseModel):
+    decided_by: str = "user"

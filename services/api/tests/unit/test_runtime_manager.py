@@ -47,8 +47,26 @@ def test_docker_argv_contains_the_isolation_flags() -> None:
     assert "--memory 512m" in joined
     assert "--cpus 1.0" in joined
     assert "no-new-privileges" in joined
+    assert "--cap-drop ALL" in joined
+    assert "--pids-limit 256" in joined
+    assert "--read-only" in argv
+    assert "/tmp:rw,nosuid,size=64m" in joined
+    assert "HOME=/tmp" in joined
+    assert "--user" not in argv  # unset user stays visible by its absence
     assert "-v C:/tmp/proj:/workspace" in joined or "-v C:\\tmp\\proj:/workspace" in joined
     assert argv[-3:] == ["python:3.11-slim", "python", "work.py"]
+
+
+def test_docker_argv_passes_explicit_user_when_configured() -> None:
+    spec = RuntimeSpec(backend="docker", image="python:3.11-slim", user="65532:65532")
+    argv = docker_argv(spec, ["python", "work.py"], Path("C:/tmp/proj"))
+    assert "--user 65532:65532" in " ".join(argv)
+
+
+def test_resolve_spec_hardening_is_settings_only() -> None:
+    spec = resolve_spec(_Settings(), {"runtime": {"backend": "docker", "pids_limit": 99999}})
+    assert spec.pids_limit == 256  # payload cannot relax the PID cap
+    assert spec.readonly is True
 
 
 def test_local_backend_executes_end_to_end() -> None:

@@ -20,9 +20,10 @@ Recovery rules kept machine-checkable:
 Action vocabulary: existing names are preserved (retry_if_safe,
 retry_alternate_model, recreate_runtime, rebuild_context, retry_then_replan,
 wait_for_dependency, create_integration_task, throttle_then_retry,
-escalate_or_replan, stop); the wave adds the missing semantics (escalate_model,
-replace_agent, spawn_debugger, request_hitl). See docs/RECOVERY.md for the
-decision table and executor semantics.
+escalate_or_replan, stop); last-attempt specializations make the remaining
+executor actions reachable (escalate_model, replace_agent, spawn_debugger,
+request_hitl). See docs/RECOVERY.md for the decision table and executor
+semantics.
 
 This module is pure: no I/O, no clock, no RNG.
 """
@@ -66,6 +67,24 @@ _ESCALATED_ACTION = "escalate_model"
 #: with structured evidence plus a terminal failure of the original task.
 _LADDER_END = "escalate_or_replan"
 
+#: Last-attempt specializations: when exactly one attempt remains, these classes
+#: switch to a structurally different recovery instead of repeating the same
+#: action. Every other retryable class repeats its action until the ladder end.
+#: (REC-003 still holds: attempts_left == 0 always ends at escalate_or_replan,
+#: and non-retryable classes always stop.)
+_LAST_ATTEMPT_ACTIONS: dict[str, str] = {
+    # Final model attempt spends the configured higher-capability route.
+    "MODEL_FAILURE": _ESCALATED_ACTION,
+    # Same-agent retries failed: a fresh agent carries the durable context.
+    "TOOL_FAILURE": "replace_agent",
+    # Task failure resists retries: spawn a debugger with the evidence, then
+    # terminate the parent with a reference to it (no dead wait).
+    "TASK_FAILURE": "spawn_debugger",
+    # Resource exhaustion may need an operator (quota/provisioning decision).
+    "RESOURCE_LIMIT": "request_hitl",
+}
+
+
 #: Recovery actions whose cost must be checked against the remaining task
 #: budget BEFORE execution (spec §32; prompt §9). Insufficient budget routes
 #: the decision through the durable HITL gate instead of executing.
@@ -102,7 +121,9 @@ _CLASS_ACTIONS: dict[str, str] = {
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "SECURITY_BLOCK",
-        re.compile(r"security|policy|hitl .*(denied|rejected|timeout)|allowlist|deny", re.I),
+        re.compile(
+            r"security|policy|capabilit|hitl .*(denied|rejected|timeout)|allowlist|deny", re.I
+        ),
     ),
     (
         "RESOURCE_LIMIT",
@@ -188,6 +209,12 @@ def _reason_for(action: str, failure_class: str, attempts_left: int) -> str:
         return f"{failure_class} is non-retryable under policy; terminal failure with evidence"
     if action == "escalate_model":
         return "Repeated model failures; escalating to the configured higher-capability route"
+    if action == "replace_agent":
+        return "Repeated tool failures with this agent; replacing it with a fresh agent"
+    if action == "spawn_debugger":
+        return "Task failure resists retries; spawning a debugger with the evidence"
+    if action == "request_hitl":
+        return "Resource exhaustion may need an operator; requesting human guidance"
     if action == "escalate_or_replan":
         return "Retry budget exhausted; durable replan task created and attempt marked terminal"
     if action == "wait_for_dependency":
@@ -233,8 +260,8 @@ def recovery_decision(
         action = _CLASS_ACTIONS[failure_class]  # hard stop for every non-retryable class
     elif attempts_left == 0:
         action = _LADDER_END
-    elif failure_class == "MODEL_FAILURE" and attempts_left == 1:
-        action = _ESCALATED_ACTION
+    elif attempts_left == 1 and failure_class in _LAST_ATTEMPT_ACTIONS:
+        action = _LAST_ATTEMPT_ACTIONS[failure_class]
     else:
         action = _CLASS_ACTIONS[failure_class]
 
@@ -247,6 +274,8 @@ def recovery_decision(
         parameters["runtime_recreate"] = True
     elif action == "create_integration_task":
         parameters["child_kind"] = "integration_task"
+    elif action == "spawn_debugger":
+        parameters["child_kind"] = "debug"
     elif action == "escalate_or_replan":
         parameters["child_kind"] = "replan"
     elif action == "throttle_then_retry":
@@ -265,7 +294,9 @@ def recovery_decision(
     return {
         "recovery_id": str(uuid.uuid5(uuid.NAMESPACE_URL, seed)),
         "action": action,
-        "retryable": retryable and action != _LADDER_END,
+        # spawn_debugger always terminates the parent (with a child reference),
+        # so it never continues even though the class is retryable.
+        "retryable": retryable and action not in (_LADDER_END, "spawn_debugger"),
         "attempts_left": attempts_left,
         "failure_class": failure_class,
         "action_reason": _reason_for(action, failure_class, attempts_left),

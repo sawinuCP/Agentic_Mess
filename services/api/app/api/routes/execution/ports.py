@@ -28,7 +28,11 @@ async def allocate_port(
     project: Project = Depends(get_project),
     db: Session = Depends(get_db),
 ) -> PortOut:
-    """Reserve a free, bindable port for this project (spec §19.1)."""
+    """Reserve a free, bindable port for this project (spec §19.1).
+
+    Pass ``idempotency_key`` (client-generated per logical operation): a
+    retried call with the same key returns the live allocation.
+    """
     low, high = _range(request)
     allocation = await asyncio.to_thread(
         port_service.allocate,
@@ -40,6 +44,7 @@ async def allocate_port(
         port_low=low,
         port_high=high,
         preferred_port=body.preferred_port,
+        idempotency_key=body.idempotency_key,
     )
     return PortOut(**allocation)
 

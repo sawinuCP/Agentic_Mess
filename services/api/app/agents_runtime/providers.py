@@ -26,6 +26,7 @@ class ModelRoute:
     max_output_tokens: int = 2048
     temperature: float = 0.2
     fallback_role: str = ""  # role to escalate to when this provider fails (spec §32)
+    timeout_seconds: float = 120.0  # per-route HTTP timeout (models-config overridable)
 
 
 @dataclass(slots=True)
@@ -47,7 +48,16 @@ class ModelResponse:
 
 
 class ModelProviderError(Exception):
-    pass
+    """Provider failure.
+
+    ``transient=True`` marks retryable errors (timeouts, connection resets,
+    HTTP 429/5xx) — the registry retries those with bounded backoff. Anything
+    else (bad config, unknown provider, 4xx) fails fast to the route fallback.
+    """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 class ModelProvider(Protocol):
@@ -104,13 +114,26 @@ class OpenAICompatibleProvider:
             "max_tokens": min(request.max_output_tokens, route.max_output_tokens),
             "temperature": route.temperature,
         }
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
+        async with httpx.AsyncClient(timeout=route.timeout_seconds) as client:
+            try:
+                response = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json=payload,
+                )
+            except httpx.HTTPError as exc:
+                # Timeouts, DNS failures, connection resets: retryable.
+                raise ModelProviderError(
+                    f"openai_compatible transport error: {exc}", transient=True
+                ) from exc
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                raise ModelProviderError(
+                    f"openai_compatible HTTP {status}",
+                    transient=(status == 429 or 500 <= status < 600),
+                ) from exc
             data = response.json()
         text_out = data["choices"][0]["message"]["content"]
         return ModelResponse(

@@ -196,3 +196,47 @@ def test_port_api_endpoints(project: tuple) -> None:
 
     released = client.post(f"/api/ports/{allocated.json()['id']}/release")
     assert released.status_code == 200 and released.json()["status"] == "released"
+
+
+def test_allocate_with_idempotency_key_replays_instead_of_duplicating(
+    project: tuple, port_range: tuple[int, int]
+) -> None:
+    app, _client, project_id, _tmp = project
+    low, high = port_range
+    key = f"op-{uuid.uuid4().hex}"
+    kwargs: dict[str, object] = {
+        "purpose": "preview",
+        "holder": "agent-1",
+        "ttl_seconds": 300,
+        "port_low": low,
+        "port_high": high,
+        "idempotency_key": key,
+    }
+    first = port_service.allocate(app.state.session_factory(), uuid.UUID(project_id), **kwargs)  # type: ignore[arg-type]
+    second = port_service.allocate(app.state.session_factory(), uuid.UUID(project_id), **kwargs)  # type: ignore[arg-type]
+    assert second["id"] == first["id"]
+    assert second["port"] == first["port"]
+
+    from sqlalchemy import select
+
+    with app.state.session_factory() as session:
+        rows = session.scalars(
+            select(PortAllocation).where(PortAllocation.idempotency_key == key)
+        ).all()
+        assert len(rows) == 1
+
+
+def test_allocate_idempotency_key_via_http(project: tuple) -> None:
+    _app, client, project_id, _tmp = project
+    key = f"op-{uuid.uuid4().hex}"
+    first = client.post(
+        f"/api/projects/{project_id}/ports",
+        json={"purpose": "debug", "ttl_seconds": 300, "idempotency_key": key},
+    )
+    second = client.post(
+        f"/api/projects/{project_id}/ports",
+        json={"purpose": "debug", "ttl_seconds": 300, "idempotency_key": key},
+    )
+    assert first.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["port"] == first.json()["port"]

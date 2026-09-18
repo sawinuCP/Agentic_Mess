@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import func, select
 from temporalio import activity
 
+from app.core.observability import trace_activity
 from app.db.models import Artifact, Event, Project, Task, TaskAttempt
 from app.durable.activities._context import (
     EVIDENCE_MIN_BYTES,
@@ -21,6 +22,7 @@ from app.runtime.runner import run_process
 
 
 @activity.defn
+@trace_activity
 async def load_task_activity(task_id: str) -> dict[str, Any]:
     """Load the durable task for orchestration (TASK-002: state lives in the DB)."""
     factory, _store = refs()
@@ -61,6 +63,7 @@ async def load_task_activity(task_id: str) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def start_attempt_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Record the start of attempt N (spec §11: Attempt 1 -> Agent-12 -> ...)."""
     factory, _store = refs()
@@ -78,6 +81,7 @@ async def start_attempt_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def execute_work_activity(input: dict[str, Any]) -> dict[str, Any]:
     """Direct command work unit (Phase-2 path; the agent path is ``agent_execute_activity``).
 
@@ -159,6 +163,7 @@ async def execute_work_activity(input: dict[str, Any]) -> dict[str, Any]:
 
 
 @activity.defn
+@trace_activity
 async def finish_attempt_activity(input: dict[str, Any]) -> None:
     factory, _store = refs()
 
@@ -178,6 +183,7 @@ async def finish_attempt_activity(input: dict[str, Any]) -> None:
 
 
 @activity.defn
+@trace_activity
 async def set_task_status_activity(input: dict[str, Any]) -> None:
     factory, _store = refs()
 
@@ -191,6 +197,7 @@ async def set_task_status_activity(input: dict[str, Any]) -> None:
 
 
 @activity.defn
+@trace_activity
 async def record_event_activity(input: dict[str, Any]) -> None:
     factory, _store = refs()
 

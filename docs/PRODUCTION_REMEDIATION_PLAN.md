@@ -73,4 +73,57 @@ Tauri shell (requires Rust toolchain), signed artifacts. Gated on toolchain avai
 ## Out of scope (explicit)
 
 Microservices split; frontend framework migration; replacing Temporal/NATS/Postgres;
+
+## Delivery log — 2026-09-18 (production blockers, prioritized)
+
+| ID | Disposition | Evidence | Variance from plan (if any) |
+|----|-------------|----------|------------------------------|
+| W1-RATE-1 | Delivered | `app/api/middleware.py` `RateLimitMiddleware` + `HARNESS_RATE_LIMIT_*`; wired in `app/main.py`; `tests/unit/test_rate_limit.py` | Fixed-window buckets, not token-bucket — same 429 acceptance; in-memory (single-process deployment, documented in `OPERATIONS.md` §5) |
+| W2-GATEWAY-1 | Delivered | `transient` flag on `ModelProviderError` (429/5xx/timeout vs permanent); bounded retry + jitter in `ModelRegistry.complete` (`HARNESS_MODEL_PROVIDER_MAX_ATTEMPTS` + `HARNESS_RECOVERY_BACKOFF_*`); per-route `timeout_seconds` in models config; `tests/unit/test_provider_retry.py` (7 tests) | — |
+| W2-BUDGET-1 | Delivered | `tokens_for_agent` / `invocations_for_task` / `invocations_for_agent` in `app/services/intelligence/costs.py`; 4-way gate in `agent_execute_activity` (`HARNESS_MODEL_BUDGET_*`, 0 = unlimited); `MODEL_BUDGET_EXCEEDED` event carries the scope; `tests/unit/test_costs_budgets.py` + agent-gate integration test | Per-execution runs are bounded by the per-task gate (ledger rows are task-scoped across runs) — no separate run-scoped counter, documented in `OPERATIONS.md` §5 |
+| W2-CHAOS-1 | Partially delivered | `tests/integration/test_chaos.py`: kill-9 worker mid-run → durable state intact + retry succeeds; NATS transport loss mid-run → 503 fail-closed, durable history intact, drain on recovery. Pre-existing: port squatting (`test_bind_probe_skips_occupied_ports`), stale-lease takeover (`test_expired_lease_is_reported_expired_and_taken_over`) | DB-restart pool recovery and model-timeout injection not covered (residual) |
+| W2-MSG-1 | Delivered | `RealtimeGateway._dispatch_message`: decode failures and delivery-exhausted poison → verbatim publish to `<prefix>.dlq` + ack; transient crashes → nak (redelivery ceiling `realtime_max_deliver`); `tests/unit/test_realtime_dlq.py` | DLQ lives on the same stream subjects (retained, inspectable), not a separate stream |
+| W2-IDEM-1 | Delivered | Nullable `idempotency_key` + partial unique indexes via alembic `0011` (live DB migrated); replay returns the live row (worktree replay: HTTP 200); race losers replay the winner; `idempotency_key` on `PortAllocateIn`/`WorktreeCreateIn`; integration tests in `test_execution_ports.py` / `test_worktrees.py` | — |
+| W3-TRACE-1 | Delivered | `trace_activity` decorator (`app/core/observability.py`, no-op without provider) on all 15 Temporal activities; spans carry ID-only attributes + outcome/error status; `tests/unit/test_activity_tracing.py` (in-memory exporter) | — |
+| W4-PERF-3 | Delivered | Truncate-before-drop in `app/agents_runtime/context_broker.py`: oversized tiers truncate to remaining budget (head; tail for T4 history) with omission markers; drop only below a 16-token floor; T0 truncated-never-dropped; total never exceeds budget; `tests/unit/test_context_compaction.py` | Deterministic truncation, not LLM summarization of T4 (no model call in the hot path) |
+| W4-PERF-2 | Evidence added | Task list paginated (`limit`/`offset`, stable order with id tiebreaker, related rows page-scoped); EXPLAIN shows index scan on `ix_tasks_project_status` (~0.4 ms) — documented in `OPERATIONS.md` §5; `test_task_query_performance.py` (constant-query + tiling tests) | Full 100k-event index review remains future work |
+| W5-EVAL-2 | Already delivered (verified) | `app/evaluation/reports.py::compare_suites` + `tests/unit/test_evaluation_comparison.py` | — |
+
+Additionally delivered (found while implementing): `NatsJetStreamBroker` used the
+nats-py 1.x `add_stream` idiom and always 503'd against the installed 2.x client
+(caught by the chaos test) — fixed to `StreamConfig`, plus a `wait_for` connect
+cap so blackholed servers surface as 503 instead of hanging; agent capability
+scopes `read < write < admin` (SR-14) since the gateway previously checked tool
+names only; `/metrics` excluded from the OpenAPI schema + API description
+documenting public conventions.
+
+## Wave 2 verification — 2026-09-18 (recovery execution audit)
+
+The recovery coordinator was inspected end-to-end (policy core → Temporal
+workflow → activities → tests) and five genuine gaps were closed; everything
+else verified intact:
+
+| ID | Disposition | Evidence |
+|----|-------------|----------|
+| W2-RECOV-1 | Fixed + verified | `replace_agent` / `spawn_debugger` / `request_hitl` existed as workflow branches and doc rows but the decision function could never emit them (dead code + doc mismatch). The ladder now specializes on the final attempt: `TOOL_FAILURE → replace_agent`, `TASK_FAILURE → spawn_debugger`, `RESOURCE_LIMIT → request_hitl`. `prev_agent_id` was never updated, so replacement drained `None` (crash in `end_agent_session_activity`); the loop now tracks it and the replace branch drains the just-failed agent. Spawned children terminally close the parent *with a child reference* instead of waiting on a signal nothing sends. Policy denials inside the execution activity are contained `SECURITY_BLOCK` outcomes (previously an escaping `DomainError` failed the workflow run and stranded the task as `running`). Failure details now carry exit code + stderr lines (stdout-only summaries starved the classifier). New: `tests/integration/test_recovery_workflow.py` (7 Temporal tests on the time-skipping/local test server: retry→success, replace→replan chain with drain proof, debugger with child ref, security stop, HITL timeout, pre-check resume, live-signal resume) |
+| W2-GATEWAY-1 | Verified intact | Backoff/retry + per-route timeouts (delivered 2026-09-18, see above) |
+| W2-BUDGET-1 | Verified intact | `recovery_budget_activity` gates budget-sensitive actions incl. the newly reachable `replace_agent`/`spawn_debugger` (covered by `test_budget_gate_blocks_expensive_recovery_when_exhausted`) |
+| W2-CHAOS-1 | Extended | Pre-wait unfinished-dependency check added: a dependency that finished before the waiter parks would never signal again (waiter hung to its deadline). Covered by `test_finished_dependency_resumes_without_waiting`. DB-restart recovery remains residual |
+| W2-MSG-1 / W2-IDEM-1 | Verified intact | No changes needed |
+| W3-TRACE-1 | Verified intact | All recovery activities carry `trace_activity` spans (incl. the new `dependency_status_activity`) |
+
+Deliberate non-implementation: no automated ROLLBACK action. Restoring code
+state automatically would destroy the durable evidence the system must preserve
+(dirty worktrees require explicit `force`; conflicts become explicit tasks in
+the integration queue — by design, documented in `docs/RECOVERY.md`). Rollback
+stays an explicit human operation.
+
+## Residuals completion — 2026-09-18 (follow-up to both logs above)
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| DB-restart pool recovery | Delivered | Heartbeats made best-effort (a DB blip no longer fails hours-long executions; durable writes keep their retry policies); `tests/integration/test_chaos.py`: killed-backend transparency (`pool_pre_ping`) + full container restart mid-workflow → completes with no duplicate attempt |
+| HITL EXPIRED/CANCELLED | Delivered | `timeout` documented as the expired state; `cancelled` added (`cancel_request` + `POST .../hitl/{id}/cancel`, 409 on decided); waiters treat cancel as rejection (fail-closed); covered in `test_recovery_executor.py` |
+| Automated ROLLBACK | Delivered (evidence-preserving) | Per-attempt HEAD snapshots (`snapshot_attempt_activity`); `rollback_attempt_activity` restores tracked state after preserving pre-reset HEAD on a `recovery/*` branch; wired into the merge-conflict path before integration delegation; `tests/integration/test_rollback.py` (5 tests incl. end-to-end conflict → restore → delegate) |
+| Child follow-through | Verified + proven | Debugger/replan children are born `pending` and the scheduler tick picks them up (`test_spawned_children_are_scheduler_visible`); `request_hitl` scope (last-attempt resource pressure only) retained as deliberate policy |
 LSP/call-graph (deferred register); real-time collaborative editing.
