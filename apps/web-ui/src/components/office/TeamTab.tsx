@@ -30,7 +30,7 @@ import { StatusLabel } from "../shell/UiState";
 
 const ACTION_LABELS: Record<TaskAction, string> = {
   execute: "Start execution", pause: "Request pause", resume: "Send resume signal",
-  cancel: "Cancel task",
+  cancel: "Cancel task", retry: "Retry task",
 };
 
 function agentName(agents: AgentInfo[], id: string | null | undefined): string {
@@ -222,7 +222,9 @@ export default function TeamTab() {
       ? "Start this task? This may run tools and use configured model providers."
       : action === "cancel"
         ? "Cancel this task? Its history is preserved and the status becomes cancelled."
-        : `Send ${action} signal? The workflow applies it at a safe checkpoint.`)) return;
+        : action === "retry"
+          ? "Re-run this failed task? A new execution run starts; recorded attempts are preserved."
+          : `Send ${action} signal? The workflow applies it at a safe checkpoint.`)) return;
     inFlight.current = true;
     setPending(current.id);
     setControlError(null);
@@ -230,11 +232,14 @@ export default function TeamTab() {
     try {
       if (action === "cancel") {
         await cancelTask(taskId);
+      } else if (action === "retry") {
+        await controlTask(taskId, "execute");
       } else {
         await controlTask(taskId, action);
       }
       setFeedback(action === "execute" ? "Execution request accepted. Refreshing task state."
         : action === "cancel" ? "Cancellation recorded. Refreshing task state."
+        : action === "retry" ? "Retry dispatched. A new execution run starts; follow its recorded state in Office."
         : `${action} signal sent. The workflow applies it at a safe checkpoint.`);
       await refresh();
     } catch (err) {

@@ -5,6 +5,7 @@
 // does not record is labeled as derived/last-recorded, never invented.
 
 import type { CostsSummary, EventEntry, MessageInfo, TaskInfo } from "../types";
+import { taskCommands } from "../commands/taskCommands";
 
 export const TERMINAL_TASK = new Set(["completed", "cancelled", "failed"]);
 
@@ -306,7 +307,61 @@ export function categories(): { category: string; label: string }[] {
   return CATEGORY_PREFIXES.map(({ category, label }) => ({ category, label }));
 }
 
+// --- bulk execution ----------------------------------------------------------
+
+/**
+ * Tasks eligible for a bulk lifecycle action. Single source of truth: the
+ * same per-task availability builder the buttons and palette use, so bulk
+ * buttons can never offer what the endpoints would refuse. Retry is
+ * per-task only (each failed task deserves its own confirmation).
+ */
+export function bulkEligible(
+  tasks: TaskInfo[],
+  action: "pause" | "resume" | "cancel",
+): TaskInfo[] {
+  const enabled = new Set(
+    taskCommands(tasks, async () => undefined)
+      .filter((c) => c.id.endsWith(`.${action}`) && !c.disabledReason)
+      .map((c) => c.id),
+  );
+  return tasks.filter((t) => enabled.has(`task.${t.id}.${action}`));
+}
+
+export const BULK_LABEL: Record<"pause" | "resume" | "cancel", string> = {
+  pause: "Pause",
+  resume: "Resume",
+  cancel: "Stop",
+};
+
+export function bulkConfirm(
+  action: "pause" | "resume" | "cancel",
+  count: number,
+): string {
+  if (action === "cancel") {
+    return `Stop ${count} task${count === 1 ? "" : "s"}? History is preserved and statuses become cancelled.`;
+  }
+  return action === "pause"
+    ? `Pause ${count} task${count === 1 ? "" : "s"}? Signals apply at safe checkpoints; acknowledgement is not a state change.`
+    : `Resume ${count} task${count === 1 ? "" : "s"}? Paused workflows continue from their checkpoints.`;
+}
+
 // --- costs -------------------------------------------------------------------
+
+/**
+ * Who else touched this task: honest cost attribution. A task scoped cost
+ * summary belongs to one agent only when no other agent attempted it;
+ * otherwise it is shared and the UI must say so instead of dividing numbers.
+ */
+export function costAttribution(
+  task: TaskInfo,
+  agentId: string,
+): { sole: boolean; others: number } {
+  const ids = [...new Set(task.attempts.map((a) => a.agent_id).filter(Boolean))];
+  return {
+    sole: ids.length === 1 && ids[0] === agentId,
+    others: ids.filter((id) => id !== agentId).length,
+  };
+}
 
 /** Shape guard: a malformed ledger payload must read as absent, never crash. */
 export function validCosts(costs: CostsSummary | null | undefined): costs is CostsSummary {

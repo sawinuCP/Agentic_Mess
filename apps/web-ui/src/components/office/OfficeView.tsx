@@ -7,11 +7,21 @@
 // preserved (back button, no route change). Approvals stay prominent above
 // the body with a header count badge.
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { TextMorph } from "torph/react";
 import { glue } from "@typehug/en";
 
-import { formatTokens, summarizeExecution, topEntries, validCosts } from "../../office/selectors";
+import { cancelTask, controlTask } from "../../api/client";
+import { errorMessage } from "../../api/errors";
+import {
+  BULK_LABEL,
+  bulkConfirm,
+  bulkEligible,
+  formatTokens,
+  summarizeExecution,
+  topEntries,
+  validCosts,
+} from "../../office/selectors";
 import { runningAgents, useOffice, type OfficeTab } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import AgentDetail from "./AgentDetail";
@@ -62,8 +72,10 @@ export default function OfficeView() {
   const costs = useOffice((s) => s.costs);
   const selectedAgentId = useOffice((s) => s.selectedAgentId);
   const loadCosts = useOffice((s) => s.loadCosts);
+  const refresh = useOffice((s) => s.refresh);
   const setOffice = useOffice((s) => s.set);
   const [, tick] = useReducer((n: number) => n + 1, 0);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // Start the realtime stream for the open project (authoritative load first).
   useEffect(() => {
@@ -103,6 +115,48 @@ export default function OfficeView() {
   const label = CONNECTION_LABEL[displayState] ?? displayState;
   const needsRecovery = connectionState === "offline" || resyncRequired;
   const topRole = costData ? topEntries(costData.by_role, 1)[0] : undefined;
+  const bulk = {
+    pause: bulkEligible(tasks, "pause"),
+    resume: bulkEligible(tasks, "resume"),
+    cancel: bulkEligible(tasks, "cancel"),
+  } as const;
+
+  // Bulk execution actions fan out over the existing per-task endpoints with
+  // one confirmation and one resync. Per-task results are reported honestly:
+  // signals are acknowledged, not applied; cancel is recorded.
+  const runBulk = async (action: "pause" | "resume" | "cancel"): Promise<void> => {
+    if (bulkBusy) return;
+    const targets = bulkEligible(useOffice.getState().tasks, action);
+    if (targets.length === 0) return;
+    if (!window.confirm(bulkConfirm(action, targets.length))) return;
+    setBulkBusy(true);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const target of targets) {
+      try {
+        if (action === "cancel") await cancelTask(target.id);
+        else await controlTask(target.id, action);
+        ok += 1;
+      } catch (err) {
+        failed.push(`${target.title}: ${errorMessage(err)}`);
+      }
+    }
+    setBulkBusy(false);
+    await refresh().catch(() => undefined);
+    const done =
+      action === "cancel"
+        ? `Stopped ${ok} of ${targets.length} tasks.`
+        : `${BULK_LABEL[action]} signal sent to ${ok} of ${targets.length} tasks. Workflows apply it at safe checkpoints.`;
+    setOffice({
+      notice: failed.length === 0 ? `${done} Refreshing state.` : `${done} Failed: ${failed.join("; ")}`,
+    });
+  };
+
+  const bulkTitle = (action: "pause" | "resume" | "cancel"): string => {
+    const names = bulk[action].slice(0, 3).map((t) => t.title);
+    const rest = bulk[action].length > 3 ? ` +${bulk[action].length - 3} more` : "";
+    return `Eligible: ${names.join(", ")}${rest}`;
+  };
 
   return (
     <div className="sidebar office">
@@ -153,6 +207,24 @@ export default function OfficeView() {
           </button>
         )}
       </div>
+      {(bulk.pause.length > 0 || bulk.resume.length > 0 || bulk.cancel.length > 0) && (
+        <div className="office-actions" role="group" aria-label="Execution actions">
+          {(["pause", "resume", "cancel"] as const).map((action) =>
+            bulk[action].length > 0 ? (
+              <button
+                key={action}
+                className="btn btn-small"
+                disabled={bulkBusy}
+                title={bulkTitle(action)}
+                aria-label={`${BULK_LABEL[action]} ${bulk[action].length} tasks`}
+                onClick={() => void runBulk(action)}
+              >
+                {bulkBusy ? "Sending…" : `${BULK_LABEL[action]} ${bulk[action].length}`}
+              </button>
+            ) : null,
+          )}
+        </div>
+      )}
       {notice && (
         <div className="office-notice" role="status">
           {notice}

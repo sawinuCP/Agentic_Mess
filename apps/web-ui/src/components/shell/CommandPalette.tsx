@@ -72,6 +72,7 @@ export default function CommandPalette() {
           setView: (view) => setFn({ view, sidebarOpen: true }),
           setOfficeTab: (tab) => setOffice({ tab }),
           openQuickOpen: () => setFn({ quickOpen: true }),
+          openSymbolSearch: () => setFn({ symbolSearch: true }),
           openProjectDialog: () => setFn({ projectDialog: true }),
           openTerminal: () => openTerminal(),
           showToolOutput: () => setFn({ panelOpen: true, panelTab: "output" }),
@@ -94,11 +95,18 @@ export default function CommandPalette() {
         ? `Start execution of ${task.title}? This may run tools and use configured model providers.`
         : action === "cancel"
           ? `Cancel ${task.title}? Its history is preserved and the status becomes cancelled.`
-          : `Send ${action} to ${task.title}? Acknowledgement does not mean the workflow has reached a checkpoint.`;
+          : action === "retry"
+            ? `Re-run ${task.title}? A new execution run starts; recorded attempts are preserved.`
+            : `Send ${action} to ${task.title}? Acknowledgement does not mean the workflow has reached a checkpoint.`;
       if (!window.confirm(message)) return;
       if (action === "cancel") {
         await cancelTask(id);
         useStore.getState().set({ notice: `Task cancelled: ${task.title}. Follow its recorded state in Office.` });
+        return;
+      }
+      if (action === "retry") {
+        await controlTask(id, "execute");
+        useStore.getState().set({ notice: `Retry dispatched for ${task.title}. A new execution run starts.` });
         return;
       }
       await controlTask(id, action);

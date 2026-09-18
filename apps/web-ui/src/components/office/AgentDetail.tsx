@@ -7,6 +7,7 @@ import { useEffect, useMemo } from "react";
 import { glue } from "@typehug/en";
 
 import {
+  costAttribution,
   currentTaskForAgent,
   describeEvent,
   elapsedSince,
@@ -292,9 +293,15 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
         {owned.map((t) => {
           const summary = validCosts(taskCosts[t.id]) ? taskCosts[t.id] : null;
           if (!summary) return null;
+          const attribution = costAttribution(t, agent.id);
           return (
             <div key={t.id} className="small">
-              {t.title}: {formatTokens(summary.total_tokens)} tokens · {summary.invocations} calls
+              {t.title}: {formatTokens(summary.total_tokens)} tokens · {summary.invocations} calls{" "}
+              <span className="muted">
+                {attribution.sole
+                  ? "(sole contributor)"
+                  : `(shared with ${attribution.others} other agent${attribution.others === 1 ? "" : "s"})`}
+              </span>
             </div>
           );
         })}

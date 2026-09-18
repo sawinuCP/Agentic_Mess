@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import type { EventEntry, TaskInfo } from "../types";
 import {
   agentWaitingReason,
+  bulkConfirm,
+  bulkEligible,
+  costAttribution,
   currentTaskForAgent,
   describeEvent,
   elapsedSince,
@@ -209,6 +212,41 @@ describe("event description + grouping", () => {
     expect(eventCategory("REVIEW_FAILED_CLOSED")).toBe("tests");
     expect(eventCategory("HITL_REQUESTED")).toBe("hitl");
     expect(eventCategory("LEASE_ACQUIRED")).toBe("other");
+  });
+});
+
+describe("bulk execution eligibility", () => {
+  const running = task({ id: "r", status: "running" });
+  const blocked = task({ id: "b", status: "blocked" });
+  const failed = task({ id: "f", status: "failed" });
+  const done = task({ id: "d", status: "completed" });
+  const all = [running, blocked, failed, done];
+
+  it("derives bulk sets from the same per-task availability builder", () => {
+    // Pause/resume signal active durable workflows (running/blocked/ready);
+    // there is no separate "paused" DB status — signals, not states.
+    expect(bulkEligible(all, "pause").map((t) => t.id).sort()).toEqual(["b", "r"]);
+    expect(bulkEligible(all, "resume").map((t) => t.id).sort()).toEqual(["b", "r"]);
+    expect(bulkEligible(all, "cancel").map((t) => t.id).sort()).toEqual(["b", "r"]);
+  });
+
+  it("words confirmations honestly (signals vs recorded stops)", () => {
+    expect(bulkConfirm("pause", 2)).toContain("acknowledgement is not a state change");
+    expect(bulkConfirm("resume", 1)).toContain("checkpoints");
+    expect(bulkConfirm("cancel", 3)).toContain("History is preserved");
+  });
+});
+
+describe("cost attribution", () => {
+  it("credits sole contributors and labels shared work", () => {
+    const sole = task({ attempts: [{ attempt_number: 1, agent_id: "a1", outcome: "success", evidence_artifact_ids: [], failure_class: null, failure_detail: null }] });
+    expect(costAttribution(sole, "a1")).toEqual({ sole: true, others: 0 });
+    const shared = task({ attempts: [
+      { attempt_number: 1, agent_id: "a1", outcome: "failed", evidence_artifact_ids: [], failure_class: "TOOL_FAILURE", failure_detail: null },
+      { attempt_number: 2, agent_id: "a2", outcome: "success", evidence_artifact_ids: [], failure_class: null, failure_detail: null },
+    ] });
+    expect(costAttribution(shared, "a1")).toEqual({ sole: false, others: 1 });
+    expect(costAttribution(task(), "a1")).toEqual({ sole: false, others: 0 });
   });
 });
 

@@ -7,13 +7,15 @@ describe("task commands", () => {
   it("exposes real actions and unique task-scoped IDs", async () => {
     const control = vi.fn().mockResolvedValue(undefined);
     const commands = taskCommands([task, { ...task, id: "other" }], control);
-    expect(new Set(commands.map((c) => c.id)).size).toBe(8);
+    expect(new Set(commands.map((c) => c.id)).size).toBe(10);
     await commands[0].run();
     expect(control).toHaveBeenCalledWith("t", "execute");
   });
   it("blocks unverified dependencies and terminal/retried tasks", () => {
     expect(taskCommands([{ ...task, depends_on: ["missing"] }], vi.fn())[0].disabledReason).toContain("dependencies");
-    expect(taskCommands([{ ...task, status: "failed" }], vi.fn()).every((c) => c.disabledReason)).toBe(true);
+    const failed = taskCommands([{ ...task, status: "failed" }], vi.fn());
+    expect(failed.find((c) => c.id === "task.t.retry")?.disabledReason).toBeUndefined();
+    expect(failed.filter((c) => !c.id.endsWith(".retry")).every((c) => c.disabledReason)).toBe(true);
   });
   it("offers both signals for active workflows without inventing paused task status", () => {
     const commands = taskCommands([{ ...task, status: "running" }], vi.fn());
@@ -33,6 +35,21 @@ describe("task commands", () => {
       const finished = taskCommands([{ ...task, status }], vi.fn());
       expect(finished.find((c) => c.id === "task.t.cancel")?.disabledReason).toBe(
         "Task is already finished",
+      );
+    }
+  });
+  it("offers retry only for failed tasks, never for live or human-cancelled ones", async () => {
+    const control = vi.fn().mockResolvedValue(undefined);
+    const failed = taskCommands([{ ...task, status: "failed" }], control);
+    const retry = failed.find((c) => c.id === "task.t.retry");
+    expect(retry?.label).toContain("Retry task");
+    expect(retry?.disabledReason).toBeUndefined();
+    await retry?.run();
+    expect(control).toHaveBeenCalledWith("t", "retry");
+    for (const status of ["pending", "running", "completed", "cancelled"]) {
+      const other = taskCommands([{ ...task, status }], vi.fn());
+      expect(other.find((c) => c.id === "task.t.retry")?.disabledReason).toBe(
+        "Only failed tasks can be retried here",
       );
     }
   });
