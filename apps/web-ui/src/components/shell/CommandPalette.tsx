@@ -73,6 +73,14 @@ export default function CommandPalette() {
           setOfficeTab: (tab) => setOffice({ tab }),
           openQuickOpen: () => setFn({ quickOpen: true }),
           openSymbolSearch: () => setFn({ symbolSearch: true }),
+          openSpawnDialog: () => {
+            setFn({ view: "office", sidebarOpen: true });
+            setOffice({ tab: "team", spawnDialog: true });
+          },
+          openTaskDialog: () => {
+            setFn({ view: "office", sidebarOpen: true });
+            setOffice({ tab: "team", taskDialog: true });
+          },
           openProjectDialog: () => setFn({ projectDialog: true }),
           openTerminal: () => openTerminal(),
           showToolOutput: () => setFn({ panelOpen: true, panelTab: "output" }),

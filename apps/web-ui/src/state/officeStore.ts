@@ -59,6 +59,8 @@ interface OfficeState {
   tab: OfficeTab;
   selectedAgentId: string | null;
   selectedTaskId: string | null;
+  spawnDialog: boolean;
+  taskDialog: boolean;
   connectionState: ConnectionState;
   gatewayMode: "live" | "degraded" | "unknown";
   lastEventSequence: number | null;
@@ -250,6 +252,8 @@ export const useOffice = create<OfficeState>((set, get) => {
     tab: "team",
     selectedAgentId: null,
     selectedTaskId: null,
+    spawnDialog: false,
+    taskDialog: false,
     connectionState: "connecting",
     gatewayMode: "unknown",
     lastEventSequence: null,

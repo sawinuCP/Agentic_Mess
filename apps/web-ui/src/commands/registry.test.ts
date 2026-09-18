@@ -36,6 +36,8 @@ function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>
     setOfficeTab: vi.fn(),
     openQuickOpen: vi.fn(),
     openSymbolSearch: vi.fn(),
+    openSpawnDialog: vi.fn(),
+    openTaskDialog: vi.fn(),
     openProjectDialog: vi.fn(),
     openTerminal: vi.fn(),
     showToolOutput: vi.fn(),
@@ -81,6 +83,22 @@ describe("buildCommands", () => {
     expect(symbols?.disabledReason).toBeUndefined();
     symbols?.run();
     expect(actions.openSymbolSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens spawn and create dialogs through real actions", () => {
+    const actions = makeActions();
+    const commands = buildCommands(ctxFull, actions);
+    commands.find((c) => c.id === "agents.spawn")?.run();
+    expect(actions.openSpawnDialog).toHaveBeenCalledTimes(1);
+    commands.find((c) => c.id === "task.create")?.run();
+    expect(actions.openTaskDialog).toHaveBeenCalledTimes(1);
+    const withoutProject = buildCommands(ctxEmpty, makeActions());
+    expect(withoutProject.find((c) => c.id === "agents.spawn")?.disabledReason).toBe(
+      "Open a project first",
+    );
+    expect(withoutProject.find((c) => c.id === "task.create")?.disabledReason).toBe(
+      "Open a project first",
+    );
   });
 
   it("explains missing tools for file-bound commands", () => {

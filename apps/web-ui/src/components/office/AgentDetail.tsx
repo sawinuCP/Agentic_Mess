@@ -7,6 +7,8 @@ import { useEffect, useMemo } from "react";
 import { glue } from "@typehug/en";
 
 import {
+  BULK_LABEL,
+  bulkEligible,
   costAttribution,
   currentTaskForAgent,
   describeEvent,
@@ -19,6 +21,7 @@ import {
   validCosts,
   waitingReason,
 } from "../../office/selectors";
+import { useBulkAction, type BulkAction } from "../../office/useBulkAction";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import { StatusLabel } from "../shell/UiState";
@@ -48,6 +51,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
   const loadWorktrees = useOffice((s) => s.loadWorktrees);
   const loadTaskCosts = useOffice((s) => s.loadTaskCosts);
   const openFile = useStore((s) => s.openFile);
+  const { bulkBusy, runBulk } = useBulkAction();
 
   const agent = agents.find((a) => a.id === agentId);
 
@@ -116,7 +120,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
   };
 
   return (
-    <div className="stack">
+    <div className="stack agent-detail">
       <div className="row spread">
         <button className="btn btn-small" onClick={() => setOffice({ selectedAgentId: null })}>
           ← Back to team
@@ -174,6 +178,22 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
 
       <Section title={`Tasks (${owned.length})`}>
         {owned.length === 0 && <div className="muted small">No tasks reference this agent.</div>}
+        {(["pause", "resume", "cancel"] as BulkAction[]).map((action) => {
+          const eligible = bulkEligible(owned, action);
+          if (eligible.length === 0) return null;
+          return (
+            <button
+              key={action}
+              className="btn btn-small"
+              disabled={bulkBusy}
+              title={`Eligible: ${eligible.slice(0, 3).map((t) => t.title).join(", ")}`}
+              aria-label={`${BULK_LABEL[action]} ${agent.name}'s ${eligible.length} eligible tasks`}
+              onClick={() => void runBulk(action, owned, `Agent ${agent.name}`)}
+            >
+              {bulkBusy ? "Sending…" : `${BULK_LABEL[action]} ${eligible.length}`}
+            </button>
+          );
+        })}
         {owned.map((t) => (
           <div key={t.id} className="task-row">
             <div className="row spread">

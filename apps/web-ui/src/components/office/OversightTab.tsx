@@ -27,6 +27,9 @@ const STAGES = ["reviewers", "critic", "evidence verifier", "adjudicator"];
 
 export default function OversightTab() {
   const traceability = useOffice((s) => s.traceability);
+  const agents = useOffice((s) => s.agents);
+  const tasks = useOffice((s) => s.tasks);
+  const setOffice = useOffice((s) => s.set);
   const completionBusy = useOffice((s) => s.completionBusy);
   const lastReview = useOffice((s) => s.lastReview);
   const generateCompletion = useOffice((s) => s.generateCompletion);
@@ -85,14 +88,25 @@ export default function OversightTab() {
         {requirements.length === 0 && (
           <div className="muted small">{glue("No requirements recorded.")}</div>
         )}
-        {requirements.map((requirement) => (
-          <div key={requirement.id} className="requirement-card">
-            <div className="row spread">
-              <span className="strong">{requirement.title}</span>
-              <span className={`state-pill ${STATE_CLASS[requirement.status] ?? "muted"}`}>
-                <TextMorph>{requirement.status}</TextMorph>
+        {requirements.map((requirement) => {
+          const linked = tasks.filter(
+            (t) =>
+              t.requirement_id === requirement.id ||
+              requirement.task_ids.includes(t.id),
+          );
+          return (
+          <details key={requirement.id} className="requirement-card">
+            <summary>
+              <span className="row spread">
+                <span className="strong">{requirement.title}</span>
+                <span className={`state-pill ${STATE_CLASS[requirement.status] ?? "muted"}`}>
+                  <TextMorph>{requirement.status}</TextMorph>
+                </span>
               </span>
-            </div>
+              <span className="small muted">
+                {linked.length} linked task{linked.length === 1 ? "" : "s"}
+              </span>
+            </summary>
             {(requirement.criteria ?? []).map((criterion) => (
               <div key={criterion.id} className="criterion-row small">
                 <span className={`state-pill tiny ${STATE_CLASS[criterion.state] ?? "muted"}`}>
@@ -104,8 +118,38 @@ export default function OversightTab() {
                 </span>
               </div>
             ))}
-          </div>
-        ))}
+            {linked.length === 0 && (
+              <div className="small muted">No tasks linked yet.</div>
+            )}
+            {linked.map((t) => {
+              const owners = [...new Set(
+                t.attempts.map((a) => a.agent_id).filter(Boolean),
+              )] as string[];
+              const evidence = t.attempts.reduce(
+                (n, a) => n + a.evidence_artifact_ids.length, 0,
+              );
+              return (
+                <div key={t.id} className="row spread small">
+                  <button
+                    className="link"
+                    title={`Inspect task ${t.title}`}
+                    onClick={() => setOffice({ selectedTaskId: t.id, tab: "team" })}
+                  >
+                    {t.title}
+                  </button>
+                  <span className="muted">
+                    {t.status.replaceAll("_", " ")}
+                    {owners.length > 0
+                      ? ` · ${owners.map((id) => agents.find((a) => a.id === id)?.name ?? id.slice(0, 8)).join(", ")}`
+                      : ""}
+                    {evidence > 0 ? ` · ${evidence} evidence` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </details>
+          );
+        })}
       </section>
 
       {lastReview && (

@@ -124,12 +124,47 @@ def main():
             costs = {"invocations": 12, "total_tokens": 45000, "by_model": {"test:model": 45000},
                      "by_role": {"backend": 30000, "tester": 15000}, "task_id": None,
                      "budget_tokens_per_task": 100000}
+            sent_messages = []
             def api(route):
                 path = route.request.url.split("/api/", 1)[1]
+                method = route.request.method
                 if path == "projects": route.fulfill(json=[project])
                 elif path == "projects/open": route.fulfill(json=project)
-                elif path.endswith("/agents"): route.fulfill(json=agents)
-                elif path.endswith("/tasks"): route.fulfill(json=tasks)
+                elif path.endswith("/agents"):
+                    if method == "POST":
+                        body = route.request.post_data_json
+                        agent = {"id": "a9", "project_id": "p", "name": body["name"],
+                                 "role": body.get("role", "worker"), "model": body.get("model"),
+                                 "capabilities": [], "state": "created"}
+                        agents.append(agent)
+                        route.fulfill(status=201, json=agent)
+                    else:
+                        route.fulfill(json=agents)
+                elif path.endswith("/tasks"):
+                    if method == "POST":
+                        body = route.request.post_data_json
+                        created_task = {"id": "t9", "project_id": "p", "requirement_id": body.get("requirement_id"),
+                                        "title": body["title"], "request": body.get("request", ""),
+                                        "status": "pending", "priority": body.get("priority", 5),
+                                        "depends_on": body.get("depends_on", []), "attempts": []}
+                        tasks.append(created_task)
+                        route.fulfill(status=201, json=created_task)
+                    else:
+                        route.fulfill(json=tasks)
+                elif path == "messages" and method == "POST":
+                    body = route.request.post_data_json
+                    sent_messages.append(body)
+                    message = {"id": "m9", "conversation_id": "c9",
+                               "sender_agent_id": body.get("sender_agent_id"),
+                               "recipient_agent_id": body.get("recipient_agent_id"),
+                               "task_id": body.get("task_id"), "type": body.get("type", "request"),
+                               "payload": body.get("payload", {}), "payload_ref": None,
+                               "priority": 5, "correlation_id": None, "reply_to": None,
+                               "created_at": "2026-09-18T10:07:00Z", "expires_at": None,
+                               "delivered_at": None, "delivery_attempts": 0}
+                    if message["recipient_agent_id"] in inbox:
+                        inbox[message["recipient_agent_id"]].append(message)
+                    route.fulfill(status=201, json=message)
                 elif path.startswith("hitl?"): route.fulfill(json=approvals)
                 elif path.endswith("hitl/h/decide"):
                     approvals.clear()
@@ -203,25 +238,54 @@ def main():
             expect(page.get_by_text("1 artifact(s)", exact=False)).to_be_visible()
             expect(page.get_by_text("(sole contributor)", exact=False)).to_be_visible()
             expect(page.get_by_text("(shared with 1 other agent)", exact=False)).to_be_visible()
+            # Agent scope: pause only this agent's eligible tasks (t1 + t3).
+            page.locator(".agent-detail").get_by_role(
+                "button", name="Pause Backend's 2 eligible tasks", exact=True).click()
+            expect(page.get_by_text("Pause signal sent to 2 of 2 tasks", exact=False)).to_be_visible()
+            assert task_requests[-2:] == [("POST", "tasks/t1/pause"), ("POST", "tasks/t3/pause")], task_requests
             page.locator("details summary", has_text="Fix flaky test").click()
             expect(page.get_by_text("Attempt 1 failed", exact=False)).to_be_visible()
             expect(page.get_by_text("Recovery decision: retry_if_safe", exact=False)).to_be_visible()
             page.get_by_role("button", name="← Back to team", exact=True).click()
 
+            # Dependency map: layered SVG nodes navigate to the inspector.
+            expect(page.locator(".dep-map svg .dep-node")).to_have_count(3)
+            page.locator(".dep-map").get_by_role("button", name="Inspect task Implement auth, running", exact=True).click()
+            expect(page.get_by_text("Add middleware", exact=False)).to_be_visible()
+
             # Task inspector with dependency + owner navigation.
             page.get_by_role("button", name="Inspect task Integration tests", exact=True).click()
             expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
             expect(page.get_by_text("· waiting", exact=False).first).to_be_visible()
-            # Related requirement jumps to oversight coverage.
-            page.get_by_role("button", name="linked to requirement", exact=False).click()
-            expect(page.get_by_text("Auth requirement", exact=False)).to_be_visible()
-            # Back on Team the inspector selection survived the tab round-trip.
-            page.get_by_role("button", name="Team", exact=False).click()
-            expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
-            expect(page.get_by_text("Dependencies completed", exact=False)).to_have_count(0)
             page.get_by_role("button", name="Tester", exact=True).click()
             expect(page.get_by_text("Current work:", exact=False)).to_be_visible()
             page.get_by_role("button", name="← Back to team", exact=True).click()
+
+            # Spawn agent: registry insert + roster refresh, no session started.
+            page.get_by_role("button", name="Spawn agent", exact=True).click()
+            spawn_dialog = page.get_by_role("dialog", name="Spawn agent")
+            spawn_dialog.get_by_label("Agent name").fill("Scout")
+            spawn_dialog.get_by_role("button", name="Spawn agent", exact=True).click()
+            expect(page.get_by_text("Scout", exact=False)).to_be_visible()
+            expect(page.get_by_text("No task recorded for this agent", exact=False)).to_be_visible()
+
+            # New task: creation + roster refresh, starts pending.
+            page.get_by_role("button", name="New task", exact=True).click()
+            create_dialog = page.get_by_role("dialog", name="Create task")
+            create_dialog.get_by_label("Task title").fill("Write docs")
+            create_dialog.get_by_label("Task request").fill("Document the API")
+            create_dialog.get_by_role("button", name="Create task", exact=True).click()
+            expect(page.get_by_role("button", name="Inspect task Write docs", exact=True)).to_be_visible()
+
+            # Related requirement jumps to oversight coverage.
+            page.get_by_role("button", name="Inspect task Integration tests", exact=True).click()
+            page.get_by_role("button", name="linked to requirement", exact=False).click()
+            expect(page.get_by_text("Auth requirement", exact=False)).to_be_visible()
+            # Requirement explorer: expand, follow the linked task back.
+            page.get_by_text("Auth requirement", exact=False).click()
+            expect(page.get_by_text("1 linked task", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Integration tests", exact=True).click()
+            expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
 
             # Comms: thread + selectable message detail.
             page.get_by_role("button", name="Comms", exact=True).click()
@@ -265,8 +329,9 @@ def main():
             expect(page.get_by_text("Approve local change?", exact=False)).to_have_count(0)
 
             assert not errors, errors
-            print("PASS: office summary/cards/waiting-duration/recovery; bulk pause + retry dispatch; "
-                  "detail/tools/files/evidence/attribution; task inspector + requirement navigation; "
+            print("PASS: office summary/cards/waiting-duration/recovery; bulk + agent-scoped pause; "
+                  "retry dispatch; spawn agent; create task; detail/tools/files/evidence/attribution; "
+                  "dep map navigation; task inspector + requirement explorer; operator compose; "
                   "comms thread + detail; grouped activity with agent/task filters; symbol search to editor; "
                   "approval flow; no page errors")
             browser.close()

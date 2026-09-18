@@ -7,21 +7,19 @@
 // preserved (back button, no route change). Approvals stay prominent above
 // the body with a header count badge.
 
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { TextMorph } from "torph/react";
 import { glue } from "@typehug/en";
 
-import { cancelTask, controlTask } from "../../api/client";
-import { errorMessage } from "../../api/errors";
 import {
   BULK_LABEL,
-  bulkConfirm,
   bulkEligible,
   formatTokens,
   summarizeExecution,
   topEntries,
   validCosts,
 } from "../../office/selectors";
+import { useBulkAction } from "../../office/useBulkAction";
 import { runningAgents, useOffice, type OfficeTab } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import AgentDetail from "./AgentDetail";
@@ -72,10 +70,9 @@ export default function OfficeView() {
   const costs = useOffice((s) => s.costs);
   const selectedAgentId = useOffice((s) => s.selectedAgentId);
   const loadCosts = useOffice((s) => s.loadCosts);
-  const refresh = useOffice((s) => s.refresh);
   const setOffice = useOffice((s) => s.set);
   const [, tick] = useReducer((n: number) => n + 1, 0);
-  const [bulkBusy, setBulkBusy] = useState(false);
+  const { bulkBusy, runBulk } = useBulkAction();
 
   // Start the realtime stream for the open project (authoritative load first).
   useEffect(() => {
@@ -120,37 +117,6 @@ export default function OfficeView() {
     resume: bulkEligible(tasks, "resume"),
     cancel: bulkEligible(tasks, "cancel"),
   } as const;
-
-  // Bulk execution actions fan out over the existing per-task endpoints with
-  // one confirmation and one resync. Per-task results are reported honestly:
-  // signals are acknowledged, not applied; cancel is recorded.
-  const runBulk = async (action: "pause" | "resume" | "cancel"): Promise<void> => {
-    if (bulkBusy) return;
-    const targets = bulkEligible(useOffice.getState().tasks, action);
-    if (targets.length === 0) return;
-    if (!window.confirm(bulkConfirm(action, targets.length))) return;
-    setBulkBusy(true);
-    let ok = 0;
-    const failed: string[] = [];
-    for (const target of targets) {
-      try {
-        if (action === "cancel") await cancelTask(target.id);
-        else await controlTask(target.id, action);
-        ok += 1;
-      } catch (err) {
-        failed.push(`${target.title}: ${errorMessage(err)}`);
-      }
-    }
-    setBulkBusy(false);
-    await refresh().catch(() => undefined);
-    const done =
-      action === "cancel"
-        ? `Stopped ${ok} of ${targets.length} tasks.`
-        : `${BULK_LABEL[action]} signal sent to ${ok} of ${targets.length} tasks. Workflows apply it at safe checkpoints.`;
-    setOffice({
-      notice: failed.length === 0 ? `${done} Refreshing state.` : `${done} Failed: ${failed.join("; ")}`,
-    });
-  };
 
   const bulkTitle = (action: "pause" | "resume" | "cancel"): string => {
     const names = bulk[action].slice(0, 3).map((t) => t.title);
@@ -217,7 +183,7 @@ export default function OfficeView() {
                 disabled={bulkBusy}
                 title={bulkTitle(action)}
                 aria-label={`${BULK_LABEL[action]} ${bulk[action].length} tasks`}
-                onClick={() => void runBulk(action)}
+                onClick={() => void runBulk(action, tasks)}
               >
                 {bulkBusy ? "Sending…" : `${BULK_LABEL[action]} ${bulk[action].length}`}
               </button>

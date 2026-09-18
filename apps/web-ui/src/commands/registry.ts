@@ -17,6 +17,8 @@ export interface CommandActions {
   setOfficeTab: (tab: OfficeTabId) => void;
   openQuickOpen: () => void;
   openSymbolSearch: () => void;
+  openSpawnDialog: () => void;
+  openTaskDialog: () => void;
   openProjectDialog: () => void;
   openTerminal: () => void | Promise<void>;
   showToolOutput: () => void;
@@ -224,6 +226,22 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
         a.setView("office");
         a.setOfficeTab("comms");
       },
+    },
+    {
+      id: "agents.spawn",
+      label: "Spawn agent…",
+      category: "Agents",
+      keywords: ["spawn", "create agent", "new agent", "register"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.openSpawnDialog(),
+    },
+    {
+      id: "task.create",
+      label: "Create task…",
+      category: "Execution",
+      keywords: ["create task", "new task", "add task", "plan"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.openTaskDialog(),
     },
     {
       id: "oversight.coverage",

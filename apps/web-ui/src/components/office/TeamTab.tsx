@@ -27,6 +27,9 @@ import {
 import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
 import { StatusLabel } from "../shell/UiState";
+import DepMap from "./DepMap";
+import NewTaskDialog from "./NewTaskDialog";
+import SpawnAgentDialog from "./SpawnAgentDialog";
 
 const ACTION_LABELS: Record<TaskAction, string> = {
   execute: "Start execution", pause: "Request pause", resume: "Send resume signal",
@@ -211,6 +214,8 @@ export default function TeamTab() {
   const inFlight = useRef(false);
   const [controlError, setControlError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const spawnOpen = useOffice((s) => s.spawnDialog);
+  const createOpen = useOffice((s) => s.taskDialog);
   const available = useMemo(() => taskCommands(tasks, async () => undefined), [tasks]);
 
   const control = async (taskId: string, action: TaskAction) => {
@@ -253,7 +258,12 @@ export default function TeamTab() {
   return (
     <div className="stack">
       <section aria-label="Agents">
-        <h4 className="office-section-title muted">{glue("Agents on duty")}</h4>
+        <div className="row spread">
+          <h4 className="office-section-title muted">{glue("Agents on duty")}</h4>
+          <button className="btn btn-small" onClick={() => setOffice({ spawnDialog: true, tab: "team" })}>
+            Spawn agent
+          </button>
+        </div>
         {agents.length === 0 && (
           <div className="muted small pad-h">{glue("No agents yet — run a task to spawn one.")}</div>
         )}
@@ -263,7 +273,18 @@ export default function TeamTab() {
       </section>
 
       <section aria-label="Tasks">
-        <h4 className="office-section-title muted">{glue("Task board")}</h4>
+        <div className="row spread">
+          <h4 className="office-section-title muted">{glue("Task board")}</h4>
+          <button className="btn btn-small" onClick={() => setOffice({ taskDialog: true, tab: "team" })}>
+            New task
+          </button>
+        </div>
+        {tasks.length > 1 && (
+          <details className="small" open>
+            <summary>Dependency map</summary>
+            <DepMap tasks={tasks} />
+          </details>
+        )}
         {tasks.length === 0 && <div className="muted small pad-h">No tasks yet.</div>}
         {feedback && <p className="small" role="status">{feedback}</p>}
         {controlError && (
@@ -337,6 +358,8 @@ export default function TeamTab() {
           );
         })}
       </section>
+      {spawnOpen && <SpawnAgentDialog onClose={() => setOffice({ spawnDialog: false })} />}
+      {createOpen && <NewTaskDialog onClose={() => setOffice({ taskDialog: false })} />}
     </div>
   );
 }

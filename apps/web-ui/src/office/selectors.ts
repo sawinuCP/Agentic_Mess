@@ -345,6 +345,85 @@ export function bulkConfirm(
     : `Resume ${count} task${count === 1 ? "" : "s"}? Paused workflows continue from their checkpoints.`;
 }
 
+// --- dependency map ----------------------------------------------------------
+
+export interface DepNode {
+  id: string;
+  title: string;
+  status: string;
+  layer: number;
+  x: number;
+  y: number;
+}
+
+export interface DepEdge {
+  from: string;
+  to: string;
+}
+
+export const DEP_NODE_W = 132;
+export const DEP_NODE_H = 34;
+const DEP_GAP_X = 12;
+const DEP_GAP_Y = 44;
+
+/**
+ * Layered layout for the task dependency DAG (roots at the top). Edges to
+ * tasks outside the set are dropped (shown as "(external)" nowhere — the
+ * inspector names them instead). Cycle-guarded: a repeated id resolves to
+ * its first depth rather than recursing forever.
+ */
+export function layoutDeps(tasks: TaskInfo[]): {
+  nodes: DepNode[];
+  edges: DepEdge[];
+  width: number;
+  height: number;
+} {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const depth = new Map<string, number>();
+  const visit = (id: string, trail: string[]): number => {
+    const known = depth.get(id);
+    if (known !== undefined) return known;
+    if (trail.includes(id)) return trail.indexOf(id); // cycle: pin to first depth
+    const task = byId.get(id);
+    if (!task) return 0;
+    const inner = task.depends_on.filter((d) => byId.has(d));
+    const level = inner.length === 0 ? 0 : 1 + Math.max(...inner.map((d) => visit(d, [...trail, id])));
+    depth.set(id, level);
+    return level;
+  };
+  for (const t of tasks) visit(t.id, []);
+  const layers = new Map<number, TaskInfo[]>();
+  for (const t of tasks) {
+    const layer = depth.get(t.id) ?? 0;
+    layers.set(layer, [...(layers.get(layer) ?? []), t]);
+  }
+  const nodes: DepNode[] = [];
+  const index = new Map<string, DepNode>();
+  for (const [layer, members] of [...layers.entries()].sort((a, b) => a[0] - b[0])) {
+    members.forEach((t, i) => {
+      const node: DepNode = {
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        layer,
+        x: i * (DEP_NODE_W + DEP_GAP_X),
+        y: layer * (DEP_NODE_H + DEP_GAP_Y),
+      };
+      nodes.push(node);
+      index.set(t.id, node);
+    });
+  }
+  const edges: DepEdge[] = [];
+  for (const t of tasks) {
+    for (const dep of t.depends_on) {
+      if (byId.has(dep)) edges.push({ from: dep, to: t.id });
+    }
+  }
+  const width = Math.max(1, ...nodes.map((n) => n.x + DEP_NODE_W));
+  const height = Math.max(1, ...nodes.map((n) => n.y + DEP_NODE_H));
+  return { nodes, edges, width, height };
+}
+
 // --- costs -------------------------------------------------------------------
 
 /**

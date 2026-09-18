@@ -1,4 +1,4 @@
-"""Task endpoints: durable reads, cancellation (FR-014) and execution dispatch."""
+"""Task endpoints: durable reads, human creation, cancellation (FR-014) and execution dispatch."""
 
 from __future__ import annotations
 
@@ -12,11 +12,31 @@ from app.api.deps import get_db, get_project
 from app.core.errors import DomainError
 from app.db.models import Project
 from app.durable.client import DurableTasks
-from app.schemas.planning.tasks import ExecuteOut, TaskOut
+from app.schemas.planning.tasks import ExecuteOut, TaskIn, TaskOut
 from app.services.core import events as event_service
 from app.services.planning import tasks as task_service
 
 router = APIRouter(tags=["tasks"])
+
+
+@router.post("/api/projects/{project_id}/tasks", response_model=TaskOut, status_code=201)
+async def create_task(
+    body: TaskIn,
+    request: Request,
+    project: Project = Depends(get_project),
+    db: Session = Depends(get_db),
+) -> TaskOut:
+    """Human-authored task creation: pending task with validated
+    project-scoped links, recorded as TASK_CREATED."""
+    task = await asyncio.to_thread(task_service.create_task, db, project.id, body)
+    await event_service.record_event(
+        request.app.state.session_factory,
+        "TASK_CREATED",
+        project_id=task.project_id,
+        task_id=task.id,
+        payload={"title": task.title, "by": "user"},
+    )
+    return task
 
 
 @router.get("/api/projects/{project_id}/tasks", response_model=list[TaskOut])

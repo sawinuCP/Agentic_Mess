@@ -2,7 +2,21 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class TaskIn(BaseModel):
+    """Human-authored task creation (Wave 7 completion): title is required,
+    everything else optional. Dependencies must reference existing tasks of
+    the same project; cycles are impossible for a fresh task (nothing points
+    at it yet), so no graph check is needed here."""
+
+    title: str = Field(min_length=1, max_length=300)
+    request: str = ""
+    requirement_id: UUID | None = None
+    parent_task_id: UUID | None = None
+    priority: int = Field(default=5, ge=1)
+    depends_on: list[UUID] = []
 
 
 class AttemptOut(BaseModel):

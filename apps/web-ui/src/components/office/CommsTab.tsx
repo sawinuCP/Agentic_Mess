@@ -1,12 +1,15 @@
-// Communication tab (Wave 7): agent-to-agent messages as a real,
-// structured coordination view. Read-only: messages are durable records with
-// agent provenance — composing from the UI would fake authorship.
-// No MESSAGE_* realtime events exist, so the list loads on open with an
-// explicit refresh (documented in agent-office-architecture.md §8).
+// Communication tab: agent-to-agent messages as a real, structured
+// coordination view, plus operator notes. The operator composes as sender
+// `system` (labeled "You (operator)") — never as an agent — so authorship
+// stays honest. No MESSAGE_* realtime events exist, so the list loads on
+// open with an explicit refresh (documented in
+// agent-office-architecture.md §8).
 
 import { useEffect, useMemo, useState } from "react";
 import { glue } from "@typehug/en";
 
+import { sendOperatorMessage } from "../../api/client";
+import { errorMessage } from "../../api/errors";
 import { messageEndpoints, messageSummary } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
 import { UiState } from "../shell/UiState";
@@ -21,6 +24,12 @@ export default function CommsTab() {
   const setOffice = useOffice((s) => s.set);
   const [typeFilter, setTypeFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [recipient, setRecipient] = useState("");
+  const [kind, setKind] = useState<"request" | "question">("request");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (messages.length === 0 && !messagesLoading) void loadMessages().catch(() => undefined);
@@ -47,6 +56,32 @@ export default function CommsTab() {
   const selected = filtered.find((m) => m.id === selectedId) ?? null;
   const selectedTask = selected?.task_id ? tasks.find((t) => t.id === selected.task_id) : null;
 
+  const send = async (): Promise<void> => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      // The 201 response IS the durable record: insert it directly (a
+      // broadcast has no recipient inbox to reload from), then reload to
+      // reconcile — dedupe by id keeps both paths consistent.
+      const created = await sendOperatorMessage(recipient || null, {
+        type: kind,
+        summary: text.trim(),
+      });
+      const current = useOffice.getState().messages;
+      useOffice.getState().set({
+        messages: [created, ...current.filter((m) => m.id !== created.id)],
+      });
+      setText("");
+      setComposeOpen(false);
+      await loadMessages();
+    } catch (err) {
+      setSendError(errorMessage(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (messagesError) {
     return (
       <UiState title="Communication unavailable" error retry={() => void loadMessages()}>
@@ -61,14 +96,74 @@ export default function CommsTab() {
         <span className="small muted">
           {messagesLoading ? glue("Loading messages…") : glue(`${filtered.length} message${filtered.length === 1 ? "" : "s"}`)}
         </span>
-        <button
-          className="btn btn-small"
-          disabled={messagesLoading}
-          onClick={() => void loadMessages()}
-        >
-          Refresh
-        </button>
+        <span className="row gap4">
+          <button
+            className="btn btn-small"
+            onClick={() => setComposeOpen((v) => !v)}
+            aria-expanded={composeOpen}
+          >
+            {composeOpen ? "Close" : "Note to agents…"}
+          </button>
+          <button
+            className="btn btn-small"
+            disabled={messagesLoading}
+            onClick={() => void loadMessages()}
+          >
+            Refresh
+          </button>
+        </span>
       </div>
+      {composeOpen && (
+        <div className="comms-compose stack">
+          <p className="small muted">
+            Sent as <span className="mono">system</span> — you (the operator), never as an agent.
+          </p>
+          {sendError && <p role="alert" className="error-text small">{sendError}</p>}
+          <label className="small row gap4">
+            To
+            <select
+              className="text-input small"
+              aria-label="Message recipient"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+            >
+              <option value="">broadcast (all agents)</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="small row gap4">
+            Type
+            <select
+              className="text-input small"
+              aria-label="Message type"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as "request" | "question")}
+            >
+              <option value="request">request</option>
+              <option value="question">question</option>
+            </select>
+          </label>
+          <textarea
+            className="text-input small"
+            aria-label="Operator note"
+            rows={3}
+            placeholder="What should the agent(s) know or do?"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div>
+            <button
+              className="btn btn-small"
+              disabled={!text.trim() || sending}
+              onClick={() => void send()}
+            >
+              {sending ? "Sending…" : "Send operator note"}
+            </button>
+          </div>
+        </div>
+      )}
       {types.length > 2 && (
         <div className="row wrap" role="group" aria-label="Filter by message type">
           {types.map((type) => (

@@ -223,8 +223,32 @@ export function terminalWebSocketUrl(sessionId: string): string {
 export const listAgents = (projectId: string) =>
   request<AgentInfo[]>(`/api/projects/${projectId}/agents`);
 
+export const createAgent = (
+  projectId: string,
+  body: { name: string; role: string; model?: string | null; capabilities?: string[] },
+) =>
+  request<AgentInfo>(`/api/projects/${projectId}/agents`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const listTasks = (projectId: string) =>
   request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);
+
+export const createTask = (
+  projectId: string,
+  body: {
+    title: string;
+    request?: string;
+    requirement_id?: string | null;
+    priority?: number;
+    depends_on?: string[];
+  },
+) =>
+  request<TaskInfo>(`/api/projects/${projectId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 
 // Existing durable task endpoints. Signal acknowledgement is NOT a state change.
 // Cancellation (FR-014) is a direct human intervention: it marks the task
@@ -295,6 +319,21 @@ export const runReview = (
 
 export const listAgentMessages = (agentId: string, limit = 100) =>
   request<MessageInfo[]>(`/api/agents/${enc(agentId)}/messages?limit=${limit}`);
+
+export const sendOperatorMessage = (
+  recipientAgentId: string | null,
+  body: { task_id?: string | null; type: "request" | "question"; summary: string },
+) =>
+  request<MessageInfo>("/api/messages", {
+    method: "POST",
+    body: JSON.stringify({
+      sender_agent_id: null,
+      recipient_agent_id: recipientAgentId,
+      task_id: body.task_id ?? null,
+      type: body.type,
+      payload: { summary: body.summary, from: "operator" },
+    }),
+  });
 
 export const listWorktrees = (projectId: string, limit = 100) =>
   request<WorktreeInfo[]>(`/api/projects/${projectId}/worktrees?limit=${limit}`);
