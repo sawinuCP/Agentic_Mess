@@ -1,10 +1,28 @@
-// Team tab (Phase 9): live agents with morphing lifecycle states + task board.
+// Team tab (Phase 9, Wave 7): live agents + task board as a control room.
+//
+// Agent cards show recorded status, current work, waiting reasons, last
+// activity, and recovery state — all derived from durable state + the event
+// stream (see office/selectors.ts). Selecting an agent opens the detail
+// panel; selecting a task expands an inline inspector with recovery,
+// dependencies, owners, and attempts. Controls reuse the existing task
+// endpoints with availability reasons.
 
 import { useMemo, useRef, useState } from "react";
 import { taskCommands, type TaskAction } from "../../commands/taskCommands";
 import { errorMessage } from "../../api/errors";
 import { glue } from "@typehug/en";
 import { cancelTask, controlTask } from "../../api/client";
+import {
+  agentWaitingReason,
+  currentTaskForAgent,
+  describeEvent,
+  lastAgentEvent,
+  recoveryForTask,
+  recoveryState,
+  tasksForAgent,
+  waitingReason,
+} from "../../office/selectors";
+import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
 import { StatusLabel } from "../shell/UiState";
 
@@ -13,9 +31,161 @@ const ACTION_LABELS: Record<TaskAction, string> = {
   cancel: "Cancel task",
 };
 
+function agentName(agents: AgentInfo[], id: string | null | undefined): string {
+  if (!id) return "unassigned";
+  return agents.find((a) => a.id === id)?.name ?? id.slice(0, 8);
+}
+
+function AgentCard({ agent, tasks, events }: {
+  agent: AgentInfo; tasks: TaskInfo[]; events: EventEntry[];
+}) {
+  const setOffice = useOffice((s) => s.set);
+  const current = currentTaskForAgent(tasks, agent.id);
+  const waiting = agentWaitingReason(agent.id, agent.state, tasks);
+  const last = lastAgentEvent(events, agent.id);
+  const recovery = current ? recoveryState(current, events) : null;
+  const ownedCount = tasksForAgent(tasks, agent.id).length;
+
+  return (
+    <div className="agent-card">
+      <div className="row spread">
+        <span className="strong">{agent.name}</span>
+        <StatusLabel state={agent.state} />
+      </div>
+      <div className="small muted mono">
+        {agent.role}
+        {agent.model ? ` · ${agent.model}` : ""}
+        {ownedCount > 0 ? ` · ${ownedCount} task${ownedCount === 1 ? "" : "s"}` : ""}
+      </div>
+      {current ? (
+        <div className="small pad-h">
+          ▸ {current.title} <span className="muted">({current.status.replaceAll("_", " ")})</span>
+        </div>
+      ) : (
+        <div className="small muted pad-h">No task recorded for this agent</div>
+      )}
+      {waiting && (
+        <div className="small warn pad-h" role="note">
+          ⏳ {waiting}
+        </div>
+      )}
+      {last && (
+        <div className="small muted pad-h" title={new Date(last.occurred_at).toLocaleString()}>
+          {describeEvent(last)}
+        </div>
+      )}
+      <div className="row spread">
+        {recovery ? (
+          <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>
+        ) : (
+          <span />
+        )}
+        <button
+          className="btn btn-small"
+          aria-label={`Inspect agent ${agent.name}`}
+          title={agent.id}
+          onClick={() => setOffice({ selectedAgentId: agent.id, selectedTaskId: null })}
+        >
+          Details
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TaskInspector({ task, allTasks, agents, events }: {
+  task: TaskInfo; allTasks: TaskInfo[]; agents: AgentInfo[]; events: EventEntry[];
+}) {
+  const setOffice = useOffice((s) => s.set);
+  const owners = [...new Set(task.attempts.map((a) => a.agent_id).filter(Boolean))] as string[];
+  const deps = waitingReason(task, allTasks);
+  const steps = recoveryForTask(task, events);
+  const evidence = [...new Set(task.attempts.flatMap((a) => a.evidence_artifact_ids))];
+
+  return (
+    <div className="task-inspector">
+      {task.request && <p className="small">{task.request}</p>}
+      <div className="small muted">
+        priority {task.priority}
+        {task.requirement_id ? " · linked to requirement" : " · no requirement link"}
+      </div>
+      {deps ? (
+        <p className="small warn">⏳ {deps}</p>
+      ) : (
+        task.depends_on.length > 0 && <p className="small muted">Dependencies completed ✓</p>
+      )}
+      {task.depends_on.length > 0 && (
+        <div className="row wrap gap4">
+          <span className="small muted">Depends on:</span>
+          {task.depends_on.map((id) => {
+            const dep = allTasks.find((t) => t.id === id);
+            return (
+              <button
+                key={id}
+                className="btn btn-small"
+                title={dep ? `${dep.title} (${dep.status})` : "Not in this project"}
+                onClick={() => dep && setOffice({ selectedTaskId: dep.id })}
+                disabled={!dep}
+              >
+                {dep ? dep.title : id.slice(0, 8)} · {dep?.status.replaceAll("_", " ")}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {owners.length > 0 && (
+        <div className="row wrap gap4">
+          <span className="small muted">Owner{owners.length === 1 ? "" : "s"}:</span>
+          {owners.map((id) => (
+            <button
+              key={id}
+              className="btn btn-small"
+              onClick={() => setOffice({ selectedAgentId: id, selectedTaskId: null })}
+            >
+              {agentName(agents, id)}
+            </button>
+          ))}
+        </div>
+      )}
+      {task.attempts.length > 0 && (
+        <ul className="attempt-list small mono">
+          {[...task.attempts]
+            .sort((a, b) => a.attempt_number - b.attempt_number)
+            .map((a) => (
+              <li key={a.attempt_number}>
+                #{a.attempt_number} {agentName(agents, a.agent_id)} · {a.outcome ?? "in progress"}
+                {a.failure_class ? ` · ${a.failure_class}` : ""}
+                {a.evidence_artifact_ids.length > 0 ? ` · ${a.evidence_artifact_ids.length} evidence` : ""}
+              </li>
+            ))}
+        </ul>
+      )}
+      {steps.length > 0 && (
+        <details className="small">
+          <summary>Recovery ({steps.length})</summary>
+          <ol className="recovery-chain">
+            {steps.map((step, i) => (
+              <li key={i} className={`recovery-step ${step.tone}`}>
+                <span className="strong">{step.label}</span>
+                {step.detail && <span className="muted"> — {step.detail}</span>}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+      {evidence.length > 0 && (
+        <p className="small muted">Evidence artifacts: {evidence.length} recorded</p>
+      )}
+    </div>
+  );
+}
+
 export default function TeamTab() {
   const agents = useOffice((s) => s.agents);
   const tasks = useOffice((s) => s.tasks);
+  const events = useOffice((s) => s.events);
+  const selectedTaskId = useOffice((s) => s.selectedTaskId);
+  const setOffice = useOffice((s) => s.set);
   const reviewBusyTaskId = useOffice((s) => s.reviewBusyTaskId);
   const reviewTask = useOffice((s) => s.reviewTask);
   const refresh = useOffice((s) => s.refresh);
@@ -59,26 +229,17 @@ export default function TeamTab() {
 
   return (
     <div className="stack">
-      <section>
+      <section aria-label="Agents">
         <h4 className="office-section-title muted">{glue("Agents on duty")}</h4>
         {agents.length === 0 && (
           <div className="muted small pad-h">{glue("No agents yet — run a task to spawn one.")}</div>
         )}
         {agents.map((agent) => (
-          <div key={agent.id} className="agent-card">
-            <div className="row spread">
-              <span className="strong">{agent.name}</span>
-              <StatusLabel state={agent.state} />
-            </div>
-            <div className="small muted mono">
-              {agent.role}
-              {agent.model ? ` · ${agent.model}` : ""}
-            </div>
-          </div>
+          <AgentCard key={agent.id} agent={agent} tasks={tasks} events={events} />
         ))}
       </section>
 
-      <section>
+      <section aria-label="Tasks">
         <h4 className="office-section-title muted">{glue("Task board")}</h4>
         {tasks.length === 0 && <div className="muted small pad-h">No tasks yet.</div>}
         {feedback && <p className="small" role="status">{feedback}</p>}
@@ -91,19 +252,38 @@ export default function TeamTab() {
           const hasEvidence = task.attempts.some(
             (a) => a.outcome === "success" && a.evidence_artifact_ids.length > 0,
           );
+          const recovery = recoveryState(task, events);
+          const waiting = task.status === "blocked" ? waitingReason(task, tasks) : null;
           const actions = available.filter((c) => c.id.startsWith(`task.${task.id}.`));
+          const expanded = selectedTaskId === task.id;
           return (
             <div key={task.id} className="task-row">
               <div className="row spread">
-                <span className="task-title">{task.title}</span>
+                <button
+                  className="link strong task-title"
+                  aria-expanded={expanded}
+                  aria-label={`${expanded ? "Collapse" : "Inspect"} task ${task.title}`}
+                  onClick={() => setOffice({ selectedTaskId: expanded ? null : task.id })}
+                >
+                  {expanded ? "▾" : "▸"} {task.title}
+                </button>
                 <StatusLabel state={task.status} />
               </div>
+              {waiting && <div className="small warn pad-h">⏳ {waiting}</div>}
+              {recovery && (
+                <div className="pad-h">
+                  <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>
+                </div>
+              )}
+              {expanded && (
+                <TaskInspector task={task} allTasks={tasks} agents={agents} events={events} />
+              )}
               <div className="row spread small muted">
                 <span>
                   {task.requirement_id ? "linked to requirement" : "no requirement link"}
                   {hasEvidence ? " · evidence recorded" : ""}
                 </span>
-                <span className="row">
+                <span className="row wrap">
                   {actions.map((command) => {
                     const action = command.id.split(".").at(-1) as TaskAction;
                     return <button key={command.id} className="btn btn-small"

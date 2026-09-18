@@ -1336,3 +1336,126 @@ body {
   border-radius: 6px;
   padding: 2px 8px;
 }
+
+/*
+ * 11. office — Wave 7 agent control room (on Wave 6 tokens; no new palette).
+ * Dense, calm, text-first: every visual state pairs with a text label.
+ */
+.office-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  padding: 2px var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.office-summary .warn {
+  color: var(--warn);
+  font-weight: var(--weight-strong);
+}
+
+.task-inspector {
+  margin: var(--space-1) 0 var(--space-2);
+  padding: var(--space-2);
+  border-left: 2px solid var(--accent);
+  background: var(--surface-panel-alt);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.task-inspector p {
+  margin: 0;
+}
+
+.task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.attempt-list {
+  list-style: none;
+  margin: var(--space-1) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recovery-chain {
+  margin: var(--space-1) 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recovery-step.down {
+  color: var(--down);
+}
+
+.recovery-step.warn {
+  color: var(--warn);
+}
+
+.recovery-step.ok {
+  color: var(--ok);
+}
+
+.activity-list {
+  list-style: none;
+  margin: var(--space-1) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comms-row {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comms-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.comms-detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+.comms-detail dt {
+  color: var(--muted);
+}
+
+.comms-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+select.text-input.small {
+  width: auto;
+  padding: 2px 6px;
+  font-size: var(--text-xs);
+}

@@ -10,7 +10,7 @@
 
 import type { ViewId } from "../state/store";
 
-export type OfficeTabId = "team" | "timeline" | "oversight";
+export type OfficeTabId = "team" | "timeline" | "comms" | "oversight";
 
 export interface CommandActions {
   setView: (view: ViewId) => void;
@@ -204,6 +204,16 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       run: () => {
         a.setView("office");
         a.setOfficeTab("timeline");
+      },
+    },
+    {
+      id: "agents.comms",
+      label: "Open agent communication",
+      category: "Agents",
+      keywords: ["messages", "chat", "handoff", "coordination"],
+      run: () => {
+        a.setView("office");
+        a.setOfficeTab("comms");
       },
     },
     {

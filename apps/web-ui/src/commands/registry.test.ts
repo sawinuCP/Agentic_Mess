@@ -109,6 +109,9 @@ describe("buildCommands", () => {
     commands.find((c) => c.id === "agents.active")?.run();
     expect(actions.setView).toHaveBeenCalledWith("office");
     expect(actions.setOfficeTab).toHaveBeenCalledWith("team");
+    commands.find((c) => c.id === "agents.comms")?.run();
+    expect(actions.setView).toHaveBeenCalledWith("office");
+    expect(actions.setOfficeTab).toHaveBeenCalledWith("comms");
     commands.find((c) => c.id === "workspace.open-project")?.run();
     expect(actions.openProjectDialog).toHaveBeenCalledTimes(1);
   });

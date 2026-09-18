@@ -1,0 +1,281 @@
+// Agent detail panel (Wave 7): contextual inspection without leaving the
+// Office. Every section projects existing durable state; lazy sections
+// (communication, worktrees, costs) fetch on first open only. Anything the
+// backend does not record is labeled, never invented.
+
+import { useEffect, useMemo } from "react";
+import { glue } from "@typehug/en";
+
+import {
+  currentTaskForAgent,
+  describeEvent,
+  firstAgentEvent,
+  formatTokens,
+  recoveryForTask,
+  tasksForAgent,
+  topEntries,
+  validCosts,
+  waitingReason,
+} from "../../office/selectors";
+import { useOffice } from "../../state/officeStore";
+import { useStore } from "../../state/store";
+import { StatusLabel } from "../shell/UiState";
+import { UiState } from "../shell/UiState";
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h4 className="office-section-title muted">{glue(title)}</h4>
+      {children}
+    </section>
+  );
+}
+
+export default function AgentDetail({ agentId }: { agentId: string }) {
+  const agents = useOffice((s) => s.agents);
+  const tasks = useOffice((s) => s.tasks);
+  const events = useOffice((s) => s.events);
+  const messages = useOffice((s) => s.messages);
+  const messagesLoading = useOffice((s) => s.messagesLoading);
+  const worktrees = useOffice((s) => s.worktrees);
+  const worktreesLoading = useOffice((s) => s.worktreesLoading);
+  const costs = useOffice((s) => s.costs);
+  const taskCosts = useOffice((s) => s.taskCosts);
+  const setOffice = useOffice((s) => s.set);
+  const loadMessages = useOffice((s) => s.loadMessages);
+  const loadWorktrees = useOffice((s) => s.loadWorktrees);
+  const loadTaskCosts = useOffice((s) => s.loadTaskCosts);
+  const openFile = useStore((s) => s.openFile);
+
+  const agent = agents.find((a) => a.id === agentId);
+
+  const owned = useMemo(
+    () => (agent ? tasksForAgent(tasks, agent.id) : []),
+    [agent, tasks],
+  );
+  const current = agent ? currentTaskForAgent(tasks, agent.id) : null;
+  const ownedIds = useMemo(() => new Set(owned.map((t) => t.id)), [owned]);
+
+  // Lazy sections fetch once per project; the store guards duplicates.
+  useEffect(() => {
+    if (messages.length === 0 && !messagesLoading) void loadMessages().catch(() => undefined);
+    if (worktrees.length === 0 && !worktreesLoading) void loadWorktrees().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    for (const t of owned) void loadTaskCosts(t.id).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owned.map((t) => t.id).join(",")]);
+
+  if (!agent) {
+    return (
+      <div className="stack">
+        <button className="btn btn-small" onClick={() => setOffice({ selectedAgentId: null })}>
+          ← Back to team
+        </button>
+        <UiState title="Agent no longer recorded">
+          It may have been removed from the project snapshot. Resync to refresh.
+        </UiState>
+      </div>
+    );
+  }
+
+  const activity = events.filter((e) => e.agent_id === agent.id).slice(0, 8);
+  const since = firstAgentEvent(events, agent.id);
+  const agentMessages = messages
+    .filter((m) => m.sender_agent_id === agent.id || m.recipient_agent_id === agent.id)
+    .slice(0, 10);
+  const agentWorktrees = worktrees.filter((w) => w.task_id !== null && ownedIds.has(w.task_id));
+  const toolRuns = events.filter(
+    (e) =>
+      e.event_type === "TOOL_RUN_COMPLETED" &&
+      (e.agent_id === agent.id || (e.task_id !== null && ownedIds.has(e.task_id))),
+  );
+  const toolPaths = [...new Set(
+    toolRuns.map((e) => e.payload.path).filter((p): p is string => typeof p === "string"),
+  )].slice(0, 10);
+  const evidenceIds = [...new Set(owned.flatMap((t) => t.attempts.flatMap((a) => a.evidence_artifact_ids)))];
+  const recoveryTasks = owned.filter((t) => recoveryForTask(t, events).length > 0);
+  const depLines = owned
+    .filter((t) => !["completed", "cancelled", "failed"].includes(t.status))
+    .map((t) => ({ task: t, reason: waitingReason(t, tasks) }))
+    .filter((d) => d.reason !== null);
+
+  const jumpToTask = (id: string): void => {
+    setOffice({ selectedAgentId: null, selectedTaskId: id, tab: "team" });
+  };
+
+  return (
+    <div className="stack">
+      <div className="row spread">
+        <button className="btn btn-small" onClick={() => setOffice({ selectedAgentId: null })}>
+          ← Back to team
+        </button>
+        <StatusLabel state={agent.state} />
+      </div>
+      <div>
+        <div className="strong">{agent.name}</div>
+        <div className="small muted mono" title={agent.id}>
+          {agent.role}
+          {agent.model ? ` · ${agent.model}` : ""}
+        </div>
+      </div>
+
+      <Section title="Overview">
+        <div className="small stack">
+          <span>
+            Current work:{" "}
+            {current ? (
+              <button className="link" onClick={() => jumpToTask(current.id)}>
+                {current.title} ({current.status.replaceAll("_", " ")})
+              </button>
+            ) : (
+              <span className="muted">none recorded</span>
+            )}
+          </span>
+          <span className="muted">
+            Active since: {since ? new Date(since.occurred_at).toLocaleString() : "first recorded event not in feed"}
+          </span>
+          {agent.capabilities.length > 0 && (
+            <span className="muted">Capabilities: {agent.capabilities.join(", ")}</span>
+          )}
+          {agentWorktrees.length > 0 && (
+            <span>
+              Worktree:{" "}
+              <span className="mono">{agentWorktrees[0].branch}</span>{" "}
+              <span className="muted">({agentWorktrees[0].integration_status})</span>
+            </span>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Activity">
+        {activity.length === 0 && <div className="muted small">No events for this agent in the feed.</div>}
+        <ul className="activity-list small">
+          {activity.map((e) => (
+            <li key={e.id} title={new Date(e.occurred_at).toLocaleString()}>
+              <span className="mono muted">{new Date(e.occurred_at).toLocaleTimeString()}</span>{" "}
+              {describeEvent(e)}
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title={`Tasks (${owned.length})`}>
+        {owned.length === 0 && <div className="muted small">No tasks reference this agent.</div>}
+        {owned.map((t) => (
+          <div key={t.id} className="task-row">
+            <div className="row spread">
+              <button className="link strong" onClick={() => jumpToTask(t.id)}>
+                {t.title}
+              </button>
+              <StatusLabel state={t.status} />
+            </div>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Tools">
+        {toolRuns.length === 0 && (
+          <div className="muted small">
+            No completed tool runs recorded for this agent. In-progress tool activity is not exposed by the backend.
+          </div>
+        )}
+        {toolRuns.slice(0, 6).map((e) => (
+          <div key={e.id} className="small mono" title={JSON.stringify(e.payload)}>
+            {String(e.payload.tool ?? e.event_type)} · exit {String(e.payload.exit_code ?? "?")} ·{" "}
+            {String(e.payload.duration_ms ?? "?")}ms
+            {typeof e.payload.path === "string" ? ` · ${e.payload.path}` : ""}
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Files">
+        {toolPaths.length === 0 && evidenceIds.length === 0 && (
+          <div className="muted small">No touched files recorded.</div>
+        )}
+        {toolPaths.map((path) => (
+          <div key={path} className="row spread small mono">
+            <span className="file-path">{path}</span>
+            <button className="btn btn-small" onClick={() => void openFile(path).catch(() => undefined)}>
+              Open
+            </button>
+          </div>
+        ))}
+        {evidenceIds.length > 0 && (
+          <div className="small muted">{evidenceIds.length} evidence artifact(s) recorded</div>
+        )}
+      </Section>
+
+      <Section title="Dependencies">
+        {depLines.length === 0 && <div className="muted small">Nothing waiting on dependencies.</div>}
+        {depLines.map(({ task: t, reason }) => (
+          <div key={t.id} className="small">
+            <button className="link" onClick={() => jumpToTask(t.id)}>{t.title}</button>
+            <span className="warn"> — {reason}</span>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Communication">
+        {messagesLoading && <div className="muted small">Loading messages…</div>}
+        {!messagesLoading && agentMessages.length === 0 && (
+          <div className="muted small">No messages involving this agent.</div>
+        )}
+        {agentMessages.map((m) => (
+          <div key={m.id} className="small">
+            <span className="mono muted">{new Date(m.created_at).toLocaleTimeString()}</span>{" "}
+            {m.type}
+            {m.task_id && ownedIds.has(m.task_id) ? " · on owned task" : ""}
+          </div>
+        ))}
+        {agentMessages.length > 0 && (
+          <button
+            className="btn btn-small"
+            onClick={() => setOffice({ tab: "comms" })}
+          >
+            Open full thread
+          </button>
+        )}
+      </Section>
+
+      <Section title="Recovery">
+        {recoveryTasks.length === 0 && <div className="muted small">No failures or recovery on record.</div>}
+        {recoveryTasks.map((t) => (
+          <details key={t.id} className="small">
+            <summary>{t.title}</summary>
+            <ol className="recovery-chain">
+              {recoveryForTask(t, events).map((step, i) => (
+                <li key={i} className={`recovery-step ${step.tone}`}>
+                  <span className="strong">{step.label}</span>
+                  {step.detail && <span className="muted"> — {step.detail}</span>}
+                </li>
+              ))}
+            </ol>
+          </details>
+        ))}
+      </Section>
+
+      <Section title="Cost">
+        <div className="small muted">Per-agent token accounting is not exposed by the backend.</div>
+        {owned.map((t) => {
+          const summary = validCosts(taskCosts[t.id]) ? taskCosts[t.id] : null;
+          if (!summary) return null;
+          return (
+            <div key={t.id} className="small">
+              {t.title}: {formatTokens(summary.total_tokens)} tokens · {summary.invocations} calls
+            </div>
+          );
+        })}
+        {validCosts(costs) && (
+          <div className="small">
+            Project: {formatTokens(costs.total_tokens)} tokens · {costs.invocations} calls
+            {topEntries(costs.by_role).map(([role, n]) => (
+              <span key={role} className="muted"> · {role} {formatTokens(n)}</span>
+            ))}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}

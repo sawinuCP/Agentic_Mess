@@ -1,85 +1,182 @@
-// Office view (Phase 9, FR-025, AC-014): the engineering-office sidebar.
+// Office view (Wave 7): the AI engineering control room sidebar.
 //
-// Three live tabs — Team (agents + tasks), Timeline (durable event stream) and
-// Oversight (traceability + completion gate + review pipeline) — plus HITL
-// approval cards. Typography polish comes from Typehug (glue), text-state
-// transitions morph via Torph.
+// Header carries the derived execution summary (state + live counts), project
+// identity, cost snapshot, and the actual connection condition — all from
+// durable state, never simulated. Tabs: Team, Activity, Comms, Oversight.
+// Selecting an agent swaps the body to the detail panel with context
+// preserved (back button, no route change). Approvals stay prominent above
+// the body with a header count badge.
 
 import { useEffect, useReducer } from "react";
 import { TextMorph } from "torph/react";
 import { glue } from "@typehug/en";
 
-import { POLL_MS, runningAgents, useOffice, type OfficeTab } from "../../state/officeStore";
+import { formatTokens, summarizeExecution, topEntries, validCosts } from "../../office/selectors";
+import { runningAgents, useOffice, type OfficeTab } from "../../state/officeStore";
 import { useStore } from "../../state/store";
+import AgentDetail from "./AgentDetail";
 import ApprovalCard from "./ApprovalCard";
+import CommsTab from "./CommsTab";
 import OversightTab from "./OversightTab";
 import TeamTab from "./TeamTab";
 import TimelineTab from "./TimelineTab";
 
 const TABS: { id: OfficeTab; label: string }[] = [
   { id: "team", label: "Team" },
-  { id: "timeline", label: "Timeline" },
+  { id: "timeline", label: "Activity" },
+  { id: "comms", label: "Comms" },
   { id: "oversight", label: "Oversight" },
 ];
+
+const CONNECTION_LABEL: Record<string, string> = {
+  live: "live",
+  connecting: "connecting",
+  reconnecting: "reconnecting",
+  offline: "offline",
+  degraded: "degraded",
+  resyncing: "resyncing",
+};
+
+const CONNECTION_CLASS: Record<string, string> = {
+  live: "on",
+  connecting: "warn",
+  reconnecting: "warn",
+  offline: "down",
+  degraded: "warn",
+  resyncing: "warn",
+};
 
 export default function OfficeView() {
   const project = useStore((s) => s.project);
   const officeProjectId = useOffice((s) => s.projectId);
   const tab = useOffice((s) => s.tab);
-  const live = useOffice((s) => s.live);
-  const lastPolledAt = useOffice((s) => s.lastPolledAt);
+  const connectionState = useOffice((s) => s.connectionState);
+  const resyncRequired = useOffice((s) => s.resyncRequired);
+  const notice = useOffice((s) => s.notice);
+  const lastEventTimestamp = useOffice((s) => s.lastEventTimestamp);
   const agents = useOffice((s) => s.agents);
+  const tasks = useOffice((s) => s.tasks);
+  const hitl = useOffice((s) => s.hitl);
+  const costs = useOffice((s) => s.costs);
+  const selectedAgentId = useOffice((s) => s.selectedAgentId);
+  const loadCosts = useOffice((s) => s.loadCosts);
   const setOffice = useOffice((s) => s.set);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
-  // (Re)start live polling whenever the open project changes or the view mounts.
+  // Start the realtime stream for the open project (authoritative load first).
   useEffect(() => {
     if (!project) return;
     if (officeProjectId !== project.id) {
       useOffice.getState().start(project.id);
     }
-    const timer = window.setInterval(() => {
-      void useOffice.getState().poll();
-    }, POLL_MS);
     const clock = window.setInterval(tick, 1000); // keep the relative-time label fresh
     return () => {
-      window.clearInterval(timer);
       window.clearInterval(clock);
     };
   }, [project, officeProjectId]);
+
+  // Cost snapshot loads once per project; the header shows it when present.
+  useEffect(() => {
+    if (officeProjectId) void loadCosts().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officeProjectId]);
+
+  // Stop the stream when unmounting (project closed / sidebar hidden).
+  useEffect(() => {
+    return () => {
+      if (!useStore.getState().project) useOffice.getState().stop();
+    };
+  }, []);
 
   if (!project) {
     return <div className="office-empty muted">Open a project to see the office.</div>;
   }
 
   const running = runningAgents(agents).length;
+  const summary = summarizeExecution(agents.map((a) => a.state), tasks);
+  const pendingHitl = hitl.filter((h) => h.status === "pending").length;
+  const costData = validCosts(costs) ? costs : null;
+  const displayState = connectionState === "offline" ? "offline"
+    : resyncRequired ? "resyncing" : connectionState;
+  const label = CONNECTION_LABEL[displayState] ?? displayState;
+  const needsRecovery = connectionState === "offline" || resyncRequired;
+  const topRole = costData ? topEntries(costData.by_role, 1)[0] : undefined;
 
   return (
-    <div className="office">
+    <div className="sidebar office">
       <div className="office-header">
         <span className="office-title strong">{glue("Engineering office")}</span>
-        <span className={`live-dot ${live ? "on" : ""}`} title={live ? "live" : "paused"} />
+        <span
+          className={`live-dot ${CONNECTION_CLASS[displayState] ?? "warn"}`}
+          title={`stream ${label}`}
+        />
+        <span className="small muted">{glue(label)}</span>
+        {needsRecovery && (
+          <button
+            className="btn btn-small"
+            onClick={() => void useOffice.getState().resync().catch(() => undefined)}
+            title="Reload the event snapshot from the control plane"
+          >
+            resync
+          </button>
+        )}
       </div>
+      <div className="office-summary" role="status" aria-label="Execution summary">
+        <span className={`state-pill ${summary.tone}`} title={`${summary.running} running · ${summary.waiting} waiting · ${summary.failed} failed · ${summary.total} total`}>
+          {summary.label}
+        </span>
+        <span className="small muted">
+          {agents.length} agent{agents.length === 1 ? "" : "s"} · {tasks.length} task{tasks.length === 1 ? "" : "s"}
+        </span>
+        {pendingHitl > 0 && (
+          <span className="small warn" aria-label={`${pendingHitl} approvals needed`}>
+            {pendingHitl} approval{pendingHitl === 1 ? "" : "s"}
+          </span>
+        )}
+        {costData && costData.total_tokens > 0 && (
+          <span className="small muted" title={topRole ? `top role ${topRole[0]}: ${topRole[1]} tokens` : "model token usage"}>
+            {formatTokens(costData.total_tokens)} tokens
+          </span>
+        )}
+      </div>
+      {notice && (
+        <div className="office-notice" role="status">
+          {notice}
+        </div>
+      )}
       <div className="office-tabs">
-        {TABS.map(({ id, label }) => (
+        {TABS.map(({ id, label: tabLabel }) => (
           <button
             key={id}
-            className={`office-tab ${tab === id ? "active" : ""}`}
-            onClick={() => setOffice({ tab: id })}
+            className={`office-tab ${tab === id && !selectedAgentId ? "active" : ""}`}
+            onClick={() => setOffice({ tab: id, selectedAgentId: null })}
           >
-            {label}
+            {tabLabel}
             {id === "team" && running > 0 && <span className="badge-live">{running}</span>}
           </button>
         ))}
       </div>
       <ApprovalCard />
       <div className="office-body">
-        {tab === "team" && <TeamTab />}
-        {tab === "timeline" && <TimelineTab />}
-        {tab === "oversight" && <OversightTab />}
+        {selectedAgentId ? (
+          <AgentDetail agentId={selectedAgentId} />
+        ) : (
+          <>
+            {tab === "team" && <TeamTab />}
+            {tab === "timeline" && <TimelineTab />}
+            {tab === "comms" && <CommsTab />}
+            {tab === "oversight" && <OversightTab />}
+          </>
+        )}
       </div>
       <div className="office-footer muted small">
-        <TextMorph>{glue(`synced ${relativeTime(lastPolledAt)}`)}</TextMorph>
+        <TextMorph>
+          {glue(
+            connectionState === "live" || connectionState === "degraded"
+              ? `event ${relativeTime(lastEventTimestamp)}`
+              : label,
+          )}
+        </TextMorph>
       </div>
     </div>
   );

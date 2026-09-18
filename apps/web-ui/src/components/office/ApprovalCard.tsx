@@ -17,6 +17,8 @@ const RISK_CLASS: Record<string, string> = {
 
 export default function ApprovalCard() {
   const hitl = useOffice((s) => s.hitl);
+  const tasks = useOffice((s) => s.tasks);
+  const setOffice = useOffice((s) => s.set);
   const decideHitl = useOffice((s) => s.decideHitl);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const pending = useRef(new Set<string>());
@@ -46,6 +48,17 @@ export default function ApprovalCard() {
             <span className="small muted mono">{request.kind}</span>
           </div>
           <div className="approval-question strong">{request.question}</div>
+          {request.task_id && (
+            <button
+              className="link small muted"
+              title="Inspect the affected task"
+              onClick={() => {
+                setOffice({ selectedTaskId: request.task_id, tab: "team" });
+              }}
+            >
+              for task: {tasks.find((t) => t.id === request.task_id)?.title ?? request.task_id.slice(0, 8)}
+            </button>
+          )}
           {request.choices.length > 0 && (
             <ul className="approval-choices small">
               {request.choices.map((choice) => (
