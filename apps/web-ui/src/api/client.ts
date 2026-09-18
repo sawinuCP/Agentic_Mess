@@ -3,11 +3,13 @@
 
 import type {
   AgentInfo,
+  CostsSummary,
   EventEntry,
   FileContent,
   GitCommit,
   GitStatus,
   HitlRequestInfo,
+  MessageInfo,
   ProjectInfo,
   ProjectToolchains,
   RequirementInfo,
@@ -17,6 +19,7 @@ import type {
   ToolRunResult,
   TraceabilityReport,
   TreeNode,
+  WorktreeInfo,
 } from "../types";
 
 export class ApiError extends Error {
@@ -285,6 +288,20 @@ export const runReview = (
     method: "POST",
     body: JSON.stringify(body),
   });
+
+// --- agent office (Wave 7): communication, worktrees, costs -----------------
+// Read-only projections over existing endpoints. No new backend concepts.
+
+export const listAgentMessages = (agentId: string, limit = 100) =>
+  request<MessageInfo[]>(`/api/agents/${enc(agentId)}/messages?limit=${limit}`);
+
+export const listWorktrees = (projectId: string, limit = 100) =>
+  request<WorktreeInfo[]>(`/api/projects/${projectId}/worktrees?limit=${limit}`);
+
+export const getCosts = (projectId: string, taskId?: string) => {
+  const query = taskId ? `?task_id=${enc(taskId)}` : "";
+  return request<CostsSummary>(`/api/projects/${projectId}/intelligence/costs${query}`);
+};
 
 // --- diagnostics (Phase 10) -----------------------------------------------
 

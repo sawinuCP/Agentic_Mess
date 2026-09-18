@@ -111,7 +111,10 @@ export interface TaskInfo {
   depends_on: string[];
   attempts: {
     attempt_number: number;
+    agent_id: string | null;
     outcome: string | null;
+    failure_class: string | null;
+    failure_detail: string | null;
     evidence_artifact_ids: string[];
   }[];
 }
@@ -155,7 +158,86 @@ export interface EventEntry {
   task_id: string | null;
   agent_id: string | null;
   payload: Record<string, unknown>;
+  project_seq?: number | null;
+  execution_id?: string | null;
 }
+
+// --- agent office (Wave 7): communication, worktrees, costs ------------------
+
+export interface MessageInfo {
+  id: string;
+  conversation_id: string | null;
+  sender_agent_id: string | null;
+  recipient_agent_id: string | null;
+  task_id: string | null;
+  type: string;
+  payload: Record<string, unknown>;
+  payload_ref: string | null;
+  priority: number;
+  correlation_id: string | null;
+  reply_to: string | null;
+  created_at: string;
+  expires_at: string | null;
+  delivered_at: string | null;
+  delivery_attempts: number;
+}
+
+export interface WorktreeInfo {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  branch: string;
+  path: string;
+  status: string;
+  integration_status: string;
+  integration_position: number | null;
+  created_at: string;
+}
+
+export interface CostsSummary {
+  invocations: number;
+  total_tokens: number;
+  by_model: Record<string, number>;
+  by_role: Record<string, number>;
+  task_id: string | null;
+  budget_tokens_per_task: number;
+  extra?: Record<string, unknown>;
+}
+
+// --- realtime (Wave 3) -------------------------------------------------------
+
+/** Canonical wire envelope v1 — mirrors app/realtime/envelope.py. */
+export interface EventEnvelope {
+  schema_version: number;
+  event_id: string;
+  event_type: string;
+  timestamp: string;
+  project_id: string | null;
+  execution_id: string | null;
+  task_id: string | null;
+  agent_id: string | null;
+  correlation_id: string | null;
+  source: string | null;
+  sequence: number | null;
+  payload: Record<string, unknown>;
+  payload_ref: string | null;
+}
+
+/** Server → client control frames (never domain events). */
+export interface ControlFrame {
+  kind: "GATEWAY_STATUS" | "RESYNC_REQUIRED" | "DISCONNECT";
+  detail?: string;
+  state?: "live" | "degraded";
+}
+
+/** Connection state machine visible in the office UI (§26). */
+export type ConnectionState =
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "offline"
+  | "degraded"
+  | "resyncing";
 
 export interface TraceabilityCriterion {
   id: string;
