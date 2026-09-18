@@ -58,11 +58,13 @@ interface AppState {
   quickOpen: boolean;
   commandPalette: boolean;
   symbolSearch: boolean;
+  mcpDialog: boolean;
   projectDialog: boolean;
   diagnosticsOpen: boolean;
   output: ToolRunResult | null;
   selection: EditorSelection | null;
   centerPrefill: string | null;
+  centerFocusTick: number;
   centerEntries: CenterEntry[];
   centerReq: string;
   centerTask: string;
@@ -105,11 +107,13 @@ export const useStore = create<AppState>((set, get) => ({
   quickOpen: false,
   commandPalette: false,
   symbolSearch: false,
+  mcpDialog: false,
   projectDialog: false,
   diagnosticsOpen: false,
   output: null,
   selection: null,
   centerPrefill: null,
+  centerFocusTick: 0,
   centerEntries: [],
   centerReq: "",
   centerTask: "",

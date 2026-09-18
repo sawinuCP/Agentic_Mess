@@ -20,6 +20,7 @@ export interface CommandActions {
   openSpawnDialog: () => void;
   openTaskDialog: () => void;
   openCommandCenter: (prefill?: string) => void;
+  openMcpDialog: () => void;
   openProjectDialog: () => void;
   openTerminal: () => void | Promise<void>;
   showToolOutput: () => void;
@@ -293,6 +294,14 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       keywords: ["create task", "new task", "add task", "plan"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.openTaskDialog(),
+    },
+    {
+      id: "mcp.call-tool",
+      label: "Call MCP tool…",
+      category: "Execution",
+      keywords: ["mcp", "external tool", "model context protocol", "gateway"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.openMcpDialog(),
     },
     {
       id: "oversight.coverage",

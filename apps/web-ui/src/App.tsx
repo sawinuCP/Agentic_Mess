@@ -15,6 +15,7 @@ import PanelResize from "./components/shell/PanelResize";
 import ViewBoundary from "./components/shell/ViewBoundary";
 import CommandPalette from "./components/shell/CommandPalette";
 import DiagnosticsDialog from "./components/shell/DiagnosticsDialog";
+import McpDialog from "./components/shell/McpDialog";
 import OpenProjectDialog from "./components/shell/OpenProjectDialog";
 import QuickOpen from "./components/shell/QuickOpen";
 import StatusBar from "./components/shell/StatusBar";
@@ -45,6 +46,7 @@ export default function App() {
   const quickOpen = useStore((s) => s.quickOpen);
   const commandPalette = useStore((s) => s.commandPalette);
   const symbolSearch = useStore((s) => s.symbolSearch);
+  const mcpDialog = useStore((s) => s.mcpDialog);
   const projectDialog = useStore((s) => s.projectDialog);
   const diagnosticsOpen = useStore((s) => s.diagnosticsOpen);
   const saveActive = useStore((s) => s.saveActive);
@@ -72,6 +74,14 @@ export default function App() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setFn({ commandPalette: !useStore.getState().commandPalette });
+      }
+      // Alt+K focuses the Command Center. e.code is layout-independent
+      // (macOS Option+K types ˚ but still reports KeyK); plain Ctrl+K stays
+      // the palette, and Monaco keeps its own Ctrl+K chord behavior.
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyK") {
+        event.preventDefault();
+        const state = useStore.getState();
+        setFn({ view: "command", sidebarOpen: true, centerFocusTick: state.centerFocusTick + 1 });
       }
     };
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -120,6 +130,7 @@ export default function App() {
       {quickOpen && <QuickOpen />}
       {commandPalette && <CommandPalette />}
       {symbolSearch && <SymbolSearch />}
+      {mcpDialog && <McpDialog onClose={() => setFn({ mcpDialog: false })} />}
       {diagnosticsOpen && <DiagnosticsDialog onClose={() => setFn({ diagnosticsOpen: false })} />}
     </div>
   );

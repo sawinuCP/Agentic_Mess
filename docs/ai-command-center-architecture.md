@@ -98,13 +98,24 @@ previews, confirmations, existing auth/HITL. A11y: native controls,
 aria-live plan/result announcements, focus-in on open, reduced-motion
 (nothing animates anyway), never color-alone.
 
-## 8. Explicitly declined (with reason)
+## 8. Explicitly declined (with reason) — revisited
 
-- Generative chat/synthesis (no endpoint; would fake autonomy).
-- Conversation branching (no supporting infra; risks mutating main execution).
-- MCP-call UI (gateway stays backend-owned; research covers the required
-  external-info path).
-- New keyboard shortcuts (Ctrl+J/Ctrl+E conflict with browser/Monaco;
-  palette-only, documented).
-- Backend eval-harness changes (CLI harness is model-quality oriented;
-  routing accuracy is unit-evaluated instead).
+- Generative chat/synthesis: still declined (no endpoint; an ad-hoc chat
+  endpoint would need budgets, safety policy, and eval — a backend wave, not
+  a UI addition).
+- Conversation branching: BUILT in scoped form — per-entry Branch restores
+  scope + request as a new draft with a parent link; entries are immutable
+  records and dispatches are explicit user actions, so branches cannot
+  mutate main execution by construction.
+- MCP-call UI: BUILT — discovery + confirmed invocation + truncated results
+  with artifact refs over the existing gateway routes.
+- New keyboard shortcuts: BUILT one — Alt+K focuses the Center (code-based
+  detection so macOS Option behavior works; Ctrl+J/Ctrl+E-class bindings
+  stay untouched; Monaco keeps Ctrl+K chords).
+- Backend eval-harness changes: still declined — the CLI harness evaluates
+  model quality; routing accuracy is unit-evaluated (14 cases). Extending
+  the harness would be theater, not evaluation.
+- Conversational memory polish: BUILT — store-persisted conversation
+  (survives view switches), input draft in localStorage, scope overrides
+  persisted, per-entry timestamps, duplicate suppression with pointer,
+  clear-with-confirm.

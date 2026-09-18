@@ -36,6 +36,8 @@ export interface CenterEntry {
   findings: Finding[];
   dispatches: DispatchResult[];
   error: string | null;
+  createdAt: string;
+  branchedFrom: number | null;
 }
 
 export type { PlanAction };

@@ -91,6 +91,7 @@ export default function CommandPalette() {
             setFn({ view: "office", sidebarOpen: true });
             setOffice({ tab: "team", taskDialog: true });
           },
+          openMcpDialog: () => setFn({ mcpDialog: true }),
           openProjectDialog: () => setFn({ projectDialog: true }),
           openTerminal: () => openTerminal(),
           showToolOutput: () => setFn({ panelOpen: true, panelTab: "output" }),

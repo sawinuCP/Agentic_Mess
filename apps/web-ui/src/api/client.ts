@@ -440,6 +440,61 @@ export const researchFetch = (projectId: string, url: string, note?: string) =>
     body: JSON.stringify({ url, note }),
   });
 
+// --- MCP gateway (existing routes; thin client, Wave 10 completion) --------
+
+export interface McpStatus {
+  enabled: boolean;
+  config_path: string;
+  timeout_seconds: number;
+}
+
+export interface McpToolDef {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  allowed: boolean;
+}
+
+export interface McpServerDef {
+  server: string;
+  tools: McpToolDef[];
+  error?: string;
+}
+
+export interface McpCallResult {
+  server: string;
+  tool: string;
+  content: unknown;
+  is_error: boolean;
+  artifact_id: string | null;
+}
+
+export const mcpStatus = () => request<McpStatus>("/api/mcp/status");
+
+export const mcpDiscover = () =>
+  request<{ servers: McpServerDef[] }>("/api/mcp/discover", { method: "POST" });
+
+export const mcpCall = (server: string, tool: string, args: Record<string, unknown>) =>
+  request<McpCallResult>("/api/mcp/call", {
+    method: "POST",
+    body: JSON.stringify({ server, tool, arguments: args }),
+  });
+
+/** Validate raw args text: must parse to a JSON object (never eval'd). */
+export function parseMcpArgs(text: string): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: true, value: {} };
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "Arguments must be a JSON object." };
+    }
+    return { ok: true, value: parsed as Record<string, unknown> };
+  } catch {
+    return { ok: false, error: "Arguments are not valid JSON." };
+  }
+}
+
 // --- diagnostics (Phase 10) -----------------------------------------------
 
 export interface DiagnosticsReport {

@@ -37,6 +37,8 @@ import { StatusLabel } from "../shell/UiState";
 
 let entrySeq = 0;
 
+const DRAFT_KEY = "harness.center.draft";
+
 function modeOf(intent: EngineeringIntent): string {
   const s = intent.scope;
   if (s.taskId && (intent.intentType === "fix_failure" || intent.intentType.startsWith("control") || intent.intentType === "start_execution")) return "Execution";
@@ -55,6 +57,7 @@ export default function CenterView() {
   const output = useStore((s) => s.output);
   const toolchains = useStore((s) => s.toolchains);
   const centerPrefill = useStore((s) => s.centerPrefill);
+  const centerFocusTick = useStore((s) => s.centerFocusTick);
   const setWorkspace = useStore((s) => s.set);
   const runTool = useStore((s) => s.runTool);
   const openFile = useStore((s) => s.openFile);
@@ -74,10 +77,34 @@ export default function CenterView() {
   const agentOverride = useStore((s) => s.centerAgent);
   const [costLine, setCostLine] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingBranchRef = useRef<number | null>(null);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  useEffect(() => {
+    if (centerFocusTick > 0) inputRef.current?.focus();
+  }, [centerFocusTick]);
+  // Draft + tick clock: the draft survives unmounts; relative times refresh.
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem(DRAFT_KEY);
+      if (draft) setInput(draft);
+    } catch {
+      // storage unavailable — start empty
+    }
+    const clock = window.setInterval(() => setTick((n) => n + 1), 30000);
+    return () => window.clearInterval(clock);
+  }, []);
+  useEffect(() => {
+    try {
+      if (input) localStorage.setItem(DRAFT_KEY, input);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // storage unavailable — draft simply isn't persisted
+    }
+  }, [input]);
   useEffect(() => {
     if (centerPrefill) {
       setInput(centerPrefill);
@@ -427,6 +454,16 @@ export default function CenterView() {
   const submit = (text: string): void => {
     const request = text.trim();
     if (!request || !project) return;
+    const normalized = request.toLowerCase().replace(/\s+/g, " ");
+    const existing = useStore.getState().centerEntries.find(
+      (e) => e.request.trim().toLowerCase().replace(/\s+/g, " ") === normalized,
+    );
+    const branchedFrom = pendingBranchRef.current;
+    pendingBranchRef.current = null;
+    if (existing && branchedFrom === null) {
+      setWorkspace({ notice: `Already asked — see entry #${existing.id} above.` });
+      return;
+    }
     const ctx = buildCtx();
     const intent = classifyIntent(request, ctx);
     const plan = planFor(intent);
@@ -442,9 +479,29 @@ export default function CenterView() {
       findings: [],
       dispatches: [],
       error: null,
+      createdAt: new Date().toISOString(),
+      branchedFrom,
     };
     pushEntry(entry);
     setInput("");
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // storage unavailable — draft simply isn't persisted
+    }
+  };
+
+  const branchEntry = (entry: CenterEntry): void => {
+    const scope = entry.intent.scope;
+    setWorkspace({
+      centerReq: scope.requirementId ?? "",
+      centerTask: scope.taskId ?? "",
+      centerAgent: scope.agentId ?? "",
+    });
+    setInput(entry.request);
+    pendingBranchRef.current = entry.id;
+    setWorkspace({ notice: `Branched from #${entry.id} — scope restored, nothing re-executed.` });
+    inputRef.current?.focus();
   };
 
   const modeOfEntry = (entry: CenterEntry): string => modeOf(entry.intent);
@@ -521,9 +578,14 @@ export default function CenterView() {
         {entries.map((entry) => (
           <article key={entry.id} className="cc-entry">
             <div className="row spread">
-              <span className="strong">{entry.request}</span>
-              <span className="small muted">{modeOfEntry(entry)} mode</span>
+              <span className="strong">#{entry.id} {entry.request}</span>
+              <span className="small muted" title={new Date(entry.createdAt).toLocaleString()}>
+                {modeOfEntry(entry)} mode · {relativeTime(entry.createdAt)}
+              </span>
             </div>
+            {entry.branchedFrom !== null && (
+              <div className="small muted">↳ branched from #{entry.branchedFrom} — scope restored, nothing re-executed.</div>
+            )}
             <div className="small muted">
               Intent: <span className="mono">{entry.intent.intentType}</span> · confidence {entry.intent.confidence}
             </div>
@@ -589,22 +651,52 @@ export default function CenterView() {
                 </button>
               )}
               {(entry.status === "done" || entry.status === "error") && (
-                <button
-                  className="btn btn-small"
-                  onClick={() => {
-                    setInput(entry.request);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  Edit request
-                </button>
+                <>
+                  <button
+                    className="btn btn-small"
+                    onClick={() => {
+                      setInput(entry.request);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    Edit request
+                  </button>
+                  <button
+                    className="btn btn-small"
+                    title="Continue this thread: restores its scope and request as a new draft"
+                    onClick={() => branchEntry(entry)}
+                  >
+                    Branch
+                  </button>
+                </>
               )}
             </div>
           </article>
         ))}
       </div>
+      {entries.length > 0 && (
+        <div className="pad">
+          <button
+            className="btn btn-small"
+            onClick={() => {
+              if (window.confirm("Clear the Command Center conversation? Dispatched work is unaffected.")) {
+                setWorkspace({ centerEntries: [] });
+              }
+            }}
+          >
+            Clear conversation
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+function relativeTime(iso: string): string {
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
 }
 
 function LiveTaskStatus({ taskId, reviewVerdict }: { taskId: string; reviewVerdict?: string }) {

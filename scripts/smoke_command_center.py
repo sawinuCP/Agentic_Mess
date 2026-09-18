@@ -130,6 +130,19 @@ def main():
                                         "sha256": "cc", "excerpt": "Use short-lived tokens.",
                                         "artifact_id": "art9", "context_item_id": "ctx9",
                                         "confidence": 0.9})
+                elif path == "mcp/status":
+                    route.fulfill(json={"enabled": True, "config_path": "mcp.json",
+                                        "timeout_seconds": 30})
+                elif path == "mcp/discover":
+                    route.fulfill(json={"servers": [
+                        {"server": "fs", "tools": [
+                            {"name": "read", "description": "Read a file",
+                             "input_schema": {}, "allowed": True}]}]})
+                elif path == "mcp/call":
+                    posted.append(("mcp", route.request.post_data_json))
+                    route.fulfill(json={"server": "fs", "tool": "read",
+                                        "content": [{"text": "file contents here"}],
+                                        "is_error": False, "artifact_id": "art9"})
                 elif "intelligence/costs" in path:
                     route.fulfill(json={"invocations": 12, "total_tokens": 45000,
                                         "by_model": {"test:model": 45000},
@@ -226,6 +239,48 @@ def main():
             expect(page.get_by_text("Fetched: OAuth guide", exact=False)).to_be_visible()
             assert any(kind == "fetch" for kind, _ in posted), posted
 
+            # Branch restores scope as a new draft without re-executing.
+            page.get_by_role("button", name="Branch", exact=True).last.click()
+            expect(page.get_by_label("Engineering request")).to_have_value("Implement OAuth login")
+            expect(page.get_by_text("Branched from #1", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Ask", exact=True).click()
+            expect(page.locator(".cc-entry").first.get_by_text("branched from #1", exact=False)).to_be_visible()
+
+            # Duplicate submissions point at the existing entry.
+            page.get_by_label("Engineering request").fill("Implement OAuth login")
+            page.get_by_role("button", name="Ask", exact=True).click()
+            expect(page.get_by_text("Already asked", exact=False)).to_be_visible()
+
+            # MCP call: discover, confirmed invocation, artifact reference.
+            page.keyboard.press("Control+K")
+            mcp_search = page.get_by_role("combobox", name="Search commands")
+            mcp_search.fill("Call MCP tool")
+            expect(page.locator(".command-palette .command-row")).to_have_count(1)
+            page.keyboard.press("Enter")
+            expect(page.get_by_role("dialog", name="Call MCP tool")).to_be_visible()
+            page.get_by_role("button", name="Discover servers", exact=True).click()
+            expect(page.get_by_label("MCP server")).to_have_value("fs")
+            expect(page.get_by_role("button", name="Call tool", exact=True)).to_be_enabled()
+            page.get_by_label("MCP arguments JSON").fill("nope")
+            expect(page.get_by_text("not valid JSON", exact=False)).to_be_visible()
+            page.get_by_label("MCP arguments JSON").fill('{"path": "auth.py"}')
+            page.get_by_role("button", name="Call tool", exact=True).click()
+            expect(page.get_by_text("tool completed", exact=False)).to_be_visible()
+            expect(page.get_by_text("art9", exact=False).first).to_be_visible()
+            assert any(kind == "mcp" for kind, _ in posted), posted
+            page.keyboard.press("Escape")
+
+            # Draft survives view switches; scope selects persist in store.
+            page.get_by_label("Engineering request").fill("draft xyz")
+            page.get_by_role("button", name="Explorer", exact=True).click()
+            page.get_by_role("button", name="Command Center", exact=True).click()
+            expect(page.get_by_label("Engineering request")).to_have_value("draft xyz")
+            page.get_by_label("Engineering request").fill("")
+
+            # Clear conversation with confirmation.
+            page.get_by_role("button", name="Clear conversation", exact=True).click()
+            expect(page.get_by_text("Start from any context above.", exact=False)).to_be_visible()
+
             # Cost, unknown, and unsupported handling without dispatch.
             page.get_by_label("Engineering request").fill("How many tokens have we spent?")
             page.get_by_role("button", name="Ask", exact=True).click()
@@ -237,11 +292,17 @@ def main():
             page.get_by_role("button", name="Ask", exact=True).click()
             expect(page.get_by_text("not supported", exact=False)).to_be_visible()
 
+            # Alt+K focuses the Command Center without conflicting bindings.
+            page.get_by_role("button", name="Explorer", exact=True).click()
+            page.keyboard.press("Alt+K")
+            expect(page.get_by_label("Engineering request")).to_be_focused()
+
             assert not errors, errors
             print("PASS: scoped dispatch with live handoff; selection-tracked explanation; "
                   "confirmed test run; confirmed model-backed review with cost label; "
-                  "research search + confirmed fetch; cost/unknown/unsupported handling; "
-                  "no page errors")
+                  "research search + confirmed fetch; branch/duplicate/clear/draft memory; "
+                  "MCP discover + confirmed call; Alt+K focus; "
+                  "cost/unknown/unsupported handling; no page errors")
             browser.close()
     finally:
         server.terminate()

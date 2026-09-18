@@ -42,6 +42,7 @@ function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>
     openSymbolSearch: vi.fn(),
     openSpawnDialog: vi.fn(),
     openTaskDialog: vi.fn(),
+    openMcpDialog: vi.fn(),
     openCommandCenter: vi.fn(),
     openProjectDialog: vi.fn(),
     openTerminal: vi.fn(),
@@ -105,7 +106,6 @@ describe("buildCommands", () => {
       "Open a project first",
     );
   });
-
   it("opens the command center with availability-gated contextual entries", () => {
     const actions = makeActions();
     const commands = buildCommands(ctxFull, actions);
@@ -121,6 +121,18 @@ describe("buildCommands", () => {
     );
     expect(bare.find((c) => c.id === "ai.investigate-failure")?.disabledReason).toBe(
       "No failed task or tool run recorded",
+    );
+  });
+
+  it("opens the MCP dialog through a real action", () => {
+    const actions = makeActions();
+    const commands = buildCommands(ctxFull, actions);
+    const mcp = commands.find((c) => c.id === "mcp.call-tool");
+    expect(mcp?.disabledReason).toBeUndefined();
+    mcp?.run();
+    expect(actions.openMcpDialog).toHaveBeenCalledTimes(1);
+    expect(buildCommands(ctxEmpty, makeActions()).find((c) => c.id === "mcp.call-tool")?.disabledReason).toBe(
+      "Open a project first",
     );
   });
 
