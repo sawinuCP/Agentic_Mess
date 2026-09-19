@@ -58,6 +58,38 @@ def test_create_minimal_task(client: TestClient, repo_root: Path) -> None:
         assert created_events[0]["task_id"] == body["id"]
 
 
+def test_create_task_accepts_executable_payload(client: TestClient, repo_root: Path) -> None:
+    with client:
+        project_id = _open_project(client, repo_root)
+        created = client.post(
+            f"/api/projects/{project_id}/tasks",
+            json={
+                "title": "Run the probe",
+                "payload": {"command": ["python", "probe.py"], "timeout_seconds": 60},
+            },
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert body["payload"]["command"] == ["python", "probe.py"]
+
+
+def test_create_task_rejects_malformed_payload(client: TestClient, repo_root: Path) -> None:
+    with client:
+        project_id = _open_project(client, repo_root)
+        for bad in (
+            {"command": "not-a-list"},
+            {"command": []},
+            {"command": [1, 2]},
+            {"timeout_seconds": 0},
+            {"timeout_seconds": 99999},
+        ):
+            response = client.post(
+                f"/api/projects/{project_id}/tasks",
+                json={"title": "Bad payload", "payload": bad},
+            )
+            assert response.status_code == 422, bad
+
+
 def test_create_linked_task(client: TestClient, repo_root: Path) -> None:
     with client:
         project_id = _open_project(client, repo_root)

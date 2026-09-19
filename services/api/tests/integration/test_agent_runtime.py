@@ -286,3 +286,53 @@ def test_failed_command_emits_tool_failed(wired: tuple[FastAPI, str, Path]) -> N
             ).all()
         ]
         assert kinds == ["TOOL_STARTED", "TOOL_FAILED"]
+
+
+def test_eight_parallel_agents_complete_without_interference(
+    wired: tuple[FastAPI, str, Path],
+) -> None:
+    """Bounded concurrency proof (§15/§17): 8 parallel agent executions with 2
+    execution slots — 2 run to success, 6 defer with QUOTA_EXCEEDED (never a
+    crash, never a duplicate slot). No cross-agent contamination."""
+    import time
+
+    app, project_id, _tmp_path = wired
+    task_id = _create_task(app, project_id, {"command": [sys.executable, "work.py"]})
+
+    async def _one(index: int) -> dict:
+        agent = await start_agent_activity(
+            {
+                "task_id": task_id,
+                "attempt_number": index + 1,
+                "attempt_id": str(uuid.uuid4()),
+            }
+        )
+        return await agent_execute_activity(
+            {
+                "task_id": task_id,
+                "attempt_id": str(uuid.uuid4()),
+                "agent_id": agent["agent_id"],
+                "session_id": agent["session_id"],
+                "project_id": project_id,
+            }
+        )
+
+    async def _all() -> list[dict]:
+        return list(await asyncio.gather(*[_one(i) for i in range(8)]))
+
+    started = time.monotonic()
+    results = asyncio.run(_all())
+    elapsed = time.monotonic() - started
+    succeeded = [r for r in results if r["outcome"] == "success"]
+    deferred = [r for r in results if r.get("failure_class") == "QUOTA_EXCEEDED"]
+    assert len(succeeded) == 2, results
+    assert len(deferred) == 6, results
+    print(f"\nPARALLEL_RESULT agents=8 ran=2 deferred=6 elapsed_s={elapsed:.2f}")
+    from app.db.models import Agent
+
+    with app.state.session_factory() as session:
+        agents = session.scalars(
+            select(Agent).where(Agent.name.like(f"agent-{task_id[:8]}%"))
+        ).all()
+        assert len(agents) == 8
+        assert len({a.id for a in agents}) == 8  # distinct agents, no duplicates

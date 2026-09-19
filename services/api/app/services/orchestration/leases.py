@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
@@ -101,18 +102,31 @@ def _apply_holding(
 
 
 def acquire(db: Session, project_id: uuid.UUID | None, body: LeaseIn) -> LeaseOut:
-    """Acquire one lease. An actively-held resource conflicts (409); an expired
-    lease is taken over (spec §18: on failure leases expire and may be re-acquired)."""
-    now = datetime.now(UTC)
-    resource = db.scalar(
-        select(Resource).where(Resource.kind == body.kind, Resource.key == body.key)
-    )
-    if resource is not None and lease_status(resource, now) == STATUS_ACTIVE:
-        raise _active_conflict_error(resource)
-    resource = resource or Resource(kind=body.kind, key=body.key)
-    _apply_holding(db, resource, project_id=project_id, body=body, now=now)
-    db.commit()
-    return _lease_out(resource)
+    """Acquire one lease. An actively-held resource conflicts (409); an
+    expired lease is taken over (spec §18: on failure leases expire and may be
+    re-acquired).
+
+    Race-safe: concurrent acquirers that collide on the unique key roll back
+    and re-read — the loser sees the winner's live row and gets a 409, never
+    a raw IntegrityError.
+    """
+    for _ in range(3):
+        now = datetime.now(UTC)
+        resource = db.scalar(
+            select(Resource).where(Resource.kind == body.kind, Resource.key == body.key)
+        )
+        if resource is not None and lease_status(resource, now) == STATUS_ACTIVE:
+            raise _active_conflict_error(resource)
+        resource = resource or Resource(kind=body.kind, key=body.key)
+        _apply_holding(db, resource, project_id=project_id, body=body, now=now)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # lost an insert race; re-read under the new truth
+            continue
+        return _lease_out(resource)
+    # Still colliding after retries: someone is actively taking it — 409.
+    raise DomainError(f"lease {body.kind}/{body.key} is contended, try again", 409)
 
 
 def acquire_many(
@@ -130,18 +144,26 @@ def acquire_many(
         seen.add(pair)
 
     now = datetime.now(UTC)
-    taken: list[Resource] = []
-    for body in sorted(bodies, key=lambda b: (b.kind, b.key)):
-        resource = db.scalar(
-            select(Resource).where(Resource.kind == body.kind, Resource.key == body.key)
-        )
-        if resource is not None and lease_status(resource, now) == STATUS_ACTIVE:
-            db.rollback()  # all-or-nothing: an active conflict abandons the whole batch
-            raise _active_conflict_error(resource)
-        resource = resource or Resource(kind=body.kind, key=body.key)
-        taken.append(_apply_holding(db, resource, project_id=project_id, body=body, now=now))
-    db.commit()
-    return [_lease_out(r) for r in taken]
+    for _ in range(3):
+        taken: list[Resource] = []
+        try:
+            for body in sorted(bodies, key=lambda b: (b.kind, b.key)):
+                resource = db.scalar(
+                    select(Resource).where(Resource.kind == body.kind, Resource.key == body.key)
+                )
+                if resource is not None and lease_status(resource, now) == STATUS_ACTIVE:
+                    db.rollback()  # all-or-nothing: an active conflict abandons the whole batch
+                    raise _active_conflict_error(resource)
+                resource = resource or Resource(kind=body.kind, key=body.key)
+                taken.append(
+                    _apply_holding(db, resource, project_id=project_id, body=body, now=now)
+                )
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # lost an insert race; re-read under the new truth
+            continue
+        return [_lease_out(r) for r in taken]
+    raise DomainError("lease batch is contended, try again", 409)
 
 
 def _lease_or_404(db: Session, lease_id: uuid.UUID) -> Resource:

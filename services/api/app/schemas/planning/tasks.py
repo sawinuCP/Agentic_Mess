@@ -1,15 +1,22 @@
 """Task DTOs (Task Protocol reads, attempts, execution)."""
 
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskIn(BaseModel):
     """Human-authored task creation (Wave 7 completion): title is required,
     everything else optional. Dependencies must reference existing tasks of
     the same project; cycles are impossible for a fresh task (nothing points
-    at it yet), so no graph check is needed here."""
+    at it yet), so no graph check is needed here.
+
+    ``payload`` carries the executable work (e.g. ``command`` + timeouts).
+    Without it the task is created but has nothing to execute. Execution stays
+    policy-gated downstream (allowlist, capabilities, HITL), so accepting a
+    payload here grants no privilege by itself.
+    """
 
     title: str = Field(min_length=1, max_length=300)
     request: str = ""
@@ -17,6 +24,24 @@ class TaskIn(BaseModel):
     parent_task_id: UUID | None = None
     priority: int = Field(default=5, ge=1)
     depends_on: list[UUID] = []
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("payload")
+    @classmethod
+    def _validate_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        command = payload.get("command")
+        if command is not None and (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(part, str) for part in command)
+        ):
+            raise ValueError("payload.command must be a non-empty list of strings")
+        timeout = payload.get("timeout_seconds")
+        if timeout is not None and (
+            not isinstance(timeout, (int, float)) or not 1 <= timeout <= 3600
+        ):
+            raise ValueError("payload.timeout_seconds must be between 1 and 3600")
+        return payload
 
 
 class AttemptOut(BaseModel):

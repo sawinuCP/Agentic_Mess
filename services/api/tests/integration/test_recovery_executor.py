@@ -414,3 +414,49 @@ def test_spawned_children_are_scheduler_visible(wired: tuple[FastAPI, str]) -> N
         assert len(children) == 2
         assert all(child.status == "pending" for child in children)
         assert {child.id for child in children} <= scheduled_ids
+
+
+def test_concurrent_hitl_decisions_have_exactly_one_winner(
+    wired: tuple[FastAPI, str],
+) -> None:
+    """Race: N concurrent deciders on one pending request → one success,
+    N-1 clean 409s, single terminal state (no split decision)."""
+    import concurrent.futures
+    import threading
+
+    from app.core.errors import DomainError
+
+    app, project_id = wired
+    task_id = _create_task(app, project_id)
+    with app.state.session_factory() as session:
+        request = hitl_service.create_request(
+            session,
+            project_id=uuid.UUID(project_id),
+            task_id=uuid.UUID(task_id),
+            kind="approve_command",
+            question="Race me",
+        )
+        request_id = request.id
+
+    # Barrier: all voters fire simultaneously for a real collision window.
+    gate = threading.Barrier(8)
+
+    def _decide(voter: int) -> str:
+        gate.wait(timeout=30)
+        try:
+            with app.state.session_factory() as session:
+                decision = hitl_service.decide_request(
+                    session, request_id, "approved", f"voter-{voter}", None
+                )
+                return str(decision.status)
+        except DomainError as exc:
+            return f"rejected:{exc.status_code}"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(_decide, range(8)))
+    assert outcomes.count("approved") == 1, outcomes
+    assert all(o == "rejected:409" for o in outcomes if o != "approved")
+    with app.state.session_factory() as session:
+        final = hitl_service.get_request(session, request_id)
+        assert final.status == "approved"
+        assert final.decided_by is not None

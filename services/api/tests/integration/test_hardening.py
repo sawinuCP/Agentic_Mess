@@ -61,6 +61,25 @@ def _seed_project(app: FastAPI, tmp_path: Path) -> tuple[str, str]:
         return project_id, str(root)
 
 
+def test_redis_failure_degrades_health_without_touching_durable_paths(
+    project: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redis carries no durable or leased workload (leases are PostgreSQL):
+    with Redis dead, readiness reports it, but durable reads keep serving."""
+    app, client, project_id, _tmp = project
+    monkeypatch.setattr(app.state.settings, "redis_url", "redis://127.0.0.1:9/0")
+    monkeypatch.setattr(app.state.settings, "require_redis", True)
+    readiness = client.get("/readyz")
+    assert readiness.status_code == 503
+    assert readiness.json()["checks"]["redis"]["status"] == "down"
+    # Durable paths are unaffected by the Redis outage.
+    assert client.get("/healthz").status_code == 200
+    listed = client.get(f"/api/projects/{project_id}/tasks?limit=5")
+    assert listed.status_code == 200
+    monkeypatch.setattr(app.state.settings, "require_redis", False)
+    assert client.get("/readyz").status_code == 200  # informational only now
+
+
 def test_durable_state_survives_an_application_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

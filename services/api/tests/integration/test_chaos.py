@@ -108,6 +108,74 @@ def _ledger_count(app: FastAPI, task_id: str) -> int:
         return cost_service.invocations_for_task(session, uuid.UUID(task_id))
 
 
+def test_injected_tool_failure_classifies_and_recovers(project: tuple) -> None:
+    """Failure injection through the real activity path: a simulated tool
+    outage fails the attempt as TOOL_FAILURE (policy still enforced first)."""
+    from app.core.config import Settings
+
+    app, _client, project_id, root = project
+    (root / "work.py").write_text("print('never runs')\n", encoding="utf-8")
+    settings = Settings(
+        failure_injection=True,
+        failure_injection_points="tool_fail",
+    )
+    init_refs(app.state.session_factory, app.state.artifacts, settings)
+    try:
+        task_id = _add_task(app, project_id, [sys.executable, "work.py"])
+
+        async def _flow() -> dict:
+            agent = await start_agent_activity(
+                {"task_id": task_id, "attempt_number": 1, "attempt_id": str(uuid.uuid4())}
+            )
+            return await agent_execute_activity(
+                {
+                    "task_id": task_id,
+                    "attempt_id": str(uuid.uuid4()),
+                    "agent_id": agent["agent_id"],
+                    "session_id": agent["session_id"],
+                    "project_id": project_id,
+                }
+            )
+
+        result = asyncio.run(_flow())
+        assert result["outcome"] == "failed"
+        assert result["failure_class"] == "TOOL_FAILURE"
+        assert "simulation" in result["failure_detail"]
+    finally:
+        init_refs(app.state.session_factory, app.state.artifacts, app.state.settings)
+
+
+def test_injected_model_flakiness_rides_retry_then_fallback() -> None:
+    """Flaky provider (2 injected failures) exhausts primary retries and lands
+    on the configured fallback role — the full production chain, no mocks."""
+    from app.agents_runtime.models_registry import ModelRegistry
+    from app.agents_runtime.providers import ModelRequest
+    from app.chaos.faults import FaultState
+
+    async def _run() -> object:
+        registry = ModelRegistry(
+            {
+                "worker": {
+                    "provider": "rehearsal",
+                    "model": "r1",
+                    "fallback_role": "reviewer",
+                },
+                "reviewer": {"provider": "rehearsal", "model": "r2"},
+            },
+            max_attempts=2,
+            backoff_base_seconds=0.01,
+            backoff_jitter_ratio=0.0,
+        )
+        faults = FaultState(enabled=True, points={"model_flaky": "2"})
+        return await registry.complete(
+            ModelRequest(role="worker", system="s", prompt="- RUN: echo hi"),
+            faults=faults,
+        )
+
+    response = asyncio.run(_run())
+    assert response.fell_back_to == "reviewer"
+
+
 def test_kill9_worker_mid_run_then_retry_succeeds(project: tuple, tmp_path: Path) -> None:
     app, _client, project_id, root = project
     init_refs(app.state.session_factory, app.state.artifacts, app.state.settings)

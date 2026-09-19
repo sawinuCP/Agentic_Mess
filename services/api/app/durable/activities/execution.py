@@ -21,6 +21,7 @@ from app.agents_runtime.gateway import PolicyViolation, ToolInvocation
 from app.agents_runtime.gateway import invoke as gateway_invoke
 from app.agents_runtime.models_registry import ModelRegistry, extract_commands
 from app.agents_runtime.providers import ModelRequest
+from app.chaos.faults import FaultState
 from app.core.observability import trace_activity
 from app.db.models import Agent, Artifact, Event, Memory, Project, TaskAttempt
 from app.durable.activities._context import current_settings, load_task_row, refs
@@ -262,6 +263,9 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         backoff_max_seconds=float(getattr(settings, "recovery_backoff_max_seconds", 60.0) or 60.0),
         backoff_jitter_ratio=float(getattr(settings, "recovery_jitter_ratio", 0.25) or 0.25),
     )
+    # Wave 11 failure injection: per-run fault state from settings. The master
+    # switch defaults off; every hook is a no-op without it.
+    faults = FaultState.from_settings(settings)
     # Recovery (Wave 2): SWITCH_MODEL/ESCALATE_MODEL route the next attempt to
     # the configured alternate model (the route's policy-defined fallback_role)
     # — never an unapproved provider (prompt §10).
@@ -270,7 +274,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
         fallback_role = str(getattr(route, "fallback_role", "") or "")
         if fallback_role and fallback_role != model_request.role:
             model_request = replace(model_request, role=fallback_role)
-    model_response = await registry.complete(model_request)
+    model_response = await registry.complete(model_request, faults=faults)
     await _record_invocation(
         factory,
         project_id=project_id,
@@ -394,7 +398,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                     },
                 )
                 observation = await gateway_invoke(
-                    invocation, invocation.command, store_evidence=_store_evidence
+                    invocation, invocation.command, store_evidence=_store_evidence, faults=faults
                 )
             except PolicyViolation as exc:
                 if not exc.needs_approval:
@@ -431,6 +435,7 @@ async def agent_execute_activity(input: dict[str, Any]) -> dict[str, Any]:
                     replace(invocation, pre_approved=True),
                     invocation.command,
                     store_evidence=_store_evidence,
+                    faults=faults,
                 )
             await heartbeat_session(session_id)
             if activity.in_activity():

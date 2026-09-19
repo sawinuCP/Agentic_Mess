@@ -129,8 +129,14 @@ class Settings(BaseSettings):
     model_budget_invocations_per_agent: int = 0
     # Model provider resilience (spec §32): attempts per role before the route
     # fallback runs. Transient errors (timeouts, 429/5xx) back off using the
-    # recovery_backoff_* policy above; permanent errors fail fast to fallback.
+    # recovery_backoff_* policy; permanent errors fail fast to fallback.
     model_provider_max_attempts: int = 3
+
+    # Failure injection (Wave 11 §6): deterministic faults for tests. Master
+    # switch plus explicit point list (e.g. "model_flaky:2,tool_fail"). NEVER
+    # enabled outside test/dev — hooks are no-ops when the switch is off.
+    failure_injection: bool = False
+    failure_injection_points: str = ""
 
     # Execution plane (Phase 6, spec §19): runtime backend + isolation defaults.
     runtime_backend: str = "local"  # local | docker

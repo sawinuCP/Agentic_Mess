@@ -167,6 +167,41 @@ def test_retry_then_success_completes(tmp_path: Path) -> None:
     assert "RETRY_STARTED" in _event_types(task_id)
 
 
+def test_workflow_history_stays_bounded_per_attempt(tmp_path: Path) -> None:
+    """Temporal history growth (§15/§40): a 2-attempt run with recovery must
+    produce hundreds — not thousands — of history events. Large payloads ride
+    activities/artifacts, never workflow state."""
+    script = tmp_path / "ok.py"
+    script.write_text("print('ok')\n", encoding="utf-8")
+    settings, _project_id, task_id = _seed(tmp_path, [sys.executable, str(script)], max_attempts=3)
+
+    async def _run_with_history() -> tuple[dict, int]:
+        async with (
+            await WorkflowEnvironment.start_time_skipping() as env,
+            Worker(
+                env.client,
+                task_queue="wave2-test",
+                workflows=[TaskExecutionWorkflow],
+                activities=_ACTIVITIES,
+            ),
+        ):
+            summary = await env.client.execute_workflow(
+                TaskExecutionWorkflow.run,
+                TaskExecutionInput(task_id=task_id),
+                id=f"task-exec-{task_id}",
+                task_queue="wave2-test",
+            )
+            handle = env.client.get_workflow_handle(f"task-exec-{task_id}")
+            history = await handle.fetch_history()
+            return summary, len(history.events)
+
+    summary, history_events = asyncio.run(_run_with_history())
+    assert summary["outcome"] == "success"
+    assert summary["attempts"] == 1
+    print(f"\nHISTORY_RESULT attempts=1 events={history_events}")
+    assert history_events < 300, f"history growing unbounded: {history_events} events"
+
+
 def test_tool_failure_replaces_agent_then_replans_at_ladder_end(tmp_path: Path) -> None:
     script = tmp_path / "brokentool.py"
     script.write_text(

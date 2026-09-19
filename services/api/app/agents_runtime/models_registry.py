@@ -23,6 +23,7 @@ from app.agents_runtime.providers import (
     ModelRoute,
     get_provider,
 )
+from app.chaos.faults import FaultState
 
 logger = logging.getLogger("harness.models")
 
@@ -102,7 +103,9 @@ class ModelRegistry:
     def _provider_for(self, route: ModelRoute) -> ModelProvider:
         return self._provider_override or get_provider(route.provider)
 
-    async def complete(self, request: ModelRequest) -> ModelResponse:
+    async def complete(
+        self, request: ModelRequest, *, faults: FaultState | None = None
+    ) -> ModelResponse:
         """Complete with bounded retries then escalation (spec §32).
 
         Transient provider failures (timeouts, 429/5xx) retry up to
@@ -111,11 +114,22 @@ class ModelRegistry:
         permanent failure — or exhausted retries — escalates once via the
         route's ``fallback_role``, recording that the fallback ran. The
         fallback itself is single-shot (bounded total cost).
+
+        ``faults`` (Wave 11 failure injection) raises transient injected
+        errors before the provider call; ``None`` disables injection.
         """
         route = self.route_for(request.role)
         last_error: ModelProviderError | None = None
         for attempt in range(1, self._max_attempts + 1):
             try:
+                if faults is not None and (
+                    faults.armed("model_unavailable", route.provider)
+                    or faults.armed("model_flaky", route.provider)
+                ):
+                    raise ModelProviderError(
+                        f"injected fault: provider {route.provider} unavailable (simulation)",
+                        transient=True,
+                    )
                 return await self._provider_for(route).complete(request, route)
             except ModelProviderError as exc:
                 last_error = exc

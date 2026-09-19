@@ -559,6 +559,11 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
 
 ## Change log
 
+- 2026-09-19 — Wave 11 acceptance: failure-injection harness, e2e journey with
+  cross-surface agreement, P1 HITL/slot race fixes, idempotent execute,
+  executable task payloads, health depth, shutdown/Redis/stress/history proofs,
+  six release docs. Full suite green (see acceptance report).
+
 - 2026-09-18 — Wave 5 evaluation audit: system verified intact (10/10 baseline
   green); added deterministic failure triage (§39) wired into suite rows +
   report tallies, and an orchestration/message metrics library (§12/§16/§42)

@@ -187,6 +187,22 @@ Deliberate positions retained: scripted offline evaluation (no autonomous
 planner loop — documented limitation); no evaluator model; `timeout` remains
 the expired-state name.
 
+## Wave 11 verification — end-to-end acceptance (this log)
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Failure injection | Delivered | `app/chaos/faults.py` (`HARNESS_FAILURE_INJECTION` + points, off by default); hooks in registry (transient) + gateway (failed/timed-out observation, post-policy); unit + activity/workflow-level tests |
+| E2E journey | Delivered | `test_e2e_journey.py`: requirement → task → Temporal workflow → evidence → VERIFIED, asserting tasks/agents/events/traceability/costs APIs agree |
+| HITL decision race (P1) | Fixed | Barrier test failed 2/3; `SELECT FOR UPDATE` in decide/cancel; 5/5 green |
+| Slot-acquire race (P1) | Fixed | Concurrent slot inserts crashed; rollback + re-read → 409/quota; 8-agent stress 2 run + 6 defer, stable 3/3 |
+| Repeat execute 503 (P2) | Fixed | Idempotent `started=False` + same handle against live Temporal |
+| Unexecutable API tasks (P2) | Fixed | Validated `payload` on `TaskIn` (command/timeout bounds); execution stays policy-gated |
+| Health depth (§29) | Fixed | `/readyz` adds temporal (reachability; `disabled` when off) + artifacts (writable) |
+| Shutdown/restart safety | Verified | Double lifespan sessions green; Redis-down degrades health only |
+| Port exhaustion | Verified | 4-port window → 4 allocations then clean 409 |
+| Workflow history bound | Verified | 83 events for a full run (< 300 budget) |
+| Docs | Delivered | readiness audit, observability, disaster recovery, release checklist, configuration, acceptance report |
+
 ## Wave 6 verification — 2026-09-18 (UI/UX foundation audit)
 
 Frontend foundation verified against Phases 1–8 with live browser smokes; three

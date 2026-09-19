@@ -157,6 +157,7 @@ def create_task(
         title=body.title,
         request=body.request,
         priority=body.priority,
+        payload=dict(body.payload),
     )
     db.add(task)
     db.flush()

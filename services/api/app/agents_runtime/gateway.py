@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from app.agents_runtime.observations import Observation, normalize_tool_observation
+from app.chaos.faults import FaultState
 from app.core.errors import DomainError
 from app.runtime.runner import run_process
 
@@ -143,15 +144,42 @@ async def invoke(
     command: list[str],
     *,
     store_evidence: EvidenceStore,
+    faults: FaultState | None = None,
 ) -> Observation:
     """Policy-checked, timed execution returning a compressed observation.
 
     ``store_evidence`` persists raw output as an artifact and returns its id
-    (wired to the artifact service by the caller).
+    (wired to the artifact service by the caller). ``faults`` (Wave 11 failure
+    injection) short-circuits execution with a failed/timed-out observation
+    AFTER the policy check — faults never bypass security.
     """
     check_policy(invocation, command)
     if not command:
         raise DomainError("Empty tool command", 422)
+    if faults is not None and faults.armed("tool_fail", invocation.tool):
+        return normalize_outcome(
+            invocation,
+            RawOutcome(
+                exit_code=1,
+                timed_out=False,
+                stdout="",
+                stderr="toolchain unavailable (injected fault: simulation)",
+                duration_ms=0,
+                artifact_ids=[],
+            ),
+        )
+    if faults is not None and faults.armed("tool_timeout", invocation.tool):
+        return normalize_outcome(
+            invocation,
+            RawOutcome(
+                exit_code=None,
+                timed_out=True,
+                stdout="",
+                stderr="tool timed out (injected fault: simulation)",
+                duration_ms=int(invocation.timeout_seconds * 1000),
+                artifact_ids=[],
+            ),
+        )
     if invocation.runtime is not None:
         from app.runtime.runtimes import execute  # noqa: PLC0415 — Phase 6 runtime manager
 

@@ -144,6 +144,42 @@ def test_release_then_reallocate_the_same_port(project: tuple, port_range: tuple
     assert again["port"] == low  # the released port is reusable
 
 
+def test_exhausted_range_fails_predictably_with_409(
+    project: tuple, port_range: tuple[int, int]
+) -> None:
+    """Resource exhaustion is a bounded 409 (fail predictably), never a hang
+    or an unbounded scan: a 4-port window yields 4 allocations, then refuses."""
+    from app.core.errors import DomainError
+
+    app, _client, project_id, _tmp = project
+    low, high = port_range
+    assert high - low + 1 == 4
+    held = [
+        port_service.allocate(
+            app.state.session_factory(),
+            uuid.UUID(project_id),
+            purpose="test",
+            holder=f"agent-{i}",
+            ttl_seconds=300,
+            port_low=low,
+            port_high=high,
+        )
+        for i in range(4)
+    ]
+    assert len({a["port"] for a in held}) == 4
+    with pytest.raises(DomainError) as excinfo:
+        port_service.allocate(
+            app.state.session_factory(),
+            uuid.UUID(project_id),
+            purpose="test",
+            holder="agent-extra",
+            ttl_seconds=300,
+            port_low=low,
+            port_high=high,
+        )
+    assert excinfo.value.status_code == 409
+
+
 def test_ttl_expiry_frees_the_port(project: tuple, port_range: tuple[int, int]) -> None:
     app, _client, project_id, _tmp = project
     low, _high = port_range

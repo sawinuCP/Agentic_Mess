@@ -97,18 +97,25 @@ async def execute_task(
     task_id: uuid.UUID, request: Request, db: Session = Depends(get_db)
 ) -> ExecuteOut:
     """Start the durable TaskExecutionWorkflow via Temporal (fail-closed 503 if disabled)."""
+    from temporalio.exceptions import WorkflowAlreadyStartedError  # noqa: PLC0415
+
     task = await asyncio.to_thread(task_service.get_task, db, task_id)
     durable = DurableTasks(request.app.state.settings)
     if not durable.enabled:
         raise DomainError(
-            "Temporal integration is disabled (set HARNESS_TEMPORAL_ENABLED=true and start "
+            "Temporal integration is disabled (set "
+            "HARNESS_TEMPORAL_ENABLED=true and start "
             "the 'temporal' compose profile)",
             503,
         )
     handle: dict[str, str]
     try:
         handle = await durable.start_task_execution(task.id)
-    except Exception as exc:  # noqa: BLE001 — connect failures map to 503
+    except WorkflowAlreadyStartedError:
+        # Idempotent repeat: Temporal dedupes on the deterministic workflow
+        # id, so the same execution is returned, not a duplicate run.
+        return ExecuteOut(started=False, workflow_id=f"task-exec-{task.id}")
+    except Exception as exc:  # noqa: BLE001 - connect failures map to 503
         raise DomainError(str(getattr(exc, "message", exc)), 503) from None
     await asyncio.to_thread(task_service.mark_status, db, task.id, "ready")
     await event_service.record_event(

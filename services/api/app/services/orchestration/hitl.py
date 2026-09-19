@@ -30,6 +30,16 @@ def _request_or_404(request_id: uuid.UUID, db: Session) -> HitlRequest:
     return request
 
 
+def _request_locked_or_404(request_id: uuid.UUID, db: Session) -> HitlRequest:
+    """Row-locked fetch for decide/cancel: concurrent deciders serialize on
+    the row lock, so exactly one wins and the rest see the terminal state
+    (no last-writer-wins split decisions)."""
+    request = db.scalar(select(HitlRequest).where(HitlRequest.id == request_id).with_for_update())
+    if request is None:
+        raise DomainError("HITL request not found", 404)
+    return request
+
+
 def request_out(request: HitlRequest) -> dict[str, Any]:
     return {
         "id": str(request.id),
@@ -89,7 +99,7 @@ def decide_request(
     db: Session, request_id: uuid.UUID, decision: str, decided_by: str, note: str | None
 ) -> HitlRequest:
     """Apply a human decision. Idempotent-safe: only pending requests are decidable."""
-    request = _request_or_404(request_id, db)
+    request = _request_locked_or_404(request_id, db)
     if decision not in ("approved", "rejected", "modified"):
         raise DomainError("decision must be approved | rejected | modified", 422)
     if request.status in TERMINAL_STATUSES:
@@ -106,7 +116,7 @@ def cancel_request(db: Session, request_id: uuid.UUID, decided_by: str) -> HitlR
     """Withdraw a pending request (operator cancel). A cancelled gate behaves
     like a rejection for every waiter — fail-closed. Terminal requests (incl.
     timed-out) cannot be cancelled."""
-    request = _request_or_404(request_id, db)
+    request = _request_locked_or_404(request_id, db)
     if request.status in TERMINAL_STATUSES:
         raise DomainError(f"Request already decided: {request.status}", 409)
     request.status = "cancelled"

@@ -230,3 +230,31 @@ def test_execute_fails_closed_without_temporal(client: TestClient, repo_root: Pa
 
         cancelled = client.post(f"/api/tasks/{task_id}/cancel")
         assert cancelled.json()["status"] == "cancelled"
+
+
+def test_repeat_execute_returns_same_workflow_without_duplicating(
+    project: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Idempotent start: repeating execute on a running task returns the same
+    workflow handle (started=False), never a duplicate run. Needs the live
+    Temporal server from the compose stack."""
+    import uuid as _uuid
+
+    from app.db.models import Task
+
+    app, client, project_id, _tmp = project
+    monkeypatch.setattr(app.state.settings, "temporal_enabled", True)
+    with app.state.session_factory() as session:
+        task = Task(project_id=_uuid.UUID(project_id), title="idem exec", request="run", payload={})
+        session.add(task)
+        session.commit()
+        task_id = str(task.id)
+    first = client.post(f"/api/tasks/{task_id}/execute")
+    assert first.status_code == 200, first.text
+    assert first.json()["started"] is True
+    workflow_id = first.json()["workflow_id"]
+    second = client.post(f"/api/tasks/{task_id}/execute")
+    assert second.status_code == 200, second.text
+    assert second.json()["started"] is False
+    assert second.json()["workflow_id"] == workflow_id
+    assert workflow_id == f"task-exec-{task_id}"
