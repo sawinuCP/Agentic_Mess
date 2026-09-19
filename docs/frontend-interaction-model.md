@@ -31,13 +31,14 @@ history), new arrivals are disclosed with a re-entry note, Inspect buttons
 reuse office navigation, and reduced-motion users get step-only controls.
 Replay never auto-navigates (that would unmount itself and destroy context).
 
-### Implemented registry (23 commands)
+### Implemented registry (28 static commands + per-task controls)
 
 - Workspace: Open project (includes recent list), Go to file, Search in files, Search symbols…, Show changed files.
-- Navigation: Show explorer, Show run and toolchains, Open engineering office, Open execution graph, Open execution history, Ask AI… (Command Center).
+- Navigation: Show explorer, Show run and toolchains, Open engineering office, Open execution graph, Open execution history, Ask AI… (Command Center), Open problems, Open settings.
 - Execution/tooling: Run active file, Format active file, Run tests, Run build, Show tool output, Open terminal, Create task….
 - Validation: Run linter, Show system diagnostics.
-- Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight), Spawn agent…, Explain selection (needs editor selection), Investigate failure (needs a recorded failure).
+- Agents/oversight: View active agents (Team), Open event timeline (Activity), Open agent communication (Comms), Open requirement coverage (Oversight), Spawn agent…, Explain selection (needs editor selection), Investigate failure (needs a recorded failure), Call MCP tool….
+- Per-task commands (dynamic, one set per listed task): Start task execution, Request pause, Send resume signal, Cancel task, Retry task (see below).
 
 Ctrl+K toggles the palette everywhere except inside Monaco, which reserves Ctrl+K as a chord prefix — there the palette opens via its activity-bar button. No other new shortcuts were added: Ctrl+J (browser downloads) and Ctrl+E-class bindings conflict with browser/Monaco behavior, so command access stays palette-driven by design.
 
@@ -53,7 +54,39 @@ Bulk execution actions (Pause N / Resume N / Stop N) in the Office header fan ou
 
 Task execute/pause/resume/cancel routes exist and are all exposed and tested with intercepted responses, including failed-task retry (via the execute endpoint with new-run semantics) and bulk pause/resume/stop (fan-out with per-task reporting). Agent creation/session routes exist, but exposing spawn was refused on verification: `create_agent` is a bare registry insert and `start_session` on a taskless agent would rot into supervision-marked failure — the route existing does not make the UX safe.
 
-Not implemented: durable execution history, task creation (no POST route exists), per-agent lifecycle commands (no endpoints; sessions are not listed anywhere), message composing (would fake agent provenance), dedicated problems/runtime/settings views, or a Command Center. These are explicit acceptance gaps, not disguised navigation aliases. No inert commands were added.
+Not implemented: durable execution history, per-agent lifecycle commands (no endpoints; sessions are not listed anywhere), message composing (would fake agent provenance), dedicated runtime view, or a Command Center. These are explicit acceptance gaps,
+not disguised navigation aliases. No inert commands were added. (Task creation,
+symbol search, and problems/settings views previously sat in this list; all now
+exist end-to-end — see below.)
+
+### Problems and settings views (2026-09-18)
+
+Two sidebar views over existing stores/APIs — no backend changes:
+
+- **Problems** (`ViewId "problems"`): triage of failed tasks (inspect in Office),
+  blocked/waiting tasks with recorded reasons, the last failed tool run (output
+  panel action), and pending approvals (oversight action). Pure projection
+  (`collectProblems` in `office/selectors.ts`, unit-tested); empty means
+  genuinely clean. Palette command `nav.problems` (project-gated).
+- **Settings** (`ViewId "settings"`): API token save/clear (`localStorage`,
+  applies to new connections), panel-layout reset, live connection/gateway
+  telemetry. Palette command `nav.settings` (always available).
+
+### Runtime view, session release, theme (2026-09-18)
+
+- **Runtime** (`ViewId "runtime"`): port allocations (release behind confirm)
+  and leases from the existing list endpoints, with a pure `summarizeRuntime`
+  projection (unit-tested). Palette command `nav.runtime` (project-gated).
+- **Session release**: AgentDetail offers Release on `running` sessions via the
+  existing `POST /api/sessions/{id}/end` (confirmed, supervision still owns
+  staleness). Pause/resume/stop of agents remain unavailable by architecture —
+  agents are disposable per attempt; task workflows own pause/resume/stop.
+- **Operator composing**: already existed in CommsTab (`sendOperatorMessage`
+  with null sender — attribution is explicit, never faked as an agent).
+- **Light theme**: `[data-theme="light"]` variable layer + `harness-light`
+  Monaco theme + live xterm recolor, toggled from Settings or the palette
+  (`nav.theme`), persisted per browser. Components carry no hard-coded dark
+  hex (verified by grep).
 
 ## States, focus and failure containment
 

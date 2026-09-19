@@ -7,8 +7,10 @@ import type { CenterEntry } from "../command/types";
 import type { GitStatus, ProjectInfo, ProjectToolchains, ToolRunResult, TreeNode } from "../types";
 import { monacoLanguageFor } from "../util/languages";
 import { readLayout, saveLayout } from "./layout";
+import { applyTheme, readTheme, type ThemeId } from "./theme";
 
-export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" | "history" | "command";
+export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" |
+  "history" | "command" | "problems" | "runtime" | "settings";
 
 export interface FileTab {
   kind: "file";
@@ -47,6 +49,7 @@ interface AppState {
   tabs: Tab[];
   activePath: string | null;
   view: ViewId;
+  theme: ThemeId;
   sidebarOpen: boolean;
   sidebarWidth: number;
   panelHeight: number;
@@ -99,6 +102,7 @@ export const useStore = create<AppState>((set, get) => ({
   tabs: [],
   activePath: null,
   view: "explorer",
+  theme: readTheme(),
   ...readLayout(),
   notice: null,
   panelTab: "terminal",
@@ -312,4 +316,6 @@ useStore.subscribe((state, prev) => {
     saveLayout({ sidebarOpen: state.sidebarOpen, sidebarWidth: state.sidebarWidth,
       panelOpen: state.panelOpen, panelHeight: state.panelHeight });
   }
+  if (state.theme !== prev.theme) applyTheme(state.theme);
 });
+applyTheme(useStore.getState().theme);

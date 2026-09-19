@@ -77,6 +77,10 @@ export default function CommandPalette() {
         {
           setView: (view) => setFn({ view, sidebarOpen: true }),
           setOfficeTab: (tab) => setOffice({ tab }),
+          toggleTheme: () => {
+            const current = useStore.getState().theme;
+            setFn({ theme: current === "light" ? "dark" : "light" });
+          },
           openQuickOpen: () => setFn({ quickOpen: true }),
           openSymbolSearch: () => setFn({ symbolSearch: true }),
           openCommandCenter: (prefill) => {

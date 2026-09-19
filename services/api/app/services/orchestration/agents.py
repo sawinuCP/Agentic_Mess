@@ -73,9 +73,15 @@ def create_agent(db: Session, project_id: uuid.UUID, body: AgentIn) -> AgentOut:
     return agent_out(agent)
 
 
-def list_agents(db: Session, project_id: uuid.UUID) -> list[AgentOut]:
+def list_agents(
+    db: Session, project_id: uuid.UUID, limit: int = 100, offset: int = 0
+) -> list[AgentOut]:
     rows = db.scalars(
-        select(Agent).where(Agent.project_id == project_id).order_by(Agent.created_at)
+        select(Agent)
+        .where(Agent.project_id == project_id)
+        .order_by(Agent.created_at, Agent.id)
+        .limit(max(1, limit))
+        .offset(max(0, offset))
     ).all()
     return [agent_out(a) for a in rows]
 

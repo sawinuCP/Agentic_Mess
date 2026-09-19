@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_project
@@ -42,9 +42,15 @@ async def create_requirement(
 
 @router.get("/api/projects/{project_id}/requirements", response_model=list[RequirementOut])
 async def list_requirements(
-    project: Project = Depends(get_project), db: Session = Depends(get_db)
+    project: Project = Depends(get_project),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
 ) -> list[RequirementOut]:
-    return await asyncio.to_thread(requirement_service.list_requirements, db, project.id)
+    """One stable page (created_at, id); criteria are batched per page."""
+    return await asyncio.to_thread(
+        requirement_service.list_requirements, db, project.id, limit, offset
+    )
 
 
 @router.get("/api/requirements/{requirement_id}", response_model=RequirementOut)

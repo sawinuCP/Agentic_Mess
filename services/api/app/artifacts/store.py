@@ -12,10 +12,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.core.errors import DomainError
 
-class ArtifactStoreError(Exception):
+
+class ArtifactStoreError(DomainError):
+    """Store failures map directly onto HTTP responses (400/404/416)."""
+
     def __init__(self, message: str, status_code: int = 400) -> None:
-        super().__init__(message)
+        super().__init__(message, status_code)
         self.message = message
         self.status_code = status_code
 
@@ -54,6 +58,29 @@ class ArtifactStore:
         if not resolved.is_file():
             raise ArtifactStoreError("Artifact content missing on disk", 404)
         return resolved.read_bytes()
+
+    def _resolve(self, storage_path: str) -> Path:
+        resolved = (self.root / storage_path).resolve()
+        if self.root not in resolved.parents:
+            raise ArtifactStoreError("Invalid artifact storage path", 400)
+        if not resolved.is_file():
+            raise ArtifactStoreError("Artifact content missing on disk", 404)
+        return resolved
+
+    def blob_size(self, storage_path: str) -> int:
+        """Size on disk without reading (pruned blobs raise 404 like open)."""
+        return self._resolve(storage_path).stat().st_size
+
+    def read_range(self, storage_path: str, start: int, length: int) -> bytes:
+        """Read ``length`` bytes at ``start`` (constant memory for the slice)."""
+        resolved = self._resolve(storage_path)
+        size = resolved.stat().st_size
+        if start < 0 or length < 0 or start > size:
+            raise ArtifactStoreError("Range start beyond blob end", 416)
+        length = min(length, size - start)
+        with resolved.open("rb") as handle:
+            handle.seek(start)
+            return handle.read(length)
 
     def delete(self, storage_path: str) -> None:
         resolved = (self.root / storage_path).resolve()

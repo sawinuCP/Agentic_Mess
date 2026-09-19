@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     temporal_enabled: bool = False
     temporal_address: str = "localhost:7233"
     temporal_task_queue: str = "ai-harness-tasks"
+    # Worker concurrency (Wave 4 §16): explicit bounds, not SDK defaults.
+    # Activities run agent executions — keep this small and deliberate.
+    temporal_max_concurrent_workflows: int = 10
+    temporal_max_concurrent_activities: int = 4
+    temporal_max_activities_per_second: float = 0.0  # 0 = no rate cap
 
     # Content-addressed artifact storage root (raw outputs, evidence, files).
     artifacts_dir: str = "./data/artifacts"

@@ -6,6 +6,7 @@ import {
   agentWaitingReason,
   bulkConfirm,
   bulkEligible,
+  collectProblems,
   costAttribution,
   currentTaskForAgent,
   describeEvent,
@@ -296,5 +297,102 @@ describe("costs + messages", () => {
     expect(messageEndpoints({ ...base, sender_agent_id: null, recipient_agent_id: null }, names)).toBe("system → broadcast");
     expect(messageSummary({ ...base, payload: { summary: "All green" } })).toBe("All green");
     expect(messageSummary({ ...base, payload: {} })).toBe("empty payload");
+  });
+});
+
+describe("problems projection", () => {
+  const failedTask = task({
+    id: "tf",
+    title: "Broken build",
+    status: "failed",
+    attempts: [
+      {
+        attempt_number: 1,
+        agent_id: "a1",
+        outcome: "failed",
+        failure_class: "TOOL_FAILURE",
+        failure_detail: "pytest failed",
+        evidence_artifact_ids: [],
+      },
+    ],
+  });
+  const blockedTask = task({ id: "tb", title: "Waiting", status: "blocked" });
+
+  it("collects failed tasks, blocked tasks, tool failures and approvals", () => {
+    const problems = collectProblems({
+      tasks: [failedTask, blockedTask, task({ id: "ok", status: "completed" })],
+      output: {
+        language: "python",
+        tool: "test",
+        command: ["pytest"],
+        exit_code: 2,
+        timed_out: false,
+        truncated: false,
+        duration_ms: 10,
+        stdout: "",
+        stderr: "FAILED",
+        diagnostics: ["2 failed"],
+        file_content: null,
+      },
+      hitl: [
+        {
+          id: "h1",
+          task_id: null,
+          kind: "approve_command",
+          question: "Run this?",
+          choices: ["approve", "reject"],
+          risk: "high",
+          status: "pending",
+          created_at: "",
+        },
+      ],
+    });
+    expect(problems.map((p) => p.kind)).toEqual([
+      "task-failed",
+      "task-blocked",
+      "tool-failed",
+      "approval-pending",
+    ]);
+    expect(problems[0].taskId).toBe("tf");
+    expect(problems[0].detail).toBe("pytest failed");
+    expect(problems[2].detail).toBe("2 failed");
+  });
+
+  it("reports clean state as empty, never as missing data", () => {
+    expect(
+      collectProblems({ tasks: [task({ status: "completed" })], output: null, hitl: [] }),
+    ).toEqual([]);
+  });
+
+  it("ignores successful tool runs and decided requests", () => {
+    const problems = collectProblems({
+      tasks: [],
+      output: {
+        language: "python",
+        tool: "test",
+        command: ["pytest"],
+        exit_code: 0,
+        timed_out: false,
+        truncated: false,
+        duration_ms: 5,
+        stdout: "ok",
+        stderr: "",
+        diagnostics: [],
+        file_content: null,
+      },
+      hitl: [
+        {
+          id: "h2",
+          task_id: null,
+          kind: "approve_command",
+          question: "Old?",
+          choices: ["approve", "reject"],
+          risk: "low",
+          status: "approved",
+          created_at: "",
+        },
+      ],
+    });
+    expect(problems).toEqual([]);
   });
 });

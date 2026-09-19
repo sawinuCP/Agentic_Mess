@@ -52,9 +52,10 @@ async def create_memory(
 async def list_memories(
     project: Project = Depends(get_project),
     kind: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[MemoryOut]:
-    rows = await asyncio.to_thread(knowledge_service.list_memories, db, project.id, kind)
+    rows = await asyncio.to_thread(knowledge_service.list_memories, db, project.id, kind, limit)
     return [_memory_out(m) for m in rows]
 
 
@@ -75,7 +76,10 @@ async def list_context_items(
     project: Project = Depends(get_project),
     tier: int | None = Query(None, ge=0, le=6),
     kind: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[ContextItemOut]:
-    rows = await asyncio.to_thread(knowledge_service.list_context_items, db, project.id, tier, kind)
+    rows = await asyncio.to_thread(
+        knowledge_service.list_context_items, db, project.id, tier, kind, limit
+    )
     return [_item_out(i) for i in rows]

@@ -16,6 +16,7 @@ are exposed as ``POST /api/retention/prune`` plus the scheduled worker loop.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -51,22 +52,71 @@ def prune_events(factory: sessionmaker[Session], older_than_days: int, batch_siz
     return removed
 
 
-def prune_artifact_blobs(root: Path, older_than_days: int) -> int:
-    """Delete artifact blob files past the window (metadata rows are kept)."""
+def _protected_artifact_shas(session: Session) -> set[str]:
+    """Sha256s referenced as durable evidence (never prune their blobs).
+
+    Sources: attempt evidence lists + task terminal summaries. Event payloads
+    intentionally excluded — they duplicate attempt evidence, and scanning the
+    hot events table per retention pass is not worth it.
+    """
+    from app.db.models import Artifact, Task, TaskAttempt  # noqa: PLC0415
+
+    ids: set[str] = set()
+    for (evidence,) in session.execute(select(TaskAttempt.evidence_artifact_ids)).all():
+        ids.update(str(x) for x in (evidence or []) if x)
+    for (payload,) in session.execute(select(Task.payload)).all():
+        terminal = (payload or {}).get("terminal") or {}
+        ids.update(str(x) for x in (terminal.get("evidence_artifact_ids") or []) if x)
+    parsed = []
+    for raw in ids:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError):
+            continue
+    if not parsed:
+        return set()
+    return {
+        sha
+        for (sha,) in session.execute(select(Artifact.sha256).where(Artifact.id.in_(parsed))).all()
+        if sha
+    }
+
+
+def prune_artifact_blobs(
+    root: Path, older_than_days: int, factory: sessionmaker[Session] | None = None
+) -> int:
+    """Delete artifact blob files past the window (metadata rows are kept).
+
+    With ``factory``, blobs referenced as durable evidence (attempt + terminal
+    task refs) are spared regardless of age — retention must never delete final
+    evidence. Without it (unit tests), pure age-based pruning applies.
+    """
     if older_than_days <= 0 or not root.is_dir():
         return 0
+    protected: set[str] = set()
+    if factory is not None:
+        with factory() as session:
+            protected = _protected_artifact_shas(session)
     cutoff = datetime.now(UTC).timestamp() - timedelta(days=older_than_days).total_seconds()
-    removed = 0
+    removed = skipped_protected = 0
     for path in root.rglob("*"):
         if path.is_file() and path.suffix != ".tmp":
             try:
                 if path.stat().st_mtime < cutoff:
+                    if path.name in protected:
+                        skipped_protected += 1
+                        continue
                     path.unlink()
                     removed += 1
             except OSError as exc:  # noqa: PERF203 — keep pruning on per-file errors
                 logger.warning("artifact_prune_failed path=%s error=%s", path, exc)
-    if removed:
-        logger.info("artifact_blobs_pruned count=%d older_than_days=%d", removed, older_than_days)
+    if removed or skipped_protected:
+        logger.info(
+            "artifact_blobs_pruned count=%d protected=%d older_than_days=%d",
+            removed,
+            skipped_protected,
+            older_than_days,
+        )
     return removed
 
 
@@ -77,7 +127,7 @@ def run_retention(settings: Any, factory: sessionmaker[Session]) -> dict[str, in
             factory, settings.retention_events_days, settings.retention_batch_size
         ),
         "artifact_blobs_pruned": prune_artifact_blobs(
-            Path(settings.artifacts_dir), settings.retention_artifacts_days
+            Path(settings.artifacts_dir), settings.retention_artifacts_days, factory
         ),
     }
 

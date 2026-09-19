@@ -38,6 +38,7 @@ function makeActions(): CommandActions & Record<string, ReturnType<typeof vi.fn>
   return {
     setView: vi.fn(),
     setOfficeTab: vi.fn(),
+    toggleTheme: vi.fn(),
     openQuickOpen: vi.fn(),
     openSymbolSearch: vi.fn(),
     openSpawnDialog: vi.fn(),
@@ -178,8 +179,31 @@ describe("buildCommands", () => {
     expect(actions.setView).toHaveBeenCalledWith("graph");
     commands.find((c) => c.id === "nav.history")?.run();
     expect(actions.setView).toHaveBeenCalledWith("history");
+    commands.find((c) => c.id === "nav.problems")?.run();
+    expect(actions.setView).toHaveBeenCalledWith("problems");
+    commands.find((c) => c.id === "nav.runtime")?.run();
+    expect(actions.setView).toHaveBeenCalledWith("runtime");
+    commands.find((c) => c.id === "nav.theme")?.run();
+    expect(actions.toggleTheme).toHaveBeenCalledTimes(1);
+    commands.find((c) => c.id === "nav.settings")?.run();
+    expect(actions.setView).toHaveBeenCalledWith("settings");
     commands.find((c) => c.id === "workspace.open-project")?.run();
     expect(actions.openProjectDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it("gates problems on a project, settings always available", () => {
+    const full = buildCommands(ctxFull, makeActions());
+    expect(full.find((c) => c.id === "nav.problems")?.disabledReason).toBeUndefined();
+    expect(full.find((c) => c.id === "nav.runtime")?.disabledReason).toBeUndefined();
+    expect(full.find((c) => c.id === "nav.settings")?.disabledReason).toBeUndefined();
+    const empty = buildCommands(ctxEmpty, makeActions());
+    expect(empty.find((c) => c.id === "nav.problems")?.disabledReason).toBe(
+      "Open a project first",
+    );
+    expect(empty.find((c) => c.id === "nav.runtime")?.disabledReason).toBe(
+      "Open a project first",
+    );
+    expect(empty.find((c) => c.id === "nav.settings")?.disabledReason).toBeUndefined();
   });
 });
 

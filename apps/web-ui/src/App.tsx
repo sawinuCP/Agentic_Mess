@@ -4,6 +4,9 @@ import EditorArea from "./components/editor/EditorArea";
 import BottomPanel from "./components/panels/BottomPanel";
 import ExplorerView from "./components/panels/ExplorerView";
 import GitView from "./components/panels/GitView";
+import ProblemsView from "./components/panels/ProblemsView";
+import RuntimeView from "./components/panels/RuntimeView";
+import SettingsView from "./components/panels/SettingsView";
 import GraphView from "./components/graph/GraphView";
 import HistoryView from "./components/history/HistoryView";
 import CenterView from "./components/command/CenterView";
@@ -29,6 +32,9 @@ const SIDEBARS: Record<ViewId, () => JSX.Element> = {
   git: GitView,
   run: RunView,
   office: OfficeView,
+  problems: ProblemsView,
+  runtime: RuntimeView,
+  settings: SettingsView,
   // The graph lives in the main area; the sidebar keeps the last panel.
   graph: OfficeView,
   // History is a main-area surface over durable events, not a sidebar panel.

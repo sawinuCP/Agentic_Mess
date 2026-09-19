@@ -39,6 +39,17 @@ monaco.editor.defineTheme("harness-dark", {
   },
 });
 
+monaco.editor.defineTheme("harness-light", {
+  base: "vs",
+  inherit: true,
+  rules: [],
+  colors: {
+    "editor.background": "#f4f5f7",
+    "editorGutter.background": "#f4f5f7",
+    "editor.lineHighlightBackground": "#e8eaee",
+  },
+});
+
 loader.config({ monaco });
 
 export { monaco };

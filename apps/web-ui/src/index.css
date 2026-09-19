@@ -87,6 +87,49 @@
   --focus-ring: 0 0 0 2px rgba(91, 140, 255, 0.55);
 }
 
+/* Light theme (Wave 6): same token names, light-readable values. Components
+ * must use variables (never hard-coded dark hex) to follow the toggle.
+ * Monaco "harness-light" and the xterm light theme mirror --surface-code. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f5f7;
+  --bg-alt: #eceef2;
+  --panel: #ffffff;
+  --panel-alt: #f0f1f4;
+  --border: #d4d8e0;
+  --text: #23272f;
+  --muted: #5d6572;
+  --ok: #1d8a4c;
+  --down: #c03527;
+  --warn: #92610a;
+  --accent: #2f5fd0;
+
+  --surface-app: var(--bg);
+  --surface-workspace: var(--bg-alt);
+  --surface-panel: var(--panel);
+  --surface-panel-alt: var(--panel-alt);
+  --surface-elevated: #ffffff;
+  --surface-selected: rgba(47, 95, 208, 0.12);
+  --surface-hover: rgba(47, 95, 208, 0.07);
+  --surface-code: #f4f5f7;
+
+  --border-strong: #b9bfc9;
+  --border-soft: rgba(180, 186, 198, 0.7);
+
+  --ok-bg: rgba(29, 138, 76, 0.12);
+  --ok-border: rgba(29, 138, 76, 0.45);
+  --warn-bg: rgba(146, 97, 10, 0.12);
+  --warn-border: rgba(146, 97, 10, 0.45);
+  --down-bg: rgba(192, 53, 39, 0.1);
+  --down-border: rgba(192, 53, 39, 0.4);
+  --muted-bg: rgba(93, 101, 114, 0.12);
+  --accent-soft: rgba(47, 95, 208, 0.07);
+  --accent-bg: rgba(47, 95, 208, 0.1);
+  --accent-strong: rgba(47, 95, 208, 0.16);
+  --focus-ring: 0 0 0 2px rgba(47, 95, 208, 0.5);
+}
+
 * {
   box-sizing: border-box;
 }

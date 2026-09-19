@@ -58,12 +58,18 @@ def validate(report: dict[str, Any]) -> None:
 
 def summarize(report: dict[str, Any]) -> dict[str, Any]:
     validate(report)
+    triage: dict[str, int] = {}
+    for row in report.get("results", []):
+        label = row.get("triage")
+        if label:
+            triage[label] = triage.get(label, 0) + 1
     return {
         "run_id": report["run_id"],
         "status": report["status"],
         "dataset_version": report["dataset_version"],
         "cases": report["cases"],
         "counts": {s: list(report["cases"].values()).count(s) for s in sorted(STATES)},
+        "triage": dict(sorted(triage.items())),
         "duration_ms": report["duration_ms"],
         "limitation": report["limitation"],
     }

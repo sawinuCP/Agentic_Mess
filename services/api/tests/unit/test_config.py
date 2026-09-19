@@ -25,6 +25,10 @@ def test_defaults(clean_env: None) -> None:
     assert settings.redis_url == "redis://localhost:16379/0"
     assert settings.nats_url == "nats://localhost:14222"
     assert settings.otel_enabled is False
+    # Wave 4 §16: worker concurrency is explicit, never SDK-default.
+    assert settings.temporal_max_concurrent_workflows == 10
+    assert settings.temporal_max_concurrent_activities == 4
+    assert settings.temporal_max_activities_per_second == 0.0
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

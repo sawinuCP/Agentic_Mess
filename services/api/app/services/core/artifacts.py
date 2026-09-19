@@ -68,6 +68,19 @@ def read_content(
     return artifact, store.open(artifact.storage_path)
 
 
+def describe_content(
+    db: Session, store: ArtifactStore, artifact_id: uuid.UUID
+) -> tuple[Artifact, int]:
+    """Metadata + on-disk size for ranged serving (no blob read)."""
+    artifact = _artifact_or_404(artifact_id, db)
+    return artifact, store.blob_size(artifact.storage_path)
+
+
+def read_content_range(store: ArtifactStore, artifact: Artifact, start: int, length: int) -> bytes:
+    """One bounded slice of a blob (constant memory)."""
+    return store.read_range(artifact.storage_path, start, length)
+
+
 def record_blob(
     db: Session,
     store: ArtifactStore,

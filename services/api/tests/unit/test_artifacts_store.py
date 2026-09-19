@@ -35,3 +35,27 @@ def test_storage_path_is_content_addressed(store: ArtifactStore) -> None:
 def test_open_rejects_escape_paths(store: ArtifactStore) -> None:
     with pytest.raises(ArtifactStoreError):
         store.open("../outside.txt")
+
+
+def test_blob_size_reports_without_reading(store: ArtifactStore) -> None:
+    blob = store.put(b"0123456789")
+    assert store.blob_size(blob.storage_path) == 10
+    with pytest.raises(ArtifactStoreError):
+        store.blob_size("aa/bb/" + "0" * 64)
+
+
+def test_read_range_returns_bounded_slices(store: ArtifactStore) -> None:
+    blob = store.put(b"0123456789")
+    assert store.read_range(blob.storage_path, 2, 4) == b"2345"
+    assert store.read_range(blob.storage_path, 8, 100) == b"89"  # clamped, not error
+    assert store.read_range(blob.storage_path, 10, 10) == b""
+    with pytest.raises(ArtifactStoreError):
+        store.read_range(blob.storage_path, 11, 1)
+    with pytest.raises(ArtifactStoreError):
+        store.read_range("../outside.txt", 0, 1)
+
+
+def test_store_errors_map_onto_http_statuses() -> None:
+    from app.core.errors import DomainError
+
+    assert issubclass(ArtifactStoreError, DomainError)

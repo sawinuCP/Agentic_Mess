@@ -152,4 +152,79 @@ completion summaries + artifact refs only); `request_hitl` scope unchanged;
 | Spurious `event_bus_disconnected` on close | Fixed | `_on_disconnected` stays quiet when `_closed` (intentional close is not an outage) |
 | No per-command tool lifecycle | Delivered (bounded) | `TOOL_STARTED`/`TOOL_COMPLETED`/`TOOL_FAILED` per shell command (≤2 frames, concise outcome + evidence refs, best-effort write); reducer treats them as timeline-only; covered backend (success + failure) and frontend (reducer) |
 | `request_hitl` scope / `timeout` name / dev-box load numbers | Retained as deliberate policy | Documented; no change |
+
+## Wave 4 verification — 2026-09-18 (performance audit)
+
+Measured-first; only evidenced bottlenecks were changed (details + matrix in
+`docs/WAVE4_PERFORMANCE.md`):
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Requirements N+1 (20 reqs → 21 queries) | Fixed | Batched criteria (2 queries) + pagination; query-count regression test |
+| Unbounded agents/requirements/memories/context-items; leases fetch-then-slice | Fixed | Server-side limits everywhere; SQL-side status filter for leases; tiling tests |
+| Artifact full-blob loads, no ranges | Fixed | Chunked streaming + single-range 206/416; also fixed `ArtifactStoreError` escaping as 500 instead of 404 |
+| Worker concurrency = SDK defaults | Fixed | `HARNESS_TEMPORAL_MAX_CONCURRENT_WORKFLOWS/ACTIVITIES/ACTIVITIES_PER_SECOND` |
+| Blind blob retention | Fixed | Evidence-referenced blobs spared (attempt + terminal refs) |
+| Index review | Audited, no change | EXPLAIN shows index scans, sub-ms; new indexes unjustified at measured scale |
+| Codeintel scale | Measured, no change | 500 files: full 7.6 s, incremental noop 68 ms, retrieval 269 ms |
+| Virtualization/distributed scaling | Declined | Lists bounded at data layer; no evidence warrants new infra |
+| 100k-volume review, hour-scale soak, NATS burst UI | Residual | Documented in WAVE4_PERFORMANCE.md |
+
+## Wave 5 verification — 2026-09-18 (evaluation audit)
+
+The evaluation system was inspected (dataset EVAL-001..010, offline suite with
+disposable DB, scorecard gates, compare/repeatability, CLI, CI fast + manual
+full) and verified intact against every acceptance criterion; two genuine gaps
+were closed:
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| No failure triage taxonomy (§39) | Fixed | `triage_result()` in `app/evaluation/suite.py`: hard signals (BUDGET/TIMEOUT/INFRA) win, then failed-node evidence mapping (security/planner/decomp/agent/recovery/model/coverage/validation/cost/context/tool → classes, EXECUTION_FAILURE fallback); rows carry `triage`, `report` tallies it; never overrides status |
+| No orchestration/message metrics library (§12/§16/§42) | Fixed | `app/evaluation/metrics.py`: `execution_metrics(task_id)` (attempts, retries + rate, recoveries + success, tool/model/HITL counts, tokens, cost) and `communication_health(conversation_id)` (orphans, duplicates, unanswered, undelivered); `tests/integration/test_evaluation_metrics.py` |
+| Everything else | Verified intact | Full eval baseline 10/10 PASS (67 s, disposable DB); fast path green; CLI list/run/compare/report/persist/audit; CI fast-per-push + manual full; repeats/FLAKY; budgets enforced; evaluator self-tests; no model-override of hard failures |
+
+Deliberate positions retained: scripted offline evaluation (no autonomous
+planner loop — documented limitation); no evaluator model; `timeout` remains
+the expired-state name.
+
+## Wave 6 verification — 2026-09-18 (UI/UX foundation audit)
+
+Frontend foundation verified against Phases 1–8 with live browser smokes; three
+genuine gaps closed (all frontend/test-side, zero backend changes):
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Stale office smoke assertions | Fixed | Task-title exact-text assertion broke on the status glyph; tab `nth=` indices drifted after Comms insertion. Both replaced with accessible-role selectors (`get_by_role("button", name=…)`). `OFFICE UI SMOKE PASSED` |
+| Stale registry/docs counts | Fixed | Registry header claimed task creation + symbol search "deliberately absent" (both exist end-to-end); interaction model said "23 commands" (28 static + per-task controls). Corrected; verified `NewTaskDialog`/`SpawnAgentDialog`/`SymbolSearch` all perform real API actions — no placeholders |
+| Everything else | Verified intact | Palette (Ctrl+K, filter/nav/Enter/Escape/focus-restore, disabled reasons, busy/error) + registry/task-command unit tests; `UiState`/`StatusLabel` (never color-alone, unknown≠success); `useDialogFocus` containment + restoration; reduced-motion + focus-visible CSS; responsive breakpoints; bounded projections (0 selector invalidations); degraded-only resync loop; no backend contract changes |
+
+Validation: Vitest green, `tsc` exit 0, ESLint 0 errors, production build green;
+Playwright smokes green (palette, office, task-controls) against live API +
+dev server; backend suite not rerun (no backend changes). Full Agent Office,
+graph, traceability, replay and Command Center remain future waves per the
+stopping condition.
+
+## Wave 6 limitations completion — 2026-09-18
+
+Frontend/test-side only, zero backend changes:
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Problems view missing | Delivered | `ProblemsView` triages failed/blocked tasks, failed tool runs, pending approvals from existing stores (pure `collectProblems`, unit-tested); navigates to office/output/oversight; `nav.problems` palette command; empty means clean |
+| Settings view missing | Delivered | `SettingsView`: token save/clear, layout reset, live connection telemetry — all local real actions; `nav.settings` palette command |
+| Stale smoke selectors | Fixed | Accessible-role selectors; office + palette smokes extended for the new views |
+| Stale registry/docs counts | Fixed | 28 static + per-task controls; gap lists corrected |
+| Per-agent lifecycle, message composing, runtime view, light theme, virtualization | Retained as gaps | No safe backend contract (agents/messages), no evidence for new infra (virtualization), theme scope — documented |
+
+## Wave 6 remaining-parts completion — 2026-09-18
+
+Almost entirely frontend/test-side; one pre-existing backend endpoint surfaced:
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Per-agent session release | Delivered (UI only) | `POST /api/sessions/{id}/end` already existed + tested; added the Release button (confirmed) in AgentDetail. Full pause/resume/stop of agents stays unavailable by architecture (disposable agents; workflows own control) |
+| Operator composing | Already existed — verified | CommsTab compose box posts with null sender (explicit operator attribution); documented |
+| Runtime view | Delivered | `RuntimeView` (ports + release w/ confirm, leases, refresh) over existing list endpoints; pure `summarizeRuntime` unit-tested; `nav.runtime` palette command; office-smoke covered |
+| Light theme | Delivered | `[data-theme="light"]` variable layer, `harness-light` Monaco theme, live xterm recolor, Settings toggle + `nav.theme` palette command, persisted; no hard-coded dark hex in components; smoke-verified toggle |
+| Virtualization | Declined with measurements | Timeline burst-grouped + capped at 120, history paginated 500/page, lists capped at 100, 0 selector invalidations — no list justifies windowing; building it would violate the wave's own rule |
 LSP/call-graph (deferred register); real-time collaborative editing.

@@ -133,12 +133,15 @@ def run_ui_smoke() -> None:
             )
             expect(page.locator(".risk-badge")).to_have_text("medium risk")
 
-            # Team tab: the task board lists the planned task.
-            page.click("button.office-tab >> nth=0")
-            expect(page.locator(".task-title").first).to_have_text("Implement search", timeout=15000)
+            # Team tab: the task board lists the planned task (assert the
+            # accessible name — the visible label carries a status glyph).
+            page.get_by_role("button", name="Team").click()
+            expect(
+                page.get_by_role("button", name="Inspect task Implement search").first
+            ).to_be_visible(timeout=15000)
 
             # Oversight tab: the completion gate is fail-closed without evidence...
-            page.click("button.office-tab >> nth=2")
+            page.get_by_role("button", name="Oversight").click()
             expect(page.locator(".gate-card")).to_contain_text("blocked", timeout=15000)
             # ...and requesting the report surfaces the explicit blockers.
             page.click("button.wide")
@@ -147,7 +150,7 @@ def run_ui_smoke() -> None:
             )
 
             # Timeline tab: the durable event stream shows the requirement creation.
-            page.click("button.office-tab >> nth=1")
+            page.get_by_role("button", name="Activity").click()
             expect(
                 page.locator(".event-row", has_text="REQUIREMENT_CREATED").first
             ).to_be_visible(timeout=15000)
@@ -159,6 +162,20 @@ def run_ui_smoke() -> None:
                 f"/api/hitl", params={"project_id": project_id}
             ).json()
             assert any(r["status"] == "approved" for r in decided), decided
+
+            # Problems view triages the live project state through the palette.
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("problems")
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_have_count(0)
+            expect(page.locator(".sidebar-header")).to_have_text("PROBLEMS")
+
+            # Runtime view lists ports/leases (empty on a fresh fixture).
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("runtime")
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_have_count(0)
+            expect(page.locator(".sidebar-header")).to_have_text("RUNTIME")
 
             browser.close()
     finally:

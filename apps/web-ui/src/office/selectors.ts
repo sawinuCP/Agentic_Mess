@@ -4,7 +4,14 @@
 // here mirrors docs/agent-office-architecture.md §3. Anything the backend
 // does not record is labeled as derived/last-recorded, never invented.
 
-import type { CostsSummary, EventEntry, MessageInfo, TaskInfo } from "../types";
+import type {
+  CostsSummary,
+  EventEntry,
+  HitlRequestInfo,
+  MessageInfo,
+  TaskInfo,
+  ToolRunResult,
+} from "../types";
 import { taskCommands } from "../commands/taskCommands";
 
 export const TERMINAL_TASK = new Set(["completed", "cancelled", "failed"]);
@@ -508,4 +515,67 @@ export function messageSummary(message: MessageInfo): string {
   if (text) return text.length > 140 ? `${text.slice(0, 140)}…` : text;
   const keys = Object.keys(message.payload);
   return keys.length > 0 ? `payload: ${keys.slice(0, 4).join(", ")}` : "empty payload";
+}
+
+export interface ProblemItem {
+  kind: "task-failed" | "task-blocked" | "tool-failed" | "approval-pending";
+  title: string;
+  detail: string;
+  taskId: string | null;
+}
+
+/**
+ * Problems view projection (Wave 6): failed/blocked tasks, failed tool runs
+ * and pending approvals from already-loaded store state — no new fetches.
+ * Empty result means genuinely clean, never "no data loaded".
+ */
+export function collectProblems(input: {
+  tasks: TaskInfo[];
+  output: ToolRunResult | null;
+  hitl: HitlRequestInfo[];
+}): ProblemItem[] {
+  const problems: ProblemItem[] = [];
+  for (const task of input.tasks) {
+    if (task.status === "failed") {
+      const lastFailure = [...task.attempts]
+        .reverse()
+        .find((a) => a.outcome === "failed" || a.failure_class);
+      problems.push({
+        kind: "task-failed",
+        title: task.title,
+        detail:
+          lastFailure?.failure_detail ??
+          lastFailure?.failure_class ??
+          "Failed without recorded detail",
+        taskId: task.id,
+      });
+    } else if (task.status === "blocked" || task.status === "ready") {
+      const reason = waitingReason(task, input.tasks);
+      problems.push({
+        kind: "task-blocked",
+        title: task.title,
+        detail: reason ?? "Waiting",
+        taskId: task.id,
+      });
+    }
+  }
+  const output = input.output;
+  if (output && output.exit_code !== null && output.exit_code !== 0) {
+    problems.push({
+      kind: "tool-failed",
+      title: `${output.tool} ${output.language} failed (exit ${output.exit_code})`,
+      detail: output.diagnostics[0] ?? output.stderr.slice(0, 200) ?? "See output panel",
+      taskId: null,
+    });
+  }
+  for (const request of input.hitl) {
+    if (request.status !== "pending") continue;
+    problems.push({
+      kind: "approval-pending",
+      title: request.question,
+      detail: `${request.kind} · ${request.risk} risk — decide in Office oversight`,
+      taskId: request.task_id,
+    });
+  }
+  return problems;
 }

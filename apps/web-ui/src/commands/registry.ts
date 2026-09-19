@@ -3,10 +3,10 @@
 // Pure data + logic: no React, no DOM — unit-testable in the node Vitest
 // suite. Every command maps to an existing real frontend action and checks
 // availability with a disabled reason. Commands that would require backend
-// capabilities the client does not expose (per-agent pause/resume/stop, task
-// creation, workspace symbol search, settings/runtime views) are deliberately
-// absent — see docs/frontend-interaction-model.md. Task-level stop is covered
-// separately by taskCommands ("Cancel task" via POST /api/tasks/{id}/cancel).
+// capabilities the client does not expose (per-agent pause/resume/stop,
+// dedicated problems/runtime/settings views) are deliberately absent — see
+// docs/frontend-interaction-model.md. Task-level stop is covered separately
+// by taskCommands ("Cancel task" via POST /api/tasks/{id}/cancel).
 
 import type { ViewId } from "../state/store";
 
@@ -15,6 +15,7 @@ export type OfficeTabId = "team" | "timeline" | "comms" | "oversight";
 export interface CommandActions {
   setView: (view: ViewId) => void;
   setOfficeTab: (tab: OfficeTabId) => void;
+  toggleTheme: () => void;
   openQuickOpen: () => void;
   openSymbolSearch: () => void;
   openSpawnDialog: () => void;
@@ -139,6 +140,36 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       keywords: ["history", "timeline", "replay", "events", "audit", "debug"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("history"),
+    },
+    {
+      id: "nav.problems",
+      label: "Open problems",
+      category: "Navigation",
+      keywords: ["problems", "failures", "errors", "blocked", "approvals", "triage"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.setView("problems"),
+    },
+    {
+      id: "nav.runtime",
+      label: "Open runtime",
+      category: "Navigation",
+      keywords: ["runtime", "ports", "leases", "resources", "allocations"],
+      disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
+      run: () => a.setView("runtime"),
+    },
+    {
+      id: "nav.theme",
+      label: "Toggle color theme",
+      category: "Navigation",
+      keywords: ["theme", "dark", "light", "appearance", "colors"],
+      run: () => a.toggleTheme(),
+    },
+    {
+      id: "nav.settings",
+      label: "Open settings",
+      category: "Navigation",
+      keywords: ["settings", "token", "layout", "configuration", "preferences"],
+      run: () => a.setView("settings"),
     },
     {
       id: "nav.command",

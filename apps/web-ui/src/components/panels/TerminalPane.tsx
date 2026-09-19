@@ -3,9 +3,18 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { getApiToken, terminalWebSocketUrl, webSocketProtocols } from "../../api/client";
+import { useStore } from "../../state/store";
+import { xtermTheme } from "../../state/theme";
 
 export default function TerminalPane({ sessionId }: { sessionId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const theme = useStore((s) => s.theme);
+
+  // Live theme follow: existing sessions recolor without reconnecting.
+  useEffect(() => {
+    if (terminalRef.current) terminalRef.current.options.theme = xtermTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -18,13 +27,9 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
     const terminal = new Terminal({
       fontFamily: "Consolas, ui-monospace, monospace",
       fontSize: 12,
-      theme: {
-        background: "#0d1017",
-        foreground: "#d6dbe6",
-        cursor: "#5b8cff",
-        selectionBackground: "#2a3650",
-      },
+      theme: xtermTheme(useStore.getState().theme),
     });
+    terminalRef.current = terminal;
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(host);
@@ -88,6 +93,7 @@ export default function TerminalPane({ sessionId }: { sessionId: string }) {
       socket.onopen = socket.onclose = socket.onmessage = null;
       socket.close();
       terminal.dispose();
+      if (terminalRef.current === terminal) terminalRef.current = null;
     };
     }, 0);
     return () => {

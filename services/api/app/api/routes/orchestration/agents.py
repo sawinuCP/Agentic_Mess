@@ -25,9 +25,13 @@ async def create_agent(
 
 @router.get("/api/projects/{project_id}/agents", response_model=list[AgentOut])
 async def list_agents(
-    project: Project = Depends(get_project), db: Session = Depends(get_db)
+    project: Project = Depends(get_project),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
 ) -> list[AgentOut]:
-    return await asyncio.to_thread(agent_service.list_agents, db, project.id)
+    """One stable page (created_at, id)."""
+    return await asyncio.to_thread(agent_service.list_agents, db, project.id, limit, offset)
 
 
 @router.get("/api/agents/{agent_id}", response_model=AgentOut)

@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { glue } from "@typehug/en";
 
-import { listAgentSessions } from "../../api/client";
+import { endSession, listAgentSessions } from "../../api/client";
 import { errorMessage } from "../../api/errors";
 import type { SessionInfo } from "../../types";
 
@@ -204,9 +204,9 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
 
       <Section title="Sessions">
         <div className="small muted">
-          Runtime-owned session history, newest first. The UI reads sessions;
-          it never pauses, resumes, or ends them — lifecycle transitions belong
-          to the runtime, and task workflows own pause/resume/stop.
+          Runtime-owned session history, newest first. Stale sessions are marked
+          lost automatically; release a stuck <em>running</em> session here only
+          if supervision has not caught up yet.
         </div>
         {sessions === null && !sessionsError && (
           <div className="muted small">Loading sessions…</div>
@@ -222,6 +222,32 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
             {session.runtime} · {session.status}
             {session.heartbeat_at ? ` · beat ${new Date(session.heartbeat_at).toLocaleTimeString()}` : ""}
             {session.finished_at ? ` · ended ${new Date(session.finished_at).toLocaleTimeString()}` : ""}
+            {session.status === "running" && (
+              <button
+                className="btn btn-small"
+                title="End this session now (supervision marks stale sessions lost automatically)"
+                aria-label={`Release session ${session.id.slice(0, 8)}`}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "End this session now? The agent's recorded work is preserved; " +
+                        "use this only for a session stuck running.",
+                    )
+                  ) {
+                    return;
+                  }
+                  void endSession(session.id)
+                    .then((ended) =>
+                      setSessions((rows) =>
+                        (rows ?? []).map((row) => (row.id === ended.id ? ended : row)),
+                      ),
+                    )
+                    .catch((err: unknown) => setSessionsError(errorMessage(err)));
+                }}
+              >
+                Release
+              </button>
+            )}
           </div>
         ))}
       </Section>

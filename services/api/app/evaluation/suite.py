@@ -58,6 +58,83 @@ def consistency(states: list[str]) -> str:
     return "PASS" if values else "UNKNOWN"
 
 
+# Failure triage (§39): deterministic labels for failed rows. Hard signals
+# (budget/timeout/infra) win over heuristics; otherwise the failed test node
+# ids decide — transparent and unit-tested, never a model judgment, and never
+# overriding the row status itself.
+_TRIAGE_SECURITY_HINTS = (
+    "secur",
+    "auth",
+    "secret",
+    "ssrf",
+    "unauth",
+    "denies",
+    "forbidden",
+    "violation",
+    "sanitiz",
+    "private",
+    "permission",
+)
+_TRIAGE_PLANNER_HINTS = ("plann",)
+_TRIAGE_DECOMPOSITION_HINTS = ("schedul", "dag", "decompos", "task_graph")
+_TRIAGE_AGENT_HINTS = ("spawn", "agent_selection", "wrong-role")
+_TRIAGE_RECOVERY_HINTS = ("recover", "retry", "fallback", "dependenc", "hitl", "replan", "debugger")
+_TRIAGE_MODEL_HINTS = ("provider", "model", "registry", "openai", "completion")
+_TRIAGE_COVERAGE_HINTS = ("coverage", "traceability", "requirement", "overseer")
+_TRIAGE_VALIDATION_HINTS = ("gates", "scorecard", "comparison", "audit", "validat")
+_TRIAGE_COST_HINTS = ("cost", "budget", "ledger", "token")
+_TRIAGE_CONTEXT_HINTS = ("context", "retrieval", "codeintel", "index", "search", "symbol")
+_TRIAGE_TOOL_HINTS = ("tool", "runner", "toolchain", "browser", "mcp", "gateway")
+
+
+def triage_result(row: dict[str, Any]) -> str | None:
+    """Triage class for a suite result row (None when the row passed)."""
+    status = row.get("status")
+    if status == "PASS":
+        return None
+    if status == "NOT_RUN":
+        return "INFRASTRUCTURE_FAILURE"
+    failure_class = row.get("failure_class")
+    if failure_class == "BUDGET_EXCEEDED":
+        return "COST_FAILURE"
+    if failure_class == "INFRASTRUCTURE_FAILURE":
+        return "INFRASTRUCTURE_FAILURE"
+    if failure_class == "TIMEOUT" or row.get("timed_out"):
+        return "PERFORMANCE_FAILURE"
+    if status == "ERROR" or row.get("collection_errors"):
+        return "INFRASTRUCTURE_FAILURE"
+    haystack = "\n".join(
+        str(t.get("nodeid", "")) for t in row.get("tests", []) if t.get("outcome") == "failed"
+    ).lower()
+
+    def hits(hints: tuple[str, ...]) -> bool:
+        return any(hint in haystack for hint in hints)
+
+    if hits(_TRIAGE_SECURITY_HINTS):
+        return "SECURITY_FAILURE"
+    if hits(_TRIAGE_PLANNER_HINTS):
+        return "PLANNER_FAILURE"
+    if hits(_TRIAGE_DECOMPOSITION_HINTS):
+        return "TASK_DECOMPOSITION_FAILURE"
+    if hits(_TRIAGE_AGENT_HINTS):
+        return "AGENT_SELECTION_FAILURE"
+    if hits(_TRIAGE_RECOVERY_HINTS):
+        return "RECOVERY_FAILURE"
+    if hits(_TRIAGE_MODEL_HINTS):
+        return "MODEL_FAILURE"
+    if hits(_TRIAGE_COVERAGE_HINTS):
+        return "REQUIREMENT_COVERAGE_FAILURE"
+    if hits(_TRIAGE_VALIDATION_HINTS):
+        return "VALIDATION_FAILURE"
+    if hits(_TRIAGE_COST_HINTS):
+        return "COST_FAILURE"
+    if hits(_TRIAGE_CONTEXT_HINTS):
+        return "CONTEXT_FAILURE"
+    if hits(_TRIAGE_TOOL_HINTS):
+        return "TOOL_SELECTION_FAILURE"
+    return "EXECUTION_FAILURE"
+
+
 def read_json(path: Path) -> dict[str, Any]:
     with path.open("rb") as stream:
         data = stream.read(MAX_BYTES + 1)
@@ -240,6 +317,10 @@ async def run(
                             }
                 report["results"].append({"repeat": repeat + 1, **row})
                 save(output, report)
+    for row in report["results"]:
+        # Triage labels ride the persisted row (additive; never rewrites status).
+        row["triage"] = triage_result(row)
+    save(output, report)
     report["cases"] = {
         c.case_id: consistency(
             [r["status"] for r in report["results"] if r["case_id"] == c.case_id]

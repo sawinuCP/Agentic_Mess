@@ -48,6 +48,27 @@ const ICONS: Record<string, JSX.Element> = {
       <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
     </svg>
   ),
+  problems: (
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2 14.5 13.5h-13L8 2z" strokeLinejoin="round" />
+      <path d="M8 6.5v3" strokeLinecap="round" />
+      <circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  settings: (
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="2.2" />
+      <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" strokeLinecap="round" />
+    </svg>
+  ),
+  runtime: (
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="2" width="12" height="4.5" rx="1" />
+      <rect x="2" y="9.5" width="12" height="4.5" rx="1" />
+      <circle cx="4.5" cy="4.2" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="11.7" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   command: (
     <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
       <path d="m3 5 3.5 3.5L3 12M7.5 12.5H13" strokeLinecap="round" strokeLinejoin="round" />
@@ -70,6 +91,9 @@ const MAIN_VIEWS: { id: ViewId; title: string }[] = [
   { id: "graph", title: "Execution Graph" },
   { id: "history", title: "Execution History" },
   { id: "command", title: "Command Center" },
+  { id: "problems", title: "Problems" },
+  { id: "runtime", title: "Runtime" },
+  { id: "settings", title: "Settings" },
 ];
 
 export default function ActivityBar() {

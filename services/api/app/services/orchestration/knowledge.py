@@ -31,11 +31,13 @@ def create_memory(db: Session, project_id: uuid.UUID, body: MemoryIn) -> Memory:
     return memory
 
 
-def list_memories(db: Session, project_id: uuid.UUID, kind: str | None) -> list[Memory]:
+def list_memories(
+    db: Session, project_id: uuid.UUID, kind: str | None, limit: int = 100
+) -> list[Memory]:
     query = select(Memory).where(Memory.project_id == project_id)
     if kind:
         query = query.where(Memory.kind == kind)
-    return list(db.scalars(query.order_by(Memory.created_at.desc())).all())
+    return list(db.scalars(query.order_by(Memory.created_at.desc()).limit(max(1, limit))).all())
 
 
 def create_context_item(db: Session, project_id: uuid.UUID, body: ContextItemIn) -> ContextItem:
@@ -57,11 +59,13 @@ def create_context_item(db: Session, project_id: uuid.UUID, body: ContextItemIn)
 
 
 def list_context_items(
-    db: Session, project_id: uuid.UUID, tier: int | None, kind: str | None
+    db: Session, project_id: uuid.UUID, tier: int | None, kind: str | None, limit: int = 100
 ) -> list[ContextItem]:
     query = select(ContextItem).where(ContextItem.project_id == project_id)
     if tier is not None:
         query = query.where(ContextItem.tier == tier)
     if kind:
         query = query.where(ContextItem.kind == kind)
-    return list(db.scalars(query.order_by(ContextItem.created_at.desc())).all())
+    return list(
+        db.scalars(query.order_by(ContextItem.created_at.desc()).limit(max(1, limit))).all()
+    )

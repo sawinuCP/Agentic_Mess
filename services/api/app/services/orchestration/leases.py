@@ -209,16 +209,31 @@ def expire_stale(db: Session, project_id: uuid.UUID | None = None) -> dict[str, 
 def list_leases(
     db: Session, project_id: uuid.UUID, status: str | None, limit: int
 ) -> list[LeaseOut]:
-    """List leases for a project, newest first, optionally filtered by computed status."""
-    rows = db.scalars(
+    """List leases for a project, newest first, optionally filtered by computed status.
+
+    The status filter is expressed in SQL (released/expired/active derive fully
+    from ``released_at``/``expires_at``) so the limit applies in the database —
+    never fetch-then-slice.
+    """
+    query = (
         select(Resource)
         .where(Resource.project_id == project_id)
-        .order_by(Resource.acquired_at.desc())
-    ).all()
-    out = [_lease_out(r) for r in rows]
-    if status is not None:
-        out = [lease for lease in out if lease.status == status]
-    return out[:limit]
+        .order_by(Resource.acquired_at.desc(), Resource.id.desc())
+        .limit(max(1, limit))
+    )
+    if status == STATUS_RELEASED:
+        query = query.where(Resource.released_at.is_not(None))
+    elif status == STATUS_EXPIRED:
+        query = query.where(
+            Resource.released_at.is_(None),
+            Resource.expires_at <= datetime.now(UTC),
+        )
+    elif status == STATUS_ACTIVE:
+        query = query.where(
+            Resource.released_at.is_(None),
+            Resource.expires_at > datetime.now(UTC),
+        )
+    return [_lease_out(r) for r in db.scalars(query).all()]
 
 
 def active_leases_for(db: Session, kind: str, keys: Iterable[str]) -> list[Resource]:

@@ -73,6 +73,9 @@ async def main() -> None:
         client,
         task_queue=settings.temporal_task_queue,
         workflows=[TaskExecutionWorkflow],
+        max_concurrent_workflow_tasks=max(1, settings.temporal_max_concurrent_workflows),
+        max_concurrent_activities=max(1, settings.temporal_max_concurrent_activities),
+        max_activities_per_second=(float(settings.temporal_max_activities_per_second) or None),
         activities=[
             load_task_activity,
             start_attempt_activity,

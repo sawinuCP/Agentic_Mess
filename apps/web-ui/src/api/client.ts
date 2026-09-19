@@ -9,7 +9,9 @@ import type {
   GitCommit,
   GitStatus,
   HitlRequestInfo,
+  LeaseInfo,
   MessageInfo,
+  PortInfo,
   ProjectInfo,
   ProjectToolchains,
   RequirementInfo,
@@ -236,6 +238,9 @@ export const createAgent = (
 export const listAgentSessions = (agentId: string, limit = 100) =>
   request<SessionInfo[]>(`/api/agents/${enc(agentId)}/sessions?limit=${limit}`);
 
+export const endSession = (sessionId: string) =>
+  request<SessionInfo>(`/api/sessions/${enc(sessionId)}/end`, { method: "POST" });
+
 export const listTasks = (projectId: string) =>
   request<TaskInfo[]>(`/api/projects/${projectId}/tasks`);
 
@@ -378,6 +383,15 @@ export const sendOperatorMessage = (
 
 export const listWorktrees = (projectId: string, limit = 100) =>
   request<WorktreeInfo[]>(`/api/projects/${projectId}/worktrees?limit=${limit}`);
+
+export const listPorts = (projectId: string, limit = 100) =>
+  request<PortInfo[]>(`/api/projects/${projectId}/ports?limit=${limit}`);
+
+export const releasePort = (allocationId: string) =>
+  request<PortInfo>(`/api/ports/${enc(allocationId)}/release`, { method: "POST" });
+
+export const listLeases = (projectId: string, limit = 100) =>
+  request<LeaseInfo[]>(`/api/projects/${projectId}/leases?limit=${limit}`);
 
 export const getCosts = (projectId: string, taskId?: string) => {
   const query = taskId ? `?task_id=${enc(taskId)}` : "";

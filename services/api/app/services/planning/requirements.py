@@ -25,12 +25,13 @@ def _criteria_out(db: Session, requirement_id: uuid.UUID) -> list[CriterionOut]:
         .where(AcceptanceCriterion.requirement_id == requirement_id)
         .order_by(AcceptanceCriterion.created_at)
     ).all()
-    return [
-        CriterionOut(
-            id=c.id, description=c.description, kind=c.kind, mandatory=c.mandatory, status=c.status
-        )
-        for c in rows
-    ]
+    return [_criterion_out(c) for c in rows]
+
+
+def _criterion_out(c: AcceptanceCriterion) -> CriterionOut:
+    return CriterionOut(
+        id=c.id, description=c.description, kind=c.kind, mandatory=c.mandatory, status=c.status
+    )
 
 
 def requirement_out(db: Session, requirement: Requirement) -> RequirementOut:
@@ -73,13 +74,44 @@ def create_requirement(db: Session, project_id: uuid.UUID, body: RequirementIn) 
     return requirement
 
 
-def list_requirements(db: Session, project_id: uuid.UUID) -> list[RequirementOut]:
+def list_requirements(
+    db: Session, project_id: uuid.UUID, limit: int = 100, offset: int = 0
+) -> list[RequirementOut]:
+    """One page of requirements with criteria batched in two queries total
+    (never N+1): requirements page, then all criteria for the page's ids."""
+    from collections import defaultdict
+
     rows = db.scalars(
         select(Requirement)
         .where(Requirement.project_id == project_id)
-        .order_by(Requirement.created_at)
+        .order_by(Requirement.created_at, Requirement.id)
+        .limit(max(1, limit))
+        .offset(max(0, offset))
     ).all()
-    return [requirement_out(db, r) for r in rows]
+    if not rows:
+        return []
+    page_ids = [r.id for r in rows]  # bounded by the page size by construction
+    criteria: dict[uuid.UUID, list[CriterionOut]] = defaultdict(list)
+    for criterion in db.scalars(
+        select(AcceptanceCriterion)
+        .where(AcceptanceCriterion.requirement_id.in_(page_ids))
+        .order_by(AcceptanceCriterion.created_at)
+    ).all():
+        criteria[criterion.requirement_id].append(_criterion_out(criterion))
+    return [
+        RequirementOut(
+            id=r.id,
+            project_id=r.project_id,
+            title=r.title,
+            description=r.description,
+            desired_outcome=r.desired_outcome,
+            priority=r.priority,
+            status=r.status,
+            version=r.version,
+            criteria=criteria[r.id],
+        )
+        for r in rows
+    ]
 
 
 def get_requirement(db: Session, requirement_id: uuid.UUID) -> RequirementOut:

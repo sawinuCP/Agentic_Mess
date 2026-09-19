@@ -116,10 +116,44 @@ def main() -> None:
             page.keyboard.press("Control+K")
             expect(page.locator(".command-palette")).to_have_count(0)
 
+            # New views navigate through the palette with real content.
+            # Settings needs no project, so Enter executes it here.
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("settings")
+            expect(page.locator(".command-row")).to_have_count(1)
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_have_count(0)
+            expect(page.locator(".sidebar-header")).to_have_text("SETTINGS")
+            expect(page.locator('input[aria-label="API token"]')).to_be_visible()
+            # Problems needs a project (none is open in this fixture): the
+            # disabled reason must show and Enter must be a no-op.
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("problems")
+            expect(page.locator(".command-row")).to_have_count(1)
+            expect(page.locator(".command-row").first).to_contain_text("Open a project first")
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_be_visible()
+            page.keyboard.press("Escape")
+            # Theme toggle flips the data-theme contract without reload.
+            before = page.evaluate("document.documentElement.dataset.theme || 'dark'")
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("toggle color theme")
+            expect(page.locator(".command-row")).to_have_count(1)
+            page.keyboard.press("Enter")
+            expect(page.locator(".command-palette")).to_have_count(0)
+            after = page.evaluate("document.documentElement.dataset.theme || 'dark'")
+            assert before != after, (before, after)
+            page.keyboard.press("Control+K")
+            page.locator(".command-palette input").fill("toggle color theme")
+            page.keyboard.press("Enter")
+            restored = page.evaluate("document.documentElement.dataset.theme || 'dark'")
+            assert restored == before, (before, restored)
+
             assert not errors, errors
             print("PASS: Ctrl+K open/toggle, search filtering, keyword match, "
                   "disabled reason shown, Enter no-op on disabled, Escape with "
-                  "focus restoration, real navigation execution; no page errors")
+                  "focus restoration, real navigation execution, problems + "
+                  "settings views reachable; no page errors")
             browser.close()
     finally:
         server.terminate()

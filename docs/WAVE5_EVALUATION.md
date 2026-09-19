@@ -56,6 +56,10 @@ test outcomes is rejected.
 
 - Baseline full run: **PASS, 10/10 cases, 96.47 s** (run `5eca4ea5-…`)
 - Post-fix full run: **PASS, 10/10 cases, 76.28 s** (run `19350547-…`)
+- Verification full run (2026-09-18): **PASS, 10/10 cases, 67.46 s** — rows now
+  carry deterministic failure triage (`§39`: COST/INFRA/PERFORMANCE hard signals
+  first, then failed-node evidence mapping; PASS rows carry none), surfaced in
+  `report` tallies.
 - `compare` between the two: **PASS, no regressions**; all cases faster (e.g. EVAL-002
   −797.5 ms, EVAL-005 −2067.5 ms median) — consistent with warm Go/TS tool caches.
 - Repeatability (`--fast --repeats 2`): EVAL-001 **PASS, PASS** (not FLAKY);
@@ -79,3 +83,13 @@ test outcomes is rejected.
 - Model-assisted evaluation is intentionally absent; no evaluator model can override
   deterministic failures. Adding one is future work.
 - Latency metrics include pytest startup; they are regression baselines, not SLAs.
+
+## Evaluation metrics library (2026-09-18)
+
+`app/evaluation/metrics.py` — pure read-only extractors over durable rows for
+reports (§12/§16/§42): `execution_metrics(task_id)` (attempts, retries + rate,
+recoveries + success, replans, replacements, debugger spawns, tool calls +
+success rate, model calls, tokens, cost, HITL count, terminal state; unavailable
+splits stay `None`, never fabricated) and `communication_health(conversation_id)`
+(orphan replies, duplicates, unanswered questions, undelivered). Covered by
+`tests/integration/test_evaluation_metrics.py`.

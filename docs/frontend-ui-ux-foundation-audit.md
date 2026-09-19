@@ -46,7 +46,19 @@ Implemented: token layer; searchable palette; App-owned monitoring; offline prec
 
 ## Follow-up increment (2026-09-18)
 
-Closed three remaining foundation gaps without backend changes: `execution.build` palette command (existing toolchain endpoint, builder-detected guard); task "Cancel task" in TeamTab and palette via existing FR-014 cancel endpoint (non-finished tasks only, finished tasks keep recorded outcome); last-toolchain-run status in the shell status bar (recorded result + output-panel action, never a live-progress claim). Vitest 35 → 37, task-controls smoke extended for cancel and shell run status; typecheck/lint/palette/shell smokes green. Retry of failed tasks, durable execution history, task creation, agent lifecycle commands, symbol search, and problems/runtime/settings views remain explicit gaps (no safe contract or no placeholder policy).
+Closed three remaining foundation gaps without backend changes: `execution.build` palette command (existing toolchain endpoint, builder-detected guard); task "Cancel task" in TeamTab and palette via existing FR-014 cancel endpoint (non-finished tasks only, finished tasks keep recorded outcome); last-toolchain-run status in the shell status bar (recorded result + output-panel action, never a live-progress claim). Vitest 35 → 37, task-controls smoke extended for cancel and shell run status; typecheck/lint/palette/shell-status smokes green. Retry of failed tasks, durable execution history, agent lifecycle commands, and problems/runtime/settings views remain explicit gaps (no safe contract or no placeholder policy). Task creation and symbol search previously sat in this gap list; both now exist end-to-end (verified 2026-09-18).
+
+## Verification round (2026-09-18)
+
+Independent verification pass over Phases 1–8, all frontend/test-side:
+
+- Office smoke repaired (accessible-role selectors replacing glyph-sensitive
+  exact text and drifted tab indices) — `OFFICE UI SMOKE PASSED` live.
+- Registry header + interaction-model counts corrected (28 static + per-task
+  controls); verified task/spawn/symbol dialogs perform real API actions.
+- Palette, office, and task-controls Playwright smokes green against the live
+  stack; Vitest, typecheck, lint, and production build green (see validation).
+- No backend changes; backend suite not rerun for this round.
 
 ## Validation plan
 

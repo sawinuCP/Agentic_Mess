@@ -313,3 +313,30 @@ export interface ReviewOutcome {
   reviews: ReviewEntry[];
   findings: { reviewer: string; severity: string; claim: string; evidence: string }[];
 }
+
+export interface PortInfo {
+  id: string;
+  port: number;
+  purpose: string;
+  holder: string | null;
+  project_id: string | null;
+  ttl_seconds: number;
+  allocated_at: string;
+  expires_at: string;
+  released_at: string | null;
+  status: string;
+}
+
+export interface LeaseInfo {
+  id: string;
+  kind: string;
+  key: string;
+  project_id: string | null;
+  holder_agent_id: string | null;
+  holder_session: string | null;
+  ttl_seconds: number;
+  acquired_at: string;
+  expires_at: string;
+  released_at: string | null;
+  status: string;
+}

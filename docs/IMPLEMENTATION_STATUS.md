@@ -559,6 +559,18 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
 
 ## Change log
 
+- 2026-09-18 — Wave 5 evaluation audit: system verified intact (10/10 baseline
+  green); added deterministic failure triage (§39) wired into suite rows +
+  report tallies, and an orchestration/message metrics library (§12/§16/§42)
+  with integration coverage. Full suite green (see validation below).
+
+- 2026-09-18 — Wave 4 performance audit: measured-first fixes only (requirements
+  N+1 → 2 queries, collection pagination everywhere, artifact streaming +
+  ranges, worker concurrency knobs, evidence-aware retention); indexes audited
+  with EXPLAIN (no new indexes justified); codeintel measured (no bottleneck);
+  perf matrix + regression tests added. Full suite green (see validation
+  below).
+
 - 2026-09-18 — Wave 3 residuals: hermetic NATS tests clean up their durable
   consumers; intentional bus close no longer logs a spurious disconnect;
   per-command tool lifecycle events (`TOOL_STARTED/COMPLETED/FAILED`, bounded,

@@ -5,6 +5,7 @@ import { isDirty, useStore, type FileTab } from "../../state/store";
 
 export default function CodeEditor({ tab }: { tab: FileTab }) {
   const updateContent = useStore((s) => s.updateContent);
+  const theme = useStore((s) => s.theme);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function CodeEditor({ tab }: { tab: FileTab }) {
 
   return (
     <Editor
-      theme="harness-dark"
+      theme={theme === "light" ? "harness-light" : "harness-dark"}
       language={tab.language}
       value={tab.content}
       onChange={(value) => updateContent(tab.path, value ?? "")}

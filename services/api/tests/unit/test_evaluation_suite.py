@@ -132,3 +132,78 @@ def test_suite_missing_repeat_rejected() -> None:
     report["limits"]["repeats"] = 2
     with pytest.raises(ValueError, match="Missing"):
         validate(report)
+
+
+def _row(**overrides: object) -> dict:
+    row: dict = {
+        "case_id": "EVAL-001",
+        "status": "FAIL",
+        "failure_class": None,
+        "timed_out": False,
+        "collection_errors": 0,
+        "tests": [],
+    }
+    row.update(overrides)
+    return row
+
+
+def test_triage_pass_needs_no_label() -> None:
+    from app.evaluation.suite import triage_result
+
+    assert triage_result(_row(status="PASS")) is None
+
+
+def test_triage_hard_signals_win() -> None:
+    from app.evaluation.suite import triage_result
+
+    assert triage_result(_row(failure_class="BUDGET_EXCEEDED")) == "COST_FAILURE"
+    assert triage_result(_row(failure_class="INFRASTRUCTURE_FAILURE")) == "INFRASTRUCTURE_FAILURE"
+    assert triage_result(_row(failure_class="TIMEOUT")) == "PERFORMANCE_FAILURE"
+    assert triage_result(_row(status="NOT_RUN")) == "INFRASTRUCTURE_FAILURE"
+    assert triage_result(_row(status="ERROR", collection_errors=2)) == "INFRASTRUCTURE_FAILURE"
+
+
+def test_triage_labels_failed_nodes_transparently() -> None:
+    from app.evaluation.suite import triage_result
+
+    def failed(*nodeids: str) -> dict:
+        return _row(
+            tests=[{"nodeid": node, "outcome": "failed"} for node in nodeids],
+        )
+
+    assert triage_result(failed("tests/unit/test_wave1_security.py::test_x")) == "SECURITY_FAILURE"
+    assert (
+        triage_result(failed("tests/integration/test_recovery_executor.py::test_y"))
+        == "RECOVERY_FAILURE"
+    )
+    assert (
+        triage_result(failed("tests/evals/test_golden.py::test_provider_fallback"))
+        == "RECOVERY_FAILURE"  # fallback machinery, not the provider error itself
+    )
+    assert (
+        triage_result(failed("tests/unit/test_context_and_models.py::test_openai_500"))
+        == "MODEL_FAILURE"
+    )
+    assert (
+        triage_result(failed("tests/integration/test_quality_overseer.py::test_z"))
+        == "REQUIREMENT_COVERAGE_FAILURE"
+    )
+    assert (
+        triage_result(failed("tests/integration/test_codeintel_retrieval.py::test_q"))
+        == "CONTEXT_FAILURE"
+    )
+    assert (
+        triage_result(failed("tests/integration/test_scheduler.py::test_dag"))
+        == "TASK_DECOMPOSITION_FAILURE"
+    )
+    assert triage_result(failed("tests/evals/test_golden.py::test_seeded_python")) == (
+        "EXECUTION_FAILURE"
+    )
+
+
+def test_triage_never_overrides_status() -> None:
+    from app.evaluation.suite import triage_result
+
+    row = _row(tests=[{"nodeid": "tests/unit/test_wave1_security.py::t", "outcome": "failed"}])
+    assert row["status"] == "FAIL"
+    assert triage_result(row) == "SECURITY_FAILURE"

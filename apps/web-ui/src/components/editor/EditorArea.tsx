@@ -7,6 +7,8 @@ export default function EditorArea() {
   const activePath = useStore((s) => s.activePath);
   const setActive = useStore((s) => s.setActive);
   const closeTab = useStore((s) => s.closeTab);
+  const theme = useStore((s) => s.theme);
+  const monacoTheme = theme === "light" ? "harness-light" : "harness-dark";
 
   const active =
     activePath === null
@@ -41,7 +43,7 @@ export default function EditorArea() {
       {active?.kind === "file" && <CodeEditor tab={active as FileTab} />}
       {active?.kind === "diff" && (
         <DiffEditor
-          theme="harness-dark"
+          theme={monacoTheme}
           original={active.original}
           modified={active.modified}
           language="plaintext"
