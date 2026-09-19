@@ -155,6 +155,12 @@ class TaskExecutionWorkflow:
             or recovery_policy.get("dependency_wait_seconds", 900.0)
         )
 
+        # Lawful entry (task lifecycle): the execute endpoint schedules
+        # pending → ready before starting us, but direct invocations may still
+        # be pending — route through ready so the transition guard accepts
+        # both entry states. Branching on an activity result is deterministic.
+        if task.get("status") == "pending":
+            await self._set_status(input.task_id, "ready")
         await self._set_status(input.task_id, "running")
 
         summary: dict[str, Any] = {

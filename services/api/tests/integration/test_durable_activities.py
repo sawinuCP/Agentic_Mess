@@ -99,6 +99,10 @@ def test_attempt_lifecycle_records_evidence(wired: tuple[FastAPI, str, Path]) ->
             }
         )
     )
+    # Lawful close-out (task lifecycle): the attempt ran, so walk the task
+    # through ready → running before completing it.
+    _run(set_task_status_activity({"task_id": task_id, "status": "ready"}))
+    _run(set_task_status_activity({"task_id": task_id, "status": "running"}))
     _run(set_task_status_activity({"task_id": task_id, "status": "completed"}))
     _run(
         record_event_activity(
