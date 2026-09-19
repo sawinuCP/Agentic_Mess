@@ -15,6 +15,8 @@ Authoritative ownership per context (enforced where marked [TEST]).
 | activities | 19 named activities | I/O + idempotency keys | per-activity rows/events | typed per activity | services, domain | — |
 | realtime | SSE route, gateway, bus, bridge | consumer, queues, DLQ | none durable | re-emits durable rows | db.models (read) | domain service writes [TEST] |
 | codeintel | `update_index`, `retrieve`, parsers | sha-skip, hybrid blend | `symbol_files`, `symbols` | none | sqlalchemy (accepted, Case C) | — |
+| events (reads) | `services/core/event_queries.py::query_events` (Phase G: route delegates) | filters/ordering | none (reads `events`) | none | sqlalchemy | — |
+| projects (reads) | `services/workspace/projects.py::require_project_root` (Phase G: worktree release reads through it) | open/list/unregister | `projects` | none | sqlalchemy | — |
 | toolchains | detection/registry/`run_tool` | language adapters | none | `TOOL_RUN_COMPLETED` (route) | files, runner | — |
 | evaluation | suite CLI, dataset, scorecard, triage, metrics | budgets, repeats, compare | own JSON reports (not DB) | none | runner, models | paid calls in CI (rehearsal only) |
 

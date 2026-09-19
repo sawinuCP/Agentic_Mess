@@ -36,6 +36,9 @@ frontend views → stores → api client          (never views → fetch directl
 Single sanctioned violation today: services import ORM models directly (no
 repository layer). Accepted as P2 (plan R-07): introduce read/write repository
 functions per context only where churn justifies it; no big-bang port layer.
+Phase G precedent (not a layer): owner-context read contracts —
+`event_queries.query_events`, `indexer.search_symbols/file_symbols`,
+`projects.require_project_root` — routes translate, never SELECT.
 
 ## Public interfaces (stability contract)
 

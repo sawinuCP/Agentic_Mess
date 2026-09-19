@@ -33,6 +33,29 @@ domain/infra/framework/db. Raw data in `forensics.json` (outside repo).
    Expected: distinct names. Why it matters: low (docs confusion only).
    Migration: document-only (plan R-06 likely decline — renames break history).
 
+## Phase G resolutions (2026-09-19, implemented + tested)
+
+* **C1** — `routes/orchestration/worktrees.py` no longer `db.get(Project)`:
+  release resolves the git root via `services/workspace/projects.py::
+  require_project_root` (owner contract). Route keeps `Project` import only
+  for `Depends(get_project)` hints.
+* **C2** — `routes/core/events.py` no longer builds `select(Event)`: all
+  filter/ordering logic lives in `services/core/event_queries.py::
+  query_events`; the route only translates rows to `EventOut`. (The write
+  path in `services/core/events.py` was Wave-12-frozen and untouched.)
+* **C3** — `routes/intelligence/symbols.py` no longer builds
+  `select(Symbol, SymbolFile)` joins: `search_symbols`/`file_symbols` live in
+  `codeintel/indexer.py` (table owner); the route only translates rows.
+* **Wave-12 correctness repair (explicitly justified boundary touch)** —
+  Wave-12's new `TASK_TRANSITIONS` guard rejected the workflow's direct
+  `pending → running` entry (13 integration failures). `durable/workflows.py`
+  now routes a `pending` task through `ready` first (branch on the
+  `load_task_activity` result — deterministic); `test_durable_activities.py`
+  closes out lawfully (ready → running → completed). No table change.
+* **R-04 straggler** — `GitView.tsx` direct `fetch(.../file?path=)` now uses
+  the existing `api.readFile` client. `health.ts` direct fetch stays: it IS
+  the liveness transport, not a view bypass.
+
 ## No-go findings (do NOT "fix")
 
 * No repository-per-table port (unjustified churn).
