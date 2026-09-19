@@ -67,9 +67,7 @@ export default function GitView() {
             const head = await api.gitFileAt(project.id, entry.path, "HEAD").catch(() => ({
               content: "",
             }));
-            const work = await fetch(
-              `/api/projects/${project.id}/file?path=${encodeURIComponent(entry.path)}`,
-            ).then((r) => r.json() as Promise<{ content: string }>);
+            const work = await api.readFile(project.id, entry.path);
             openDiff(entry.path, head.content, work.content);
           })
         }
