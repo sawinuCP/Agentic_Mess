@@ -6,14 +6,14 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import __version__
 from app.api.deps import get_db, get_project
+from app.codeintel import indexer
 from app.codeintel.retrieval import retrieve
 from app.codeintel.scip import build_scip_index
-from app.db.models import Project, Symbol, SymbolFile
+from app.db.models import Project, Symbol
 from app.schemas.intelligence.intelligence import RetrievalHitOut, RetrievalOut, SymbolOut
 
 router = APIRouter(tags=["symbols"])
@@ -43,16 +43,7 @@ async def search_symbols(
     limit: int = Query(50, ge=1, le=200),
 ) -> list[SymbolOut]:
     """Search the durable symbol index (workspace-symbol style)."""
-    query = (
-        select(Symbol, SymbolFile)
-        .join(SymbolFile, Symbol.file_id == SymbolFile.id)
-        .where(Symbol.project_id == project_id)
-    )
-    if q:
-        query = query.where(Symbol.name.ilike(f"%{q}%"))
-    if kind:
-        query = query.where(Symbol.kind == kind)
-    rows = db.execute(query.order_by(Symbol.name).limit(limit)).all()
+    rows = indexer.search_symbols(db, project_id, q=q, kind=kind, limit=limit)
     return [_to_out(symbol, file.path, file.language) for symbol, file in rows]
 
 
@@ -63,12 +54,7 @@ async def file_symbols(
     path: str = Query(..., description="Project-relative file path"),
 ) -> list[SymbolOut]:
     """Document symbols for one file (LSP documentSymbol style)."""
-    rows = db.execute(
-        select(Symbol, SymbolFile)
-        .join(SymbolFile, Symbol.file_id == SymbolFile.id)
-        .where(Symbol.project_id == project_id, SymbolFile.path == path)
-        .order_by(Symbol.start_line)
-    ).all()
+    rows = indexer.file_symbols(db, project_id, path=path)
     return [_to_out(symbol, file.path, file.language) for symbol, file in rows]
 
 

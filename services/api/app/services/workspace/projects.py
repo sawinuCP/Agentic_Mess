@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from sqlalchemy import select
@@ -56,3 +57,15 @@ def delete_project(db: Session, project: Project) -> None:
     """Unregister a project. Files on disk are never touched."""
     db.delete(project)
     db.commit()
+
+
+def require_project_root(db: Session, project_id: uuid.UUID) -> str:
+    """Root path of a project, owned by the project context (C1).
+
+    Cross-domain callers (e.g. worktree release resolving the git root) read
+    through this contract instead of ``db.get(Project)`` inline.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise DomainError("Project not found", 404)
+    return project.root_path

@@ -166,3 +166,40 @@ def clear_index(db: Session, project_id: Any) -> int:
     db.execute(delete(SymbolFile).where(SymbolFile.project_id == project_id))
     db.commit()
     return count
+
+
+def search_symbols(
+    db: Session,
+    project_id: Any,
+    *,
+    q: str = "",
+    kind: str | None = None,
+    limit: int = 50,
+) -> list[Any]:
+    """Workspace-symbol search, owned by the codeintel context (C3).
+
+    The HTTP route translates rows to wire shapes; the join/filter logic
+    lives here so retrieval callers reuse one implementation.
+    """
+    query = (
+        select(Symbol, SymbolFile)
+        .join(SymbolFile, Symbol.file_id == SymbolFile.id)
+        .where(Symbol.project_id == project_id)
+    )
+    if q:
+        query = query.where(Symbol.name.ilike(f"%{q}%"))
+    if kind:
+        query = query.where(Symbol.kind == kind)
+    return list(db.execute(query.order_by(Symbol.name).limit(limit)).all())
+
+
+def file_symbols(db: Session, project_id: Any, *, path: str) -> list[Any]:
+    """Document symbols for one file (LSP documentSymbol style)."""
+    return list(
+        db.execute(
+            select(Symbol, SymbolFile)
+            .join(SymbolFile, Symbol.file_id == SymbolFile.id)
+            .where(Symbol.project_id == project_id, SymbolFile.path == path)
+            .order_by(Symbol.start_line)
+        ).all()
+    )

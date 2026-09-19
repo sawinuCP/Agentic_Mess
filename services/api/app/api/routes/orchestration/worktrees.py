@@ -10,12 +10,12 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_files_service, get_project
-from app.core.errors import DomainError
 from app.db.models import Project
 from app.files.service import ProjectFiles
 from app.gitops.client import GitClient, GitError
 from app.schemas.orchestration.worktrees import IntegrationOut, WorktreeCreateIn, WorktreeOut
 from app.services.orchestration import worktrees as worktree_service
+from app.services.workspace import projects as project_service
 
 router = APIRouter(tags=["worktrees"])
 
@@ -126,10 +126,10 @@ async def release_worktree(
     """Remove the worktree on disk and mark it abandoned. Without ``force`` a dirty
     worktree is refused — failed attempts must remain inspectable (spec §17)."""
     worktree = await asyncio.to_thread(worktree_service.get_worktree, db, worktree_id)
-    project = await asyncio.to_thread(db.get, Project, worktree.project_id)
-    if project is None:
-        raise DomainError("Project not found", 404)
-    git = GitClient(Path(project.root_path))
+    root_path = await asyncio.to_thread(
+        project_service.require_project_root, db, worktree.project_id
+    )
+    git = GitClient(Path(root_path))
     try:
         await git.worktree_remove(worktree.path, force=force)
     except GitError:

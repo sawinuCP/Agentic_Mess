@@ -11,11 +11,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import Event
+from app.services.core import event_queries
 
 router = APIRouter(tags=["events"])
 
@@ -52,23 +51,16 @@ def list_events(
     ``task_id`` scopes to one task, and ``correlation_id`` is exposed for
     client-side chain following. Default ordering is unchanged.
     """
-    query = select(Event)
-    if order == "asc":
-        query = query.order_by(Event.project_seq.asc().nulls_last(), Event.occurred_at.asc())
-    else:
-        query = query.order_by(Event.occurred_at.desc())
-    query = query.limit(limit)
-    if project_id:
-        query = query.where(Event.project_id == project_id)
-    if event_type:
-        query = query.where(Event.event_type == event_type)
-    if task_id:
-        query = query.where(Event.task_id == task_id)
-    if since_seq is not None:
-        query = query.where(Event.project_seq > since_seq)
-    if before_seq is not None:
-        query = query.where(Event.project_seq < before_seq)
-    rows = db.scalars(query).all()
+    rows = event_queries.query_events(
+        db,
+        project_id=project_id,
+        event_type=event_type,
+        task_id=task_id,
+        since_seq=since_seq,
+        before_seq=before_seq,
+        order=order,
+        limit=limit,
+    )
     return [
         EventOut(
             id=e.id,
