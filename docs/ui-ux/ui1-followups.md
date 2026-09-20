@@ -1,12 +1,10 @@
 # UI-1 Follow-ups (UI-0.5 §23 — recorded, not expanded)
 
-## 1. docs/frontend-interaction-model.md referenced but missing
+## 1. docs/frontend-interaction-model.md reference
 
-*Class: Documentation.* `commands/registry.ts:8` and
-`components/shell/CommandPalette.tsx:7` cite it; the file does not exist.
-*Do now:* nothing in code (this blueprint set replaces it). *Later:* delete
-the two comments or point them at `docs/ui-ux/interaction-model.md` when
-that phase doc is written. *Out of scope:* no.
+*Class: Documentation — RESOLVED.* The file DOES exist at `docs/`
+root (not `docs/ui-ux/`); the references in `commands/registry.ts:8`
+and `CommandPalette.tsx:7` resolve. No action needed.
 
 ## 2. dispatch_tool hardcodes runTool("test")
 

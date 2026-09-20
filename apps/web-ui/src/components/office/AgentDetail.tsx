@@ -176,9 +176,9 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           {agent.role}
           {agent.model ? ` · ${agent.model}` : ""}
         </div>
-        {agentAttention(agent.id, tasks, hitl) && (
+        {agentAttention(agent.id, tasks, hitl, events) && (
           <div className="small warn" role="note">
-            ⚠ {agentAttention(agent.id, tasks, hitl)?.detail}
+            ⚠ {agentAttention(agent.id, tasks, hitl, events)?.detail}
           </div>
         )}
       </div>

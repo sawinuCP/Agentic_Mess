@@ -21,6 +21,7 @@ import {
 } from "../../office/selectors";
 import { filterRoster, sortRoster, type RosterFilter } from "../../office/agentStates";
 import AgentRow from "../../office/AgentRow";
+import OfficeAttention from "../../office/OfficeAttention";
 import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
@@ -166,7 +167,7 @@ export default function TeamTab() {
   const [rosterQuery, setRosterQuery] = useState("");
   const [rosterFilter, setRosterFilter] = useState<RosterFilter>("all");
   const roster = useMemo(
-    () => sortRoster(filterRoster(agents, tasks, hitl, rosterFilter, rosterQuery), tasks, hitl, events),
+    () => sortRoster(filterRoster(agents, tasks, hitl, rosterFilter, rosterQuery, events), tasks, hitl, events),
     [agents, tasks, hitl, events, rosterFilter, rosterQuery],
   );
   const rosterRef = useRef<HTMLUListElement>(null);
@@ -225,6 +226,7 @@ export default function TeamTab() {
 
   return (
     <div className="stack">
+      <OfficeAttention />
       <section aria-label="Agents">
         <div className="row spread">
           <h4 className="office-section-title muted">{glue("Agents")}</h4>

@@ -40,10 +40,23 @@ describe("agentStatus", () => {
 describe("agentAttention", () => {
   it("ranks failed above approval above blocked", () => {
     const tasks = [task("t1", "failed", "a"), task("t2", "blocked", "a")];
-    expect(agentAttention("a", tasks, [hitl("h", "t1")])).toMatchObject({ kind: "failed" });
-    expect(agentAttention("a", [task("t2", "blocked", "a")], [hitl("h", "t2")])).toMatchObject({ kind: "approval" });
-    expect(agentAttention("a", [task("t2", "blocked", "a")], [])).toMatchObject({ kind: "blocked" });
-    expect(agentAttention("a", [task("t3", "running", "a")], [])).toBeNull();
+    expect(agentAttention("a", tasks, [hitl("h", "t1")], [])).toMatchObject({ kind: "failed" });
+    expect(agentAttention("a", [task("t2", "blocked", "a")], [hitl("h", "t2")], [])).toMatchObject({ kind: "approval" });
+    expect(agentAttention("a", [task("t2", "blocked", "a")], [], [])).toMatchObject({ kind: "blocked" });
+    expect(agentAttention("a", [task("t3", "running", "a")], [], [])).toBeNull();
+  });
+
+  it("flags attributable failed tool runs", () => {
+    const toolFail = (agentId: string | null, taskId: string | null): EventEntry => ({
+      id: "e", occurred_at: new Date().toISOString(), event_type: "TOOL_RUN_COMPLETED",
+      source: null, project_id: "p", task_id: taskId, agent_id: agentId, payload: { tool: "pytest", exit_code: 1 },
+    });
+    expect(agentAttention("a", [task("t", "running", "a")], [], [toolFail("a", null)]))
+      .toMatchObject({ kind: "blocked" });
+    expect(agentAttention("a", [task("t", "running", "a")], [], [toolFail(null, "t")]))
+      .toMatchObject({ kind: "blocked" });
+    expect(agentAttention("a", [task("t", "running", "a")], [], [toolFail(null, null)]))
+      .toBeNull();
   });
 });
 

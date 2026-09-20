@@ -31,7 +31,7 @@ function AgentContext({ agentId }: { agentId: string }) {
   if (!agent) return <p className="muted">Agent no longer recorded.</p>;
   const current = currentTaskForAgent(tasks, agent.id);
   const since = firstAgentEvent(events, agent.id);
-  const attention = agentAttention(agent.id, tasks, hitl);
+  const attention = agentAttention(agent.id, tasks, hitl, events);
   const last = events.find((e) => e.agent_id === agent.id);
   const ownedIds = new Set(
     tasks.filter((t) => t.attempts.some((a) => a.agent_id === agent.id)).map((t) => t.id),

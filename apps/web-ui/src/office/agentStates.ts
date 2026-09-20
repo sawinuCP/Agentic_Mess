@@ -38,11 +38,14 @@ export function agentStatus(state: string): AgentStatus {
 export type AttentionKind = "failed" | "approval" | "blocked" | "waiting" | null;
 
 /** Why this agent needs the supervisor, if anything. Failed owned tasks
- * outrank approvals; approvals outrank blocks; blocks outrank plain waits. */
+ * outrank approvals; approvals outrank blocks and attributable tool
+ * failures; blocks outrank plain waits. Tool failures count when the run
+ * names the agent or one of its owned tasks. */
 export function agentAttention(
   agentId: string,
   tasks: TaskInfo[],
   hitl: HitlRequestInfo[],
+  events: EventEntry[] = [],
 ): { kind: Exclude<AttentionKind, null>; detail: string } | null {
   const owned = tasksForAgent(tasks, agentId);
   const ownedIds = new Set(owned.map((t) => t.id));
@@ -57,6 +60,16 @@ export function agentAttention(
   const blocked = owned.filter((t) => t.status === "blocked");
   if (blocked.length > 0) {
     return { kind: "blocked", detail: `${blocked.length} blocked task${blocked.length === 1 ? "" : "s"}` };
+  }
+  const failedTools = events.filter(
+    (e) =>
+      e.event_type === "TOOL_RUN_COMPLETED" &&
+      typeof e.payload.exit_code === "number" &&
+      (e.payload.exit_code as number) !== 0 &&
+      (e.agent_id === agentId || (e.task_id !== null && ownedIds.has(e.task_id as string))),
+  );
+  if (failedTools.length > 0) {
+    return { kind: "blocked", detail: `${failedTools.length} failed tool run${failedTools.length === 1 ? "" : "s"}` };
   }
   const current = currentTaskForAgent(tasks, agentId);
   if (current && (current.status === "waiting" || current.status === "blocked")) {
@@ -82,7 +95,7 @@ export function sortRoster(
   hitl: HitlRequestInfo[],
   events: EventEntry[],
 ): AgentInfo[] {
-  const attention = new Map(agents.map((a) => [a.id, agentAttention(a.id, tasks, hitl)]));
+  const attention = new Map(agents.map((a) => [a.id, agentAttention(a.id, tasks, hitl, events)]));
   const lastSeen = new Map<string, number>();
   for (const e of events) {
     if (e.agent_id && !lastSeen.has(e.agent_id)) lastSeen.set(e.agent_id, Date.parse(e.occurred_at) || 0);
@@ -111,6 +124,7 @@ export function filterRoster(
   hitl: HitlRequestInfo[],
   filter: RosterFilter,
   query: string,
+  events: EventEntry[] = [],
 ): AgentInfo[] {
   const q = query.trim().toLowerCase();
   return agents.filter((agent) => {
@@ -123,7 +137,7 @@ export function filterRoster(
       case "all": return true;
       case "working": return ACTIVE_STATES.has(agent.state);
       case "waiting": return ["waiting", "blocked", "paused", "pause_requested", "draining"].includes(agent.state);
-      case "attention": return agentAttention(agent.id, tasks, hitl) !== null;
+      case "attention": return agentAttention(agent.id, tasks, hitl, events) !== null;
       case "failed": return agent.state === "failed" || tasksForAgent(tasks, agent.id).some((t) => t.status === "failed");
       case "completed": return agent.state === "completed" || agent.state === "cancelled";
     }

@@ -22,7 +22,7 @@ export default function AgentRow({ agent, tasks, events, hitl, worktrees }: {
   const current = currentTaskForAgent(tasks, agent.id);
   const owned = tasksForAgent(tasks, agent.id);
   const ownedIds = new Set(owned.map((t) => t.id));
-  const attention = agentAttention(agent.id, tasks, hitl);
+  const attention = agentAttention(agent.id, tasks, hitl, events);
   const activity = activitySummary(agent.id, tasks, events);
   const since = firstAgentEvent(events, agent.id);
   const branches = [...new Set(

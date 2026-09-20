@@ -400,10 +400,13 @@ export function collectAttention(
     if (e.event_type !== "TOOL_RUN_COMPLETED") continue;
     const exit = typeof e.payload.exit_code === "number" ? e.payload.exit_code : null;
     if (exit === null || exit === 0) continue;
-    const key = e.task_id ?? e.id;
+    const tool = typeof e.payload.tool === "string" ? e.payload.tool : "tool";
+    // One row per failure signature (tool + exit + task): repeat runs of the
+    // same failing step collapse to the latest instead of spamming the strip.
+    // Events arrive newest-first, so the first occurrence wins.
+    const key = `${tool}:${exit}:${e.task_id ?? "unscoped"}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const tool = typeof e.payload.tool === "string" ? e.payload.tool : "tool";
     const taskTitle = e.task_id ? byId.get(e.task_id)?.title : null;
     items.push({
       kind: "tool-failed",
