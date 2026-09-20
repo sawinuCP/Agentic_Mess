@@ -22,10 +22,13 @@ export default function CommsTab() {
   const messagesError = useOffice((s) => s.messagesError);
   const loadMessages = useOffice((s) => s.loadMessages);
   const setOffice = useOffice((s) => s.set);
+  const commsRecipient = useOffice((s) => s.commsRecipient);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [agentFilter, setAgentFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [recipient, setRecipient] = useState("");
+  const [taskScope, setTaskScope] = useState("");
   const [kind, setKind] = useState<"request" | "question">("request");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -35,6 +38,16 @@ export default function CommsTab() {
     if (messages.length === 0 && !messagesLoading) void loadMessages().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Contextual "Message agent" action: prefill recipient + open compose once.
+  useEffect(() => {
+    if (commsRecipient) {
+      setRecipient(commsRecipient);
+      setComposeOpen(true);
+      setOffice({ commsRecipient: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commsRecipient]);
 
   const names = useMemo(() => {
     const map = new Map<string, string>();
@@ -50,8 +63,13 @@ export default function CommsTab() {
     [messages],
   );
   const filtered = useMemo(
-    () => (typeFilter === "all" ? messages : messages.filter((m) => m.type === typeFilter)),
-    [messages, typeFilter],
+    () =>
+      messages.filter(
+        (m) =>
+          (typeFilter === "all" || m.type === typeFilter) &&
+          (agentFilter === "all" || m.sender_agent_id === agentFilter || m.recipient_agent_id === agentFilter),
+      ),
+    [messages, typeFilter, agentFilter],
   );
   const selected = filtered.find((m) => m.id === selectedId) ?? null;
   const selectedTask = selected?.task_id ? tasks.find((t) => t.id === selected.task_id) : null;
@@ -66,6 +84,7 @@ export default function CommsTab() {
       // reconcile — dedupe by id keeps both paths consistent.
       const created = await sendOperatorMessage(recipient || null, {
         type: kind,
+        task_id: taskScope || null,
         summary: text.trim(),
       });
       const current = useOffice.getState().messages;
@@ -145,6 +164,20 @@ export default function CommsTab() {
               <option value="question">question</option>
             </select>
           </label>
+          <label className="small row gap4">
+            Task scope
+            <select
+              className="text-input small"
+              aria-label="Message task scope"
+              value={taskScope}
+              onChange={(e) => setTaskScope(e.target.value)}
+            >
+              <option value="">no task scope</option>
+              {tasks.filter((t) => t.status === "running" || t.status === "blocked" || t.status === "waiting").map((t) => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+          </label>
           <textarea
             className="text-input small"
             aria-label="Operator note"
@@ -178,6 +211,22 @@ export default function CommsTab() {
           ))}
         </div>
       )}
+      <div className="row wrap gap4">
+        <label className="small muted row gap4">
+          Agent
+          <select
+            className="text-input small"
+            aria-label="Filter messages by agent"
+            value={agentFilter}
+            onChange={(e) => { setAgentFilter(e.target.value); setSelectedId(null); }}
+          >
+            <option value="all">all agents</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       {filtered.length === 0 && !messagesLoading && (
         <div className="muted small pad-h">{glue("No agent messages recorded.")}</div>
       )}

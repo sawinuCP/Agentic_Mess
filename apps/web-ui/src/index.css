@@ -693,6 +693,7 @@ body {
 .text-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .commit-message {
@@ -2198,6 +2199,7 @@ button.topbar-item:hover { background: var(--surface-hover); }
 .command-count { padding: 4px var(--space-3); list-style: none; }
 
 /* --- UI2 command center: phases, plans, approvals, receipts ----------------- */
+.cc-entry > .row.spread > .strong { min-width: 0; overflow-wrap: anywhere; }
 .cc-needsyou {
   border: 1px solid var(--warn-border);
   background: var(--warn-bg);
@@ -2230,6 +2232,34 @@ button.topbar-item:hover { background: var(--surface-hover); }
   padding: var(--space-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* --- UI3 agent roster (compact mission-control rows) ------------------------ */
+.agent-roster { display: flex; flex-direction: column; gap: var(--space-1); }
+.agent-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+.agent-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.agent-row-name { font-size: var(--text-md); }
+.agent-row-actions { display: flex; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.roster-search { width: 100%; }
+.office-attention {
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+.attention-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--border-soft); }
+.attention-row:last-child { border-bottom: none; }
+@media (max-width: 768px) {
+  .agent-row { flex-direction: column; }
+  .agent-row-actions { justify-content: flex-start; }
 }
 .bottom-embed { flex: 1; min-height: 0; overflow-y: auto; }
 .bottom-embed .sidebar { background: none; border-right: none; }

@@ -69,6 +69,8 @@ interface AppState {
   centerPrefill: string | null;
   centerFocusTick: number;
   centerEntries: CenterEntry[];
+  /** Entries dropped by the 20-entry cap (UI3: truncation is disclosed). */
+  centerDropped: number;
   centerReq: string;
   centerTask: string;
   centerAgent: string;
@@ -119,6 +121,7 @@ export const useStore = create<AppState>((set, get) => ({
   centerPrefill: null,
   centerFocusTick: 0,
   centerEntries: [],
+  centerDropped: 0,
   centerReq: "",
   centerTask: "",
   centerAgent: "",

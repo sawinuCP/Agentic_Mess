@@ -352,6 +352,86 @@ export function bulkConfirm(
     : `Resume ${count} task${count === 1 ? "" : "s"}? Paused workflows continue from their checkpoints.`;
 }
 
+// --- attention (UI3): backend-side failures included -------------------------
+
+export interface AttentionItem {
+  kind: "task-failed" | "task-blocked" | "tool-failed" | "approval";
+  title: string;
+  detail: string | null;
+  taskId: string | null;
+  agentId: string | null;
+}
+
+/**
+ * Everything that needs the supervisor, from RECORDED state: failed/blocked
+ * tasks, failed tool runs (latest per task), pending approvals. Client-only
+ * output failures stay with the caller (Center keeps its last-run row).
+ * Sorted: approvals and failures first (actionable), then blocks.
+ */
+export function collectAttention(
+  events: EventEntry[],
+  tasks: TaskInfo[],
+  hitl: HitlRequestInfo[],
+): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  for (const task of tasks) {
+    if (task.status === "failed") {
+      const last = [...task.attempts].sort((a, b) => b.attempt_number - a.attempt_number)[0];
+      items.push({
+        kind: "task-failed",
+        title: `Task failed: ${task.title}`,
+        detail: last?.failure_class ? `${last.failure_class} (attempt #${last.attempt_number})` : null,
+        taskId: task.id,
+        agentId: last?.agent_id ?? null,
+      });
+    } else if (task.status === "blocked") {
+      items.push({
+        kind: "task-blocked",
+        title: `Task blocked: ${task.title}`,
+        detail: waitingReason(task, tasks),
+        taskId: task.id,
+        agentId: null,
+      });
+    }
+  }
+  const seen = new Set<string>();
+  for (const e of events) {
+    if (e.event_type !== "TOOL_RUN_COMPLETED") continue;
+    const exit = typeof e.payload.exit_code === "number" ? e.payload.exit_code : null;
+    if (exit === null || exit === 0) continue;
+    const key = e.task_id ?? e.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const tool = typeof e.payload.tool === "string" ? e.payload.tool : "tool";
+    const taskTitle = e.task_id ? byId.get(e.task_id)?.title : null;
+    items.push({
+      kind: "tool-failed",
+      title: `Tool failed: ${tool} (exit ${exit})`,
+      detail: taskTitle ? `on task ${taskTitle}` : null,
+      taskId: e.task_id,
+      agentId: e.agent_id,
+    });
+  }
+  for (const h of hitl) {
+    if (h.status !== "pending") continue;
+    items.push({
+      kind: "approval",
+      title: `Approval: ${h.question}`,
+      detail: h.task_id ? byId.get(h.task_id)?.title ?? null : null,
+      taskId: h.task_id,
+      agentId: null,
+    });
+  }
+  const rank: Record<AttentionItem["kind"], number> = {
+    approval: 0,
+    "task-failed": 1,
+    "tool-failed": 2,
+    "task-blocked": 3,
+  };
+  return items.sort((a, b) => rank[a.kind] - rank[b.kind]);
+}
+
 // --- dependency map ----------------------------------------------------------
 
 export interface DepNode {

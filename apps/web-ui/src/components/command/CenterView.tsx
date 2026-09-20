@@ -182,7 +182,11 @@ export default function CenterView() {
 
   const pushEntry = (entry: CenterEntry): void => {
     const prev = useStore.getState().centerEntries;
-    setWorkspace({ centerEntries: [entry, ...prev].slice(0, 20) });
+    const next = [entry, ...prev].slice(0, 20);
+    setWorkspace({
+      centerEntries: next,
+      centerDropped: useStore.getState().centerDropped + (prev.length + 1 - next.length),
+    });
   };
 
   const runIntelAction = async (
@@ -619,6 +623,7 @@ export default function CenterView() {
       <NeedsYou />
 
       <div className="cc-entries" aria-label="Requests and results">
+        <TruncationNote />
         {entries.length === 0 && (
           <div className="pad stack">
             <p className="muted small">
@@ -742,7 +747,7 @@ export default function CenterView() {
                 body: "Dispatched work is unaffected.",
                 confirmLabel: "Clear",
               }).then((ok) => {
-                if (ok) setWorkspace({ centerEntries: [] });
+                if (ok) setWorkspace({ centerEntries: [], centerDropped: 0 });
               });
             }}
           >
@@ -754,6 +759,17 @@ export default function CenterView() {
         <ArtifactPreview artifactId={previewArtifactId} onClose={() => setPreviewArtifactId(null)} />
       )}
     </div>
+  );
+}
+
+function TruncationNote() {
+  const dropped = useStore((s) => s.centerDropped);
+  const count = useStore((s) => s.centerEntries.length);
+  if (dropped <= 0) return null;
+  return (
+    <p className="small muted pad-h" role="note">
+      Showing the latest {count} of {count + dropped} requests — older entries were dropped.
+    </p>
   );
 }
 
