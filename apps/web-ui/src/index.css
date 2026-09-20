@@ -2194,6 +2194,8 @@ button.topbar-item:hover { background: var(--surface-hover); }
 
 /* --- UI1 bottom activity surface -------------------------------------------- */
 .panel-tab[role="tab"] { position: relative; }
+.command-group { padding: 6px var(--space-3) 2px; list-style: none; }
+.command-count { padding: 4px var(--space-3); list-style: none; }
 .bottom-embed { flex: 1; min-height: 0; overflow-y: auto; }
 .bottom-embed .sidebar { background: none; border-right: none; }
 .activity-list { list-style: none; margin: 0; padding: var(--space-2) var(--space-3); overflow-y: auto; }

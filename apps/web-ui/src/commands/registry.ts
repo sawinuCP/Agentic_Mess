@@ -106,44 +106,44 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     // --- navigation ---------------------------------------------------------
     {
       id: "nav.explorer",
-      label: "Show explorer",
+      label: "Workspace",
       category: "Navigation",
-      keywords: ["files", "tree", "sidebar"],
+      keywords: ["files", "tree", "sidebar", "explorer", "show explorer"],
       run: () => a.setView("explorer"),
     },
     {
       id: "nav.run",
-      label: "Show run and toolchains",
+      label: "Tools",
       category: "Navigation",
-      keywords: ["tools", "languages", "format", "test"],
+      keywords: ["tools", "languages", "format", "test", "run", "toolchains"],
       run: () => a.setView("run"),
     },
     {
       id: "nav.office",
-      label: "Open engineering office",
+      label: "Agents",
       category: "Navigation",
-      keywords: ["agents", "tasks", "ai", "activity"],
+      keywords: ["agents", "tasks", "ai", "activity", "office", "engineering office"],
       run: () => a.setView("office"),
     },
     {
       id: "nav.graph",
-      label: "Open execution graph",
+      label: "Execution",
       category: "Navigation",
-      keywords: ["graph", "traceability", "requirements", "dependencies", "lineage"],
+      keywords: ["graph", "traceability", "requirements", "dependencies", "lineage", "execution graph"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("graph"),
     },
     {
       id: "nav.history",
-      label: "Open execution history",
+      label: "History",
       category: "Navigation",
-      keywords: ["history", "timeline", "replay", "events", "audit", "debug"],
+      keywords: ["history", "timeline", "replay", "events", "audit", "debug", "execution history"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.setView("history"),
     },
     {
       id: "nav.problems",
-      label: "Open problems",
+      label: "Problems",
       category: "Navigation",
       keywords: ["problems", "failures", "errors", "blocked", "approvals", "triage"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
@@ -151,7 +151,7 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "nav.runtime",
-      label: "Open runtime",
+      label: "Runtime",
       category: "Navigation",
       keywords: ["runtime", "ports", "leases", "resources", "allocations"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
@@ -166,14 +166,14 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "nav.settings",
-      label: "Open settings",
+      label: "Settings",
       category: "Navigation",
       keywords: ["settings", "token", "layout", "configuration", "preferences"],
       run: () => a.setView("settings"),
     },
     {
       id: "nav.command",
-      label: "Ask AI…",
+      label: "Command Center…",
       category: "Navigation",
       keywords: ["ai", "assistant", "ask", "command center", "help", "howto"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
@@ -292,9 +292,9 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "agents.timeline",
-      label: "Open event timeline",
+      label: "Activity",
       category: "Agents",
-      keywords: ["history", "events", "activity", "log"],
+      keywords: ["history", "events", "activity", "log", "timeline", "event timeline"],
       run: () => {
         a.setView("office");
         a.setOfficeTab("timeline");
@@ -302,9 +302,9 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "agents.comms",
-      label: "Open agent communication",
+      label: "Agent communication",
       category: "Agents",
-      keywords: ["messages", "chat", "handoff", "coordination"],
+      keywords: ["messages", "chat", "handoff", "coordination", "comms"],
       run: () => {
         a.setView("office");
         a.setOfficeTab("comms");
@@ -312,9 +312,9 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "agents.spawn",
-      label: "Spawn agent…",
+      label: "New agent…",
       category: "Agents",
-      keywords: ["spawn", "create agent", "new agent", "register"],
+      keywords: ["spawn", "create agent", "new agent", "register", "spawn agent"],
       disabledReason: ctx.hasProject ? undefined : NO_PROJECT,
       run: () => a.openSpawnDialog(),
     },
@@ -336,9 +336,9 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
     },
     {
       id: "oversight.coverage",
-      label: "Open requirement coverage",
+      label: "Requirements",
       category: "Agents",
-      keywords: ["oversight", "traceability", "criteria", "verification", "completion"],
+      keywords: ["oversight", "traceability", "criteria", "verification", "completion", "coverage", "requirements"],
       run: () => {
         a.setView("office");
         a.setOfficeTab("oversight");
@@ -349,16 +349,51 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
   return commands;
 }
 
-/** Case-insensitive substring filter over label, category and keywords. */
-export function filterCommands(commands: Command[], query: string): Command[] {
+/** Fuzzy subsequence score (lower is better) over label + category +
+ * keywords. Contiguous and word-boundary matches score best; non-matches
+ * return null. Substring matches always score (never worse than before). */
+export function fuzzyScore(command: Command, query: string): number | null {
   const q = query.trim().toLowerCase();
-  if (!q) return commands;
-  return commands.filter((command) =>
-    [command.label, command.category, ...command.keywords]
-      .join(" ")
-      .toLowerCase()
-      .includes(q),
-  );
+  if (!q) return 0;
+  const hay = [command.label, command.category, ...command.keywords].join(" ").toLowerCase();
+  // Substring tier (negative scores): the classic contract, always complete.
+  if (hay.includes(q)) return -1000 + hay.indexOf(q);
+  // Fuzzy tier (non-negative scores): subsequence fallback for typos.
+  let score = 1000;
+  let hi = 0;
+  let run = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const ch = q[qi];
+    const found = hay.indexOf(ch, hi);
+    if (found < 0) return null;
+    if (found === hi) {
+      run += 1;
+      score -= 2 + run;
+    } else {
+      run = 0;
+      score += found - hi;
+    }
+    if (found === 0 || hay[found - 1] === " ") score -= 3;
+    hi = found + 1;
+  }
+  return score;
+}
+
+/** Case-insensitive filter over label, category and keywords, best matches
+ * first. Substring matches always win as a tier (preserving the classic
+ * contract); fuzzy subsequence matching only widens queries that would
+ * otherwise return nothing (typo tolerance). Empty query returns everything
+ * in registry order. */
+export function filterCommands(commands: Command[], query: string): Command[] {
+  if (!query.trim()) return commands;
+  const scored = commands
+    .map((command, index) => ({ command, index, score: fuzzyScore(command, query) }))
+    .filter((entry): entry is { command: Command; index: number; score: number } => entry.score !== null)
+    .sort((a, b) => a.score - b.score || a.index - b.index);
+  if (scored.some((entry) => entry.score < 0)) {
+    return scored.filter((entry) => entry.score < 0).map((entry) => entry.command);
+  }
+  return scored.map((entry) => entry.command);
 }
 
 /** Indices of selectable (enabled) commands — selection never lands on disabled rows. */

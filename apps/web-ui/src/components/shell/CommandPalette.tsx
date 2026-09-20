@@ -6,7 +6,7 @@
 // palette always restores focus to the workspace when it closes — see
 // docs/frontend-interaction-model.md for the interaction contract.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../../state/store";
 import { cancelTask, controlTask } from "../../api/client";
 import { errorMessage } from "../../api/errors";
@@ -224,32 +224,46 @@ export default function CommandPalette() {
           ref={listRef}
           className="command-list"
           role="listbox"
-          aria-label="Commands"
+          aria-label={`Commands, ${filtered.length} shown`}
         >
-          {filtered.map((command, index) => (
-            <li
-              key={command.id}
-              id={`command-palette-${command.id}`}
-              className={`command-row ${index === selected ? "selected" : ""} ${
-                command.disabledReason ? "disabled" : ""
-              }`}
-              role="option"
-              aria-selected={index === selected}
-              aria-disabled={command.disabledReason ? true : undefined}
-              title={command.disabledReason}
-              onClick={() => execute(command)}
-              onMouseEnter={() => !command.disabledReason && setSelected(index)}
-            >
-              <span className="command-label">{command.label}</span>
-              <span className="command-meta">
-                {command.shortcut && <kbd className="command-kbd">{command.shortcut}</kbd>}
-                <span className="command-category">{command.category}</span>
-                {command.disabledReason && (
-                  <span className="command-reason">{command.disabledReason}</span>
-                )}
-              </span>
+          {query.trim() && (
+            <li className="command-count muted small" role="presentation" aria-hidden="true">
+              {filtered.length === 0 ? "No matching commands" : `${filtered.length} match${filtered.length === 1 ? "" : "es"}`}
             </li>
-          ))}
+          )}
+          {filtered.map((command, index) => {
+            const showGroup = index === 0 || filtered[index - 1].category !== command.category;
+            return (
+              <Fragment key={command.id}>
+                {showGroup && (
+                  <li className="command-group text-section" role="presentation" aria-hidden="true">
+                    {command.category}
+                  </li>
+                )}
+                <li
+                  id={`command-palette-${command.id}`}
+                  className={`command-row ${index === selected ? "selected" : ""} ${
+                    command.disabledReason ? "disabled" : ""
+                  }`}
+                  role="option"
+                  aria-selected={index === selected}
+                  aria-disabled={command.disabledReason ? true : undefined}
+                  title={command.disabledReason}
+                  onClick={() => execute(command)}
+                  onMouseEnter={() => !command.disabledReason && setSelected(index)}
+                >
+                  <span className="command-label">{command.label}</span>
+                  <span className="command-meta">
+                    {command.shortcut && <kbd className="command-kbd">{command.shortcut}</kbd>}
+                    <span className="command-category">{command.category}</span>
+                    {command.disabledReason && (
+                      <span className="command-reason">{command.disabledReason}</span>
+                    )}
+                  </span>
+                </li>
+              </Fragment>
+            );
+          })}
           {filtered.length === 0 && (
             <li className="command-empty muted small" aria-live="polite">
               No matching commands
