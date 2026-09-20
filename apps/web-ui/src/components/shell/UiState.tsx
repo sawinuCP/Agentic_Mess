@@ -14,7 +14,7 @@ const tones: Record<string, string> = {
   waiting: "warn", blocked: "warn", paused: "warn", pending: "warn",
   recovering: "warn", resuming: "warn", retrying: "warn", requires_approval: "warn",
   verifying: "warn",
-  planning: "muted",
+  planning: "muted", info: "info",
   failed: "down", lost: "down", cancelled: "muted",
 };
 
@@ -27,6 +27,7 @@ const glyphs: Record<string, string> = {
   failed: "✗", lost: "✗",
   waiting: "!", blocked: "!", pending: "!", recovering: "!",
   retrying: "!", requires_approval: "!", verifying: "!",
+  info: "i",
 };
 // Preserve the actual contract string: unknown values never become success.
 export function StatusLabel({ state }: { state: string }) {
@@ -35,5 +36,22 @@ export function StatusLabel({ state }: { state: string }) {
       <span aria-hidden="true">{glyphs[state] ?? "•"} </span>
       {state.replaceAll("_", " ")}
     </span>
+  );
+}
+
+/** Single global notice banner (UI1 consolidation): replaces the previously
+ * duplicated App-level and Office-level notice markup. Behavior is identical
+ * (text + dismiss); `tone` selects role + styling. */
+export function NoticeBanner({ text, tone = "alert", onDismiss }: {
+  text: string; tone?: "alert" | "status" | "info"; onDismiss: () => void;
+}) {
+  return (
+    <div
+      className={`notice-banner notice-${tone}`}
+      role={tone === "alert" ? "alert" : "status"}
+    >
+      <span>{text}</span>
+      <button className="link" onClick={onDismiss}>Dismiss</button>
+    </div>
   );
 }

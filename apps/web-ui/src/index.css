@@ -32,6 +32,7 @@
   --down: #e74c3c;
   --warn: #e6b450;
   --accent: #5b8cff;
+  --info: #5b8cff; /* info reuses accent hue; never color-alone (pair with glyph+label) */
 
   /* --- semantic surfaces ------------------------------------------------------ */
   --surface-app: var(--bg);
@@ -81,10 +82,28 @@
   --down-bg: rgba(231, 76, 60, 0.16);
   --down-border: rgba(231, 76, 60, 0.4);
   --muted-bg: rgba(139, 147, 167, 0.15);
+  --info-bg: rgba(91, 140, 255, 0.12);
+  --info-border: rgba(91, 140, 255, 0.45);
   --accent-soft: rgba(91, 140, 255, 0.08);
   --accent-bg: rgba(91, 140, 255, 0.12);
   --accent-strong: rgba(91, 140, 255, 0.16);
   --focus-ring: 0 0 0 2px rgba(91, 140, 255, 0.55);
+
+  /* --- elevation (subtle; engineering surfaces stay flat) ---------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(5, 7, 12, 0.55); /* drawer/sheet backdrop */
+
+  /* --- motion (state communication only; see motion-system.md) ----------------- */
+  --dur-fast: 120ms;
+  --dur-normal: 160ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* --- shell dimensions ---------------------------------------------------------- */
+  --topbar-height: 40px;
+  --rail-width: 60px;
+  --context-width: 320px;
 }
 
 /* Light theme (Wave 6): same token names, light-readable values. Components
@@ -104,6 +123,7 @@
   --down: #c03527;
   --warn: #92610a;
   --accent: #2f5fd0;
+  --info: #2f5fd0;
 
   --surface-app: var(--bg);
   --surface-workspace: var(--bg-alt);
@@ -124,10 +144,25 @@
   --down-bg: rgba(192, 53, 39, 0.1);
   --down-border: rgba(192, 53, 39, 0.4);
   --muted-bg: rgba(93, 101, 114, 0.12);
+  --info-bg: rgba(47, 95, 208, 0.1);
+  --info-border: rgba(47, 95, 208, 0.4);
   --accent-soft: rgba(47, 95, 208, 0.07);
   --accent-bg: rgba(47, 95, 208, 0.1);
   --accent-strong: rgba(47, 95, 208, 0.16);
   --focus-ring: 0 0 0 2px rgba(47, 95, 208, 0.5);
+
+  --shadow-sm: 0 1px 2px rgba(35, 39, 47, 0.18);
+  --shadow-md: 0 4px 16px rgba(35, 39, 47, 0.22);
+  --scrim: rgba(35, 39, 47, 0.45);
+
+  --dur-fast: 120ms;
+  --dur-normal: 160ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  --topbar-height: 40px;
+  --rail-width: 60px;
+  --context-width: 320px;
 }
 
 * {
@@ -1990,4 +2025,42 @@ select.text-input.small {
     border-top: 1px solid var(--border);
     max-height: 45vh;
   }
+}
+
+/* --- UI1 shell foundation ---------------------------------------------------
+ * Typography scale, info tone, unified notices, motion primitives, shell
+ * layout (top bar / labelled rail / context panel / bottom tabs). All values
+ * bind to tokens above; no hard-coded palette here.
+ */
+
+/* --- UI1 typography (semantic classes over the token scale) ---------------- */
+.text-display { font-size: 22px; font-weight: var(--weight-bold); line-height: 1.25; letter-spacing: -0.01em; }
+.text-heading { font-size: var(--text-xl); font-weight: var(--weight-strong); line-height: 1.3; }
+.text-section { font-size: var(--text-xs); font-weight: var(--weight-strong); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--muted); }
+.text-body { font-size: var(--text-md); line-height: 1.5; }
+.text-label { font-size: var(--text-sm); font-weight: var(--weight-medium); line-height: 1.4; }
+.text-caption { font-size: var(--text-xs); color: var(--muted); line-height: 1.4; }
+.text-code { font-family: var(--font-mono); font-size: var(--text-sm); }
+.numeric { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrap-break { overflow-wrap: anywhere; word-break: break-word; }
+
+/* --- UI1 status: info tone (glyph+label pairing lives in StatusLabel) ------ */
+.state-pill.info { background: var(--info-bg); border: 1px solid var(--info-border); color: var(--text); }
+
+/* --- UI1 unified notice banner (single markup for App + Office notices) ---- */
+.notice-banner { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-3); font-size: var(--text-sm); border-bottom: 1px solid var(--border); }
+.notice-banner > span { flex: 1; min-width: 0; }
+.notice-alert { background: var(--down-bg); border-bottom-color: var(--down-border); }
+.notice-status { background: var(--muted-bg); }
+.notice-info { background: var(--info-bg); border-bottom-color: var(--info-border); }
+
+/* --- UI1 motion primitives (state communication only) ---------------------- */
+@keyframes ui1-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes ui1-pulse-once { 0% { background: var(--surface-selected); } 100% { background: transparent; } }
+.anim-enter { animation: ui1-enter var(--dur-normal) var(--ease-out); }
+.view-enter { animation: ui1-enter var(--dur-fast) var(--ease-out); }
+.pulse-once { animation: ui1-pulse-once var(--dur-slow) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .anim-enter, .view-enter, .pulse-once { animation: none; }
 }
