@@ -24,10 +24,13 @@ async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+// Liveness/readiness live at the server ROOT (/healthz, /readyz) — not under
+// /api (see backend PUBLIC_PATHS). Same-origin production resolves them
+// directly; vite dev proxies them below.
 export function getLiveness(): Promise<Liveness> {
-  return getJson<Liveness>("/api/healthz");
+  return getJson<Liveness>("/healthz");
 }
 
 export function getReadiness(): Promise<Readiness> {
-  return getJson<Readiness>("/api/readyz");
+  return getJson<Readiness>("/readyz");
 }

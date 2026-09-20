@@ -74,18 +74,18 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
           ! {approvals} to review
         </button>
       )}
-      <button className="topbar-item muted numeric" title="Open costs"
+      <button className="topbar-item numeric" title="Open costs"
         onClick={() => openOffice("team")}
         aria-label={validCosts(costs) ? `Total tokens ${costs.total_tokens}. Open agents.` : "Token usage unavailable. Open agents."}>
-        {validCosts(costs) ? `${formatTokens(costs.total_tokens)} tok` : "— tok"}
+        {validCosts(costs) ? `${formatTokens(costs.total_tokens)} tok` : "—"}
       </button>
-      {resyncRequired || connectionState === "offline" ? (
+      {project && (resyncRequired || connectionState === "offline" ? (
         <button className="topbar-item warn" title="Reconnect and resync" onClick={() => void resync()}>
           ⟳ resync
         </button>
       ) : (
         <ConnDot state={connectionState} />
-      )}
+      ))}
       <span className="topbar-item muted" title={getApiToken() ? "API token configured" : "Loopback mode, no token"}>
         {getApiToken() ? "token" : "local"}
       </span>
