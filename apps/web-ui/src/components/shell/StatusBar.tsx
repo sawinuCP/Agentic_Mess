@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { glue } from "@typehug/en";
 import { getLiveness, type Liveness } from "../../health";
-import { runningAgents, useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
-import DiagnosticsDialog from "./DiagnosticsDialog";
-import OfficeConnectionStatus, { OfficeResyncAction } from "./OfficeConnectionStatus";
+
+// Status bar (UI1): thin status line. Live telemetry (connection, agents,
+// approvals, costs) moved to the top bar; this keeps dirty state, last tool
+// run, languages, API version and diagnostics entry.
 
 export default function StatusBar() {
   const project = useStore((s) => s.project);
@@ -38,11 +38,6 @@ export default function StatusBar() {
   const dirtyCount = useStore((s) => s.tabs.filter((t) => t.kind === "file" && t.content !== t.savedContent).length);
   const output = useStore((s) => s.output);
   const languages = toolchains?.languages.map((l) => l.name).slice(0, 3) ?? [];
-  const agents = useOffice((s) => s.agents);
-  const pendingHitl = useOffice((s) => s.hitl.length);
-  const running = runningAgents(agents).length;
-  const setFnOffice = useOffice((s) => s.set);
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   return (
     <footer className="status-bar">
@@ -55,8 +50,6 @@ export default function StatusBar() {
         </button>
       )}
       {dirtyCount > 0 && <span className="status-item warn">{dirtyCount} unsaved</span>}
-      <OfficeConnectionStatus />
-      <OfficeResyncAction />
       {output && (
         <button
           className="status-item clickable"
@@ -71,23 +64,6 @@ export default function StatusBar() {
           {output.tool} {output.exit_code === 0 ? "✓" : `✗ ${output.exit_code ?? "—"}`}
         </button>
       )}
-      {(running > 0 || pendingHitl > 0) && (
-        <button
-          className="status-item clickable office-status"
-          onClick={() => {
-            setFn({ view: "office" });
-            setFnOffice({ tab: "team" });
-          }}
-          title="Open the engineering office"
-        >
-          {running > 0 && (
-            <span className="row gap4">
-              <span className="live-dot on" /> {running} agent{running === 1 ? "" : "s"} working
-            </span>
-          )}
-          {pendingHitl > 0 && <span className="warn">{glue(`${pendingHitl} approval${pendingHitl === 1 ? "" : "s"} needed`)}</span>}
-        </button>
-      )}
       <div className="status-spacer" />
       {languages.map((name) => (
         <span key={name} className="status-item muted">
@@ -98,12 +74,11 @@ export default function StatusBar() {
       <button
         className="status-item clickable muted"
         title="Diagnostics"
-        onClick={() => setDiagnosticsOpen(true)}
+        onClick={() => setFn({ diagnosticsOpen: true })}
       >
         diagnostics
       </button>
       <span className={`status-dot ${apiUp ? "ok" : "down"}`} title={apiUp ? "API reachable" : "API unreachable"} />
-      {diagnosticsOpen && <DiagnosticsDialog onClose={() => setDiagnosticsOpen(false)} />}
     </footer>
   );
 }

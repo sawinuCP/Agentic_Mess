@@ -1,4 +1,4 @@
-import { useEffect, type JSX } from "react";
+import { useEffect, useState, type CSSProperties, type JSX } from "react";
 
 import EditorArea from "./components/editor/EditorArea";
 import BottomPanel from "./components/panels/BottomPanel";
@@ -14,6 +14,10 @@ import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
 import ActivityBar from "./components/shell/ActivityBar";
+import { ConfirmHost } from "./components/shell/ConfirmHost";
+import ContextPanel from "./components/shell/ContextPanel";
+import { NoticeBanner } from "./components/shell/UiState";
+import TopBar from "./components/shell/TopBar";
 import PanelResize from "./components/shell/PanelResize";
 import ViewBoundary from "./components/shell/ViewBoundary";
 import CommandPalette from "./components/shell/CommandPalette";
@@ -55,8 +59,23 @@ export default function App() {
   const mcpDialog = useStore((s) => s.mcpDialog);
   const projectDialog = useStore((s) => s.projectDialog);
   const diagnosticsOpen = useStore((s) => s.diagnosticsOpen);
+  const selectedAgentId = useOffice((s) => s.selectedAgentId);
+  const selectedTaskId = useOffice((s) => s.selectedTaskId);
+  const selectedRequirementId = useOffice((s) => s.selectedRequirementId);
   const saveActive = useStore((s) => s.saveActive);
   const setFn = useStore((s) => s.set);
+  // UI1 shell chrome stays local: navigation drawer (narrow) and the
+  // contextual panel are presentation state, not domain state.
+  const [navOpen, setNavOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextWidth, setContextWidth] = useState(320);
+  const selectionKey = `${selectedAgentId ?? ""}|${selectedTaskId ?? ""}|${selectedRequirementId ?? ""}`;
+
+  // A new selection reveals its context; closing is always manual.
+  useEffect(() => {
+    if (selectedAgentId || selectedTaskId || selectedRequirementId) setContextOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey]);
   const projectId = project?.id;
   const Sidebar = SIDEBARS[view];
 
@@ -89,6 +108,15 @@ export default function App() {
         const state = useStore.getState();
         setFn({ view: "command", sidebarOpen: true, centerFocusTick: state.centerFocusTick + 1 });
       }
+      // Escape closes shell drawers (never dialogs: those trap keys themselves).
+      if (event.key === "Escape" && !document.querySelector('[aria-modal="true"]')) {
+        if (useStore.getState().symbolSearch) setFn({ symbolSearch: false });
+        else if (useStore.getState().quickOpen) setFn({ quickOpen: false });
+        else {
+          setNavOpen(false);
+          setContextOpen(false);
+        }
+      }
     };
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (useStore.getState().tabs.some((t) => t.kind === "file" && t.content !== t.savedContent)) {
@@ -105,28 +133,39 @@ export default function App() {
   }, [saveActive, setFn]);
 
   return (
-    <div className={`ide ${sidebarOpen ? "sidebar-expanded" : "sidebar-collapsed"}`}
-      style={{ gridTemplateColumns: `48px ${sidebarOpen ? `min(${sidebarWidth}px, 45vw)` : "0px"} minmax(0, 1fr)` }}>
-      <ActivityBar />
+    <div
+      className={`ide ${sidebarOpen ? "sidebar-expanded" : "sidebar-collapsed"}${navOpen ? " nav-open" : ""}${contextOpen ? " context-open" : ""}`}
+      style={{ "--sidebarw": `${sidebarWidth}px`, "--ctxw": `${contextWidth}px` } as CSSProperties}
+    >
+      <TopBar onMenu={() => setNavOpen(true)} />
+      <ActivityBar onNavigate={() => setNavOpen(false)} />
+      {navOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
       <div className="sidebar-container" hidden={!sidebarOpen}>
         <ViewBoundary key={view} name="Sidebar"><Sidebar /></ViewBoundary>
         <PanelResize axis="sidebar" />
       </div>
       <main className="main-area">
-        {notice && <div className="office-notice" role="alert">{notice}
-          <button className="link" onClick={() => setFn({ notice: null })}>Dismiss</button>
-        </div>}
-        {view === "graph" ? (
-          <ViewBoundary name="Execution graph"><GraphView /></ViewBoundary>
-        ) : view === "history" ? (
-          <ViewBoundary name="Execution history"><HistoryView /></ViewBoundary>
-        ) : view === "command" ? (
-          <ViewBoundary name="Command Center"><CenterView /></ViewBoundary>
-        ) : (
-          <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
-        )}
+        {notice && <NoticeBanner text={notice} tone="alert" onDismiss={() => setFn({ notice: null })} />}
+        <div key={view} className="main-view view-enter">
+          {view === "graph" ? (
+            <ViewBoundary name="Execution graph"><GraphView /></ViewBoundary>
+          ) : view === "history" ? (
+            <ViewBoundary name="Execution history"><HistoryView /></ViewBoundary>
+          ) : view === "command" ? (
+            <ViewBoundary name="Command Center"><CenterView /></ViewBoundary>
+          ) : (
+            <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
+          )}
+        </div>
         <ViewBoundary name="Utility panel"><BottomPanel /></ViewBoundary>
       </main>
+      {contextOpen && (
+        <ContextPanel
+          width={contextWidth}
+          onWidth={(width) => setContextWidth(width)}
+          onClose={() => setContextOpen(false)}
+        />
+      )}
       <StatusBar />
       {projectDialog || !project ? (
         <OpenProjectDialog
@@ -138,6 +177,7 @@ export default function App() {
       {symbolSearch && <SymbolSearch />}
       {mcpDialog && <McpDialog onClose={() => setFn({ mcpDialog: false })} />}
       {diagnosticsOpen && <DiagnosticsDialog onClose={() => setFn({ diagnosticsOpen: false })} />}
+      <ConfirmHost />
     </div>
   );
 }

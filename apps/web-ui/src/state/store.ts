@@ -55,7 +55,7 @@ interface AppState {
   panelHeight: number;
   notice: string | null;
   panelOpen: boolean;
-  panelTab: "terminal" | "output";
+  panelTab: "terminal" | "output" | "problems" | "activity";
   terminalIds: string[];
   activeTerminal: string | null;
   quickOpen: boolean;

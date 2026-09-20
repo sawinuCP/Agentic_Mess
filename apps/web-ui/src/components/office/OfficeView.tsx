@@ -22,6 +22,7 @@ import {
 import { useBulkAction } from "../../office/useBulkAction";
 import { runningAgents, useOffice, type OfficeTab } from "../../state/officeStore";
 import { useStore } from "../../state/store";
+import { NoticeBanner } from "../shell/UiState";
 import AgentDetail from "./AgentDetail";
 import ApprovalCard from "./ApprovalCard";
 import CommsTab from "./CommsTab";
@@ -192,9 +193,7 @@ export default function OfficeView() {
         </div>
       )}
       {notice && (
-        <div className="office-notice" role="status">
-          {notice}
-        </div>
+        <NoticeBanner text={notice} tone="status" onDismiss={() => setOffice({ notice: null })} />
       )}
       <div className="office-tabs">
         {TABS.map(({ id, label: tabLabel }) => (
