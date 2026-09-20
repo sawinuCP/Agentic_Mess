@@ -337,7 +337,7 @@ export function bulkEligible(
 export const BULK_LABEL: Record<"pause" | "resume" | "cancel", string> = {
   pause: "Pause",
   resume: "Resume",
-  cancel: "Stop",
+  cancel: "Cancel",
 };
 
 export function bulkConfirm(
@@ -345,7 +345,7 @@ export function bulkConfirm(
   count: number,
 ): string {
   if (action === "cancel") {
-    return `Stop ${count} task${count === 1 ? "" : "s"}? History is preserved and statuses become cancelled.`;
+    return `Cancel ${count} task${count === 1 ? "" : "s"}? History is preserved and statuses become cancelled.`;
   }
   return action === "pause"
     ? `Pause ${count} task${count === 1 ? "" : "s"}? Signals apply at safe checkpoints; acknowledgement is not a state change.`

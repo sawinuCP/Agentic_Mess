@@ -13,20 +13,18 @@ import { errorMessage } from "../../api/errors";
 import { glue } from "@typehug/en";
 import { cancelTask, controlTask } from "../../api/client";
 import {
-  agentWaitingReason,
-  currentTaskForAgent,
-  describeEvent,
   elapsedSince,
-  lastAgentEvent,
   recoveryForTask,
   recoveryState,
-  tasksForAgent,
   waitingReason,
   waitingSince,
 } from "../../office/selectors";
+import { filterRoster, sortRoster, type RosterFilter } from "../../office/agentStates";
+import AgentRow from "../../office/AgentRow";
 import type { AgentInfo, EventEntry, TaskInfo } from "../../types";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
+import { confirmAction } from "../shell/confirm";
 import { StatusLabel } from "../shell/UiState";
 import DepMap from "./DepMap";
 import NewTaskDialog from "./NewTaskDialog";
@@ -40,63 +38,6 @@ const ACTION_LABELS: Record<TaskAction, string> = {
 function agentName(agents: AgentInfo[], id: string | null | undefined): string {
   if (!id) return "unassigned";
   return agents.find((a) => a.id === id)?.name ?? id.slice(0, 8);
-}
-
-function AgentCard({ agent, tasks, events }: {
-  agent: AgentInfo; tasks: TaskInfo[]; events: EventEntry[];
-}) {
-  const setOffice = useOffice((s) => s.set);
-  const current = currentTaskForAgent(tasks, agent.id);
-  const waiting = agentWaitingReason(agent.id, agent.state, tasks);
-  const last = lastAgentEvent(events, agent.id);
-  const recovery = current ? recoveryState(current, events) : null;
-  const ownedCount = tasksForAgent(tasks, agent.id).length;
-
-  return (
-    <div className="agent-card">
-      <div className="row spread">
-        <span className="strong">{agent.name}</span>
-        <StatusLabel state={agent.state} />
-      </div>
-      <div className="small muted mono">
-        {agent.role}
-        {agent.model ? ` · ${agent.model}` : ""}
-        {ownedCount > 0 ? ` · ${ownedCount} task${ownedCount === 1 ? "" : "s"}` : ""}
-      </div>
-      {current ? (
-        <div className="small pad-h">
-          ▸ {current.title} <span className="muted">({current.status.replaceAll("_", " ")})</span>
-        </div>
-      ) : (
-        <div className="small muted pad-h">No task recorded for this agent</div>
-      )}
-      {waiting && (
-        <div className="small warn pad-h" role="note">
-          ⏳ {waiting}
-        </div>
-      )}
-      {last && (
-        <div className="small muted pad-h" title={new Date(last.occurred_at).toLocaleString()}>
-          {describeEvent(last)}
-        </div>
-      )}
-      <div className="row spread">
-        {recovery ? (
-          <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>
-        ) : (
-          <span />
-        )}
-        <button
-          className="btn btn-small"
-          aria-label={`Inspect agent ${agent.name}`}
-          title={agent.id}
-          onClick={() => setOffice({ selectedAgentId: agent.id, selectedTaskId: null })}
-        >
-          Details
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function TaskInspector({ task, allTasks, agents, events }: {
@@ -217,20 +158,46 @@ export default function TeamTab() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const spawnOpen = useOffice((s) => s.spawnDialog);
   const createOpen = useOffice((s) => s.taskDialog);
+  const hitl = useOffice((s) => s.hitl);
+  const worktrees = useOffice((s) => s.worktrees);
   const available = useMemo(() => taskCommands(tasks, async () => undefined), [tasks]);
+
+  // Roster: search + state filter over recorded state, attention-first order.
+  const [rosterQuery, setRosterQuery] = useState("");
+  const [rosterFilter, setRosterFilter] = useState<RosterFilter>("all");
+  const roster = useMemo(
+    () => sortRoster(filterRoster(agents, tasks, hitl, rosterFilter, rosterQuery), tasks, hitl, events),
+    [agents, tasks, hitl, events, rosterFilter, rosterQuery],
+  );
+  const rosterRef = useRef<HTMLUListElement>(null);
+
+  const moveRosterFocus = (direction: 1 | -1): void => {
+    const buttons = Array.from(
+      rosterRef.current?.querySelectorAll<HTMLButtonElement>(".agent-row-name") ?? [],
+    );
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = buttons[(index + direction + buttons.length) % buttons.length];
+    next?.focus();
+  };
 
   const control = async (taskId: string, action: TaskAction) => {
     if (inFlight.current) return;
     const current = taskCommands(useOffice.getState().tasks, async () => undefined)
       .find((c) => c.id === `task.${taskId}.${action}`);
     if (!current || current.disabledReason) return;
-    if (!window.confirm(action === "execute"
-      ? "Start this task? This may run tools and use configured model providers."
-      : action === "cancel"
-        ? "Cancel this task? Its history is preserved and the status becomes cancelled."
-        : action === "retry"
-          ? "Re-run this failed task? A new execution run starts; recorded attempts are preserved."
-          : `Send ${action} signal? The workflow applies it at a safe checkpoint.`)) return;
+    const confirmed = await confirmAction({
+      title: `${ACTION_LABELS[action]}?`,
+      body: action === "execute"
+        ? "This may run tools and use configured model providers."
+        : action === "cancel"
+          ? "Its history is preserved and the status becomes cancelled."
+          : action === "retry"
+            ? "A new execution run starts; recorded attempts are preserved."
+            : "The workflow applies it at a safe checkpoint.",
+      confirmLabel: ACTION_LABELS[action],
+      danger: action === "cancel",
+    });
+    if (!confirmed) return;
     inFlight.current = true;
     setPending(current.id);
     setControlError(null);
@@ -260,17 +227,64 @@ export default function TeamTab() {
     <div className="stack">
       <section aria-label="Agents">
         <div className="row spread">
-          <h4 className="office-section-title muted">{glue("Agents on duty")}</h4>
+          <h4 className="office-section-title muted">{glue("Agents")}</h4>
           <button className="btn btn-small" onClick={() => setOffice({ spawnDialog: true, tab: "team" })}>
-            Spawn agent
+            New agent
           </button>
         </div>
+        <div className="row wrap gap4">
+          <input
+            className="text-input small roster-search"
+            aria-label="Search agents or tasks"
+            placeholder="Search agents or tasks…"
+            value={rosterQuery}
+            onChange={(e) => setRosterQuery(e.target.value)}
+          />
+        </div>
+        <div className="row wrap gap4" role="group" aria-label="Filter agents by state">
+          {(["all", "working", "waiting", "attention", "failed", "completed"] as RosterFilter[]).map((filter) => (
+            <button
+              key={filter}
+              className={`chip ${rosterFilter === filter ? "active" : ""}`}
+              aria-pressed={rosterFilter === filter}
+              onClick={() => setRosterFilter(filter)}
+            >
+              {filter === "attention" ? "Needs you" : filter[0].toUpperCase() + filter.slice(1)}
+            </button>
+          ))}
+        </div>
         {agents.length === 0 && (
-          <div className="muted small pad-h">{glue("No agents yet — run a task to spawn one.")}</div>
+          <div className="muted small pad-h">
+            {glue("No agents yet — run a task to spawn one.")}
+            <div className="row gap4">
+              <button className="btn btn-small" onClick={() => {
+                setOffice({ tab: "team" });
+                useStore.getState().set({ view: "command", sidebarOpen: true });
+              }}>
+                Open Command Center
+              </button>
+            </div>
+          </div>
         )}
-        {agents.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} tasks={tasks} events={events} />
-        ))}
+        {agents.length > 0 && roster.length === 0 && (
+          <div className="muted small pad-h" role="status">No agents match this filter.</div>
+        )}
+        {roster.length > 0 && (
+          <ul
+            className="plain-list agent-roster"
+            aria-label={`${roster.length} agents`}
+            ref={rosterRef}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+              e.preventDefault();
+              moveRosterFocus(e.key === "ArrowDown" ? 1 : -1);
+            }}
+          >
+            {roster.map((agent) => (
+              <AgentRow key={agent.id} agent={agent} tasks={tasks} events={events} hitl={hitl} worktrees={worktrees} />
+            ))}
+          </ul>
+        )}
       </section>
 
       <section aria-label="Tasks">

@@ -63,6 +63,8 @@ interface OfficeState {
   activityFilter: { agentId: string | null; taskId: string | null } | null;
   spawnDialog: boolean;
   taskDialog: boolean;
+  /** Prefilled comms recipient (UI3 contextual Message action). Draft-only. */
+  commsRecipient: string | null;
   connectionState: ConnectionState;
   gatewayMode: "live" | "degraded" | "unknown";
   lastEventSequence: number | null;
@@ -258,6 +260,7 @@ export const useOffice = create<OfficeState>((set, get) => {
     activityFilter: null,
     spawnDialog: false,
     taskDialog: false,
+    commsRecipient: null,
     connectionState: "connecting",
     gatewayMode: "unknown",
     lastEventSequence: null,

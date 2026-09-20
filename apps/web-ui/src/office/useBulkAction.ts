@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import { cancelTask, controlTask } from "../api/client";
 import { errorMessage } from "../api/errors";
+import { confirmAction } from "../components/shell/confirm";
 import { BULK_LABEL, bulkConfirm, bulkEligible } from "./selectors";
 import type { TaskInfo } from "../types";
 import { useOffice } from "../state/officeStore";
@@ -30,7 +31,13 @@ export function useBulkAction() {
     const question = context
       ? `${context}: ${bulkConfirm(action, targets.length)}`
       : bulkConfirm(action, targets.length);
-    if (!window.confirm(question)) return;
+    const confirmed = await confirmAction({
+      title: `${BULK_LABEL[action]} ${targets.length} task${targets.length === 1 ? "" : "s"}?`,
+      body: question,
+      confirmLabel: BULK_LABEL[action],
+      danger: action === "cancel",
+    });
+    if (!confirmed) return;
     setBulkBusy(true);
     let ok = 0;
     const failed: string[] = [];
@@ -47,7 +54,7 @@ export function useBulkAction() {
       await refresh().catch(() => undefined);
       const done =
         action === "cancel"
-          ? `Stopped ${ok} of ${targets.length} tasks.`
+          ? `Cancelled ${ok} of ${targets.length} tasks.`
           : `${BULK_LABEL[action]} signal sent to ${ok} of ${targets.length} tasks. Workflows apply it at safe checkpoints.`;
       setOffice({
         notice: failed.length === 0 ? `${done} Refreshing state.` : `${done} Failed: ${failed.join("; ")}`,
