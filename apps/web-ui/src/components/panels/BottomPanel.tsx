@@ -1,6 +1,48 @@
 import { useStore } from "../../state/store";
+import { describeEvent } from "../../office/selectors";
+import { useOffice } from "../../state/officeStore";
+import { confirmAction } from "../shell/confirm";
+import ProblemsView from "./ProblemsView";
 import TerminalPane from "./TerminalPane";
 import PanelResize from "../shell/PanelResize";
+
+const TABS = [
+  { id: "terminal", label: "TERMINAL" },
+  { id: "output", label: "OUTPUT" },
+  { id: "problems", label: "PROBLEMS" },
+  { id: "activity", label: "ACTIVITY" },
+] as const;
+
+function LiveActivity() {
+  const events = useOffice((s) => s.events);
+  const setOffice = useOffice((s) => s.set);
+  const setFn = useStore((s) => s.set);
+  if (events.length === 0) {
+    return <p className="muted pad">No live events yet. Open a project to start monitoring.</p>;
+  }
+  const jumpTask = (taskId: string | null): void => {
+    if (!taskId) return;
+    setOffice({ selectedTaskId: taskId, selectedAgentId: null, tab: "team" });
+    setFn({ view: "office", sidebarOpen: true });
+  };
+  return (
+    <ul className="plain-list activity-list">
+      {events.slice(0, 30).map((event) => (
+        <li key={event.id} className="activity-row">
+          <button
+            className="link small activity-summary"
+            title={event.event_type}
+            onClick={() => jumpTask(event.task_id)}
+            disabled={!event.task_id}
+          >
+            {describeEvent(event)}
+          </button>
+          <span className="muted small mono">{event.event_type}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function BottomPanel() {
   const panelOpen = useStore((s) => s.panelOpen);
@@ -17,40 +59,50 @@ export default function BottomPanel() {
   return (
     <section className="bottom-panel" hidden={!panelOpen} style={{ height: panelHeight }} aria-label="Utility panel">
       <PanelResize axis="bottom" />
-      <div className="panel-tabs">
-        <button
-          className={`panel-tab ${panelTab === "terminal" ? "active" : ""}`}
-          onClick={() => setFn({ panelTab: "terminal" })}
-        >
-          TERMINAL
-        </button>
-        <button
-          className={`panel-tab ${panelTab === "output" ? "active" : ""}`}
-          onClick={() => setFn({ panelTab: "output" })}
-        >
-          OUTPUT
-        </button>
+      <div className="panel-tabs" role="tablist" aria-label="Utility panel tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={panelTab === tab.id}
+            className={`panel-tab ${panelTab === tab.id ? "active" : ""}`}
+            onClick={() => setFn({ panelTab: tab.id })}
+          >
+            {tab.label}
+          </button>
+        ))}
         {panelTab === "terminal" && (
           <>
             <span className="panel-terms">
               {terminalIds.map((id, index) => (
                 <span key={id} className={`term-chip ${id === activeTerminal ? "active" : ""}`}>
-                  <button className="link" onClick={() => setFn({ activeTerminal: id })}>
+                  <button className="link" aria-label={`Terminal ${index + 1}`} onClick={() => setFn({ activeTerminal: id })}>
                     {index + 1}
                   </button>
-                  <button className="tree-action" title="Close terminal" onClick={() => closeTerminal(id)}>
+                  <button
+                    className="tree-action"
+                    title="Close terminal"
+                    aria-label={`Close terminal ${index + 1}`}
+                    onClick={() => {
+                      void confirmAction({
+                        title: `Close terminal ${index + 1}?`,
+                        body: "The PTY session ends. Output in the scrollback is discarded.",
+                        confirmLabel: "Close terminal",
+                      }).then((ok) => { if (ok) closeTerminal(id); });
+                    }}
+                  >
                     ×
                   </button>
                 </span>
               ))}
             </span>
-            <button className="tree-action" title="New terminal" onClick={() => void createTerminal()}>
+            <button className="tree-action" title="New terminal" aria-label="New terminal" onClick={() => void createTerminal()}>
               ＋
             </button>
           </>
         )}
         <div className="status-spacer" />
-        <button className="tree-action" title="Hide panel" onClick={() => setFn({ panelOpen: false })}>
+        <button className="tree-action" title="Hide panel" aria-label="Hide utility panel" onClick={() => setFn({ panelOpen: false })}>
           ▾
         </button>
       </div>
@@ -92,6 +144,12 @@ export default function BottomPanel() {
             )}
           </div>
         )}
+        {panelTab === "problems" && (
+          <div className="bottom-embed">
+            <ProblemsView />
+          </div>
+        )}
+        {panelTab === "activity" && <LiveActivity />}
       </div>
     </section>
   );
