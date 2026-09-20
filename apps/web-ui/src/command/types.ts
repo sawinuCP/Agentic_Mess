@@ -16,6 +16,9 @@ export interface Finding {
   title: string;
   detail: string;
   refs: FindingRef[];
+  /** Evidence artifact backing this finding, when the backend created one
+   * (UI2: research fetches). Renders metadata + preview, never raw IDs. */
+  artifactId?: string;
 }
 
 export interface DispatchResult {
@@ -38,6 +41,9 @@ export interface CenterEntry {
   error: string | null;
   createdAt: string;
   branchedFrom: number | null;
+  /** A gated action currently awaiting an inline decision (UI2). Null when
+   * no approval is pending. Resolved by the entry's Approve/Skip/Cancel. */
+  awaiting: { actionId: string; label: string; detail: string } | null;
 }
 
 export type { PlanAction };

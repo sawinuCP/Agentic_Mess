@@ -26,6 +26,7 @@ import {
 } from "../../api/client";
 import { errorMessage } from "../../api/errors";
 import { assembleContext } from "../../context/assemble";
+import { awaitGate, clearGate } from "../../command/gate";
 import { classifyIntent, type ClassifyContext, type EngineeringIntent } from "../../intent/classify";
 import { planFor, type PlanAction } from "../../intent/plan";
 import { extractIdentifiers } from "../../intent/queries";
@@ -33,7 +34,14 @@ import type { CenterEntry, DispatchResult, Finding } from "../../command/types";
 import { runningAgents, useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import type { SymbolInfo } from "../../types";
+import { confirmAction } from "../shell/confirm";
 import { StatusLabel } from "../shell/UiState";
+import ApprovalInline from "./ApprovalInline";
+import ArtifactPreview from "./ArtifactPreview";
+import CompletionReceipt from "./CompletionReceipt";
+import { PhaseBadge } from "./EntryPhase";
+import NeedsYou from "./NeedsYou";
+import PlanPreviewView from "./PlanPreviewView";
 
 let entrySeq = 0;
 
@@ -127,8 +135,11 @@ export default function CenterView() {
 
   const activeTab = tabs.find((t) => t.kind === "file" && t.path === activePath && !t.isBinary);
   const activeFile = activeTab && activeTab.kind === "file" ? activeTab : null;
+  const git = useStore((s) => s.git);
   const failedOfficeTask = tasks.find((t) => t.status === "failed") ?? null;
   const failedOutput = output && output.exit_code !== 0 && output.exit_code !== null ? output : null;
+  const changedCount = git?.entries.length ?? 0;
+  const [previewArtifactId, setPreviewArtifactId] = useState<string | null>(null);
 
   const buildCtx = (): ClassifyContext => ({
     projectId: project?.id ?? null,
@@ -141,6 +152,14 @@ export default function CenterView() {
     hasFailedTask: failedOfficeTask !== null || tasks.some((t) => t.status === "failed"),
     hasFailureOutput: failedOutput !== null,
   });
+
+  const scopeSource = selection
+    ? `selection L${selection.startLine}–L${selection.endLine} in ${selection.path.split("/").pop()} (selection wins over open file)`
+    : activeFile
+      ? `open file ${activeFile.path.split("/").pop()}`
+      : (reqOverride || officeReqId || taskOverride || officeTaskId || agentOverride || officeAgentId)
+        ? "office selection"
+        : "project";
 
   const scopeChips = useMemo(() => {
     const chips: string[] = [];
@@ -371,7 +390,7 @@ export default function CenterView() {
   };
 
   const executeEntry = async (entry: CenterEntry): Promise<void> => {
-    patchEntry(entry.id, { status: "running", statusText: "Working…", error: null });
+    patchEntry(entry.id, { status: "running", statusText: "Working…", error: null, awaiting: null });
     try {
       const findings: Finding[] = [];
       for (const action of entry.plan.actions) {
@@ -384,12 +403,21 @@ export default function CenterView() {
       const dispatches: DispatchResult[] = [];
       for (const action of gated) {
         if (entry.intent.confirmationRequired) {
-          const confirmed = window.confirm(
-            `${action.label}\n\n${entry.intent.confirmReason ?? ""}\n\nScope: ${action.detail}`,
-          );
-          if (!confirmed) {
-            dispatches.push({ label: action.label, ok: false, detail: "Skipped: not confirmed." });
+          patchEntry(entry.id, {
+            awaiting: { actionId: action.id, label: action.label, detail: action.detail },
+            statusText: `Awaiting approval: ${action.label}`,
+          });
+          const decision = await awaitGate(entry.id, action);
+          patchEntry(entry.id, { awaiting: null });
+          if (decision === "skip") {
+            dispatches.push({ label: action.label, ok: false, detail: "Skipped: not approved." });
+            patchEntry(entry.id, { dispatches: [...dispatches] });
             continue;
+          }
+          if (decision === "cancel") {
+            dispatches.push({ label: action.label, ok: false, detail: "Cancelled: remaining steps not run." });
+            patchEntry(entry.id, { dispatches: [...dispatches] });
+            break;
           }
         }
         if (action.id === "dispatch_research_search") {
@@ -406,8 +434,13 @@ export default function CenterView() {
             refs: res.results.slice(0, 5).map((r) => ({
               label: `Fetch: ${r.title.slice(0, 40)}`,
               run: () => {
-                if (!window.confirm(`Fetch this source into the project artifact store?\n\n${r.url}`)) return;
-                void researchFetch(projectId, r.url)
+                void confirmAction({
+                  title: "Fetch this source into the project artifact store?",
+                  body: r.url,
+                  confirmLabel: "Fetch",
+                }).then((ok) => {
+                  if (!ok) return;
+                  void researchFetch(projectId, r.url)
                   .then((fetched) => {
                     const prev = useStore.getState().centerEntries;
                     setWorkspace({ centerEntries: prev.map((e) => (e.id === entryId
@@ -418,6 +451,7 @@ export default function CenterView() {
                           title: `Fetched: ${fetched.title}`,
                           detail: `${fetched.excerpt} · artifact ${fetched.artifact_id.slice(0, 8)} · confidence ${fetched.confidence}`,
                           refs: [],
+                          artifactId: fetched.artifact_id,
                         }],
                       }
                       : e)) });
@@ -428,6 +462,7 @@ export default function CenterView() {
                       ? { ...e, error: errorMessage(err) }
                       : e)) });
                   });
+                });
               },
             })),
           });
@@ -443,10 +478,12 @@ export default function CenterView() {
         statusText: dispatches.some((d) => !d.ok) ? "Completed with skipped steps." : "Completed.",
       });
     } catch (err) {
+      clearGate(entry.id);
       patchEntry(entry.id, {
         status: "error",
         statusText: "Stopped on error.",
         error: err instanceof Error ? err.message : String(err),
+        awaiting: null,
       });
     }
   };
@@ -481,6 +518,7 @@ export default function CenterView() {
       error: null,
       createdAt: new Date().toISOString(),
       branchedFrom,
+      awaiting: null,
     };
     pushEntry(entry);
     setInput("");
@@ -520,6 +558,15 @@ export default function CenterView() {
         {scopeChips.map((chip) => (
           <span key={chip} className="chip active">{chip}</span>
         ))}
+        {changedCount > 0 && (
+          <button
+            className="chip"
+            title="Open changed files"
+            onClick={() => setWorkspace({ view: "git", sidebarOpen: true })}
+          >
+            {changedCount} file{changedCount === 1 ? "" : "s"} changed
+          </button>
+        )}
         <div className="row wrap gap4">
           <label className="small muted row gap4">
             Requirement
@@ -559,7 +606,7 @@ export default function CenterView() {
           ref={inputRef}
           className="text-input"
           aria-label="Engineering request"
-          placeholder="Ask for an engineering action — e.g. Implement OAuth, Fix this failure, Where is this used?"
+          placeholder="Describe what to build — e.g. Implement OAuth, Fix this failure, Where is this used?"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
@@ -567,20 +614,40 @@ export default function CenterView() {
           Ask
         </button>
       </form>
+      {project && <p className="small muted pad">Scope: {scopeSource}.</p>}
+
+      <NeedsYou />
 
       <div className="cc-entries" aria-label="Requests and results">
         {entries.length === 0 && (
-          <p className="muted small pad">
-            Start from any context above. Requests are classified into structured intents;
-            consequential actions always show a plan preview with confirmation first.
-          </p>
+          <div className="pad stack">
+            <p className="muted small">
+              Start from any context above. Requests are classified into structured intents;
+              consequential actions always show a plan preview with approval first.
+            </p>
+            <div className="row wrap gap4" aria-label="Example requests">
+              {[
+                "Implement OAuth login with tests",
+                "Fix the failing migration",
+                "Explain the payment module",
+                "Where is retry logic used?",
+              ].map((example) => (
+                <button key={example} className="btn btn-small" onClick={() => submit(example)}>
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {entries.map((entry) => (
           <article key={entry.id} className="cc-entry">
             <div className="row spread">
               <span className="strong">#{entry.id} {entry.request}</span>
-              <span className="small muted" title={new Date(entry.createdAt).toLocaleString()}>
-                {modeOfEntry(entry)} mode · {relativeTime(entry.createdAt)}
+              <span className="row gap4">
+                <PhaseBadge entry={entry} tasks={tasks} />
+                <span className="small muted" title={new Date(entry.createdAt).toLocaleString()}>
+                  {modeOfEntry(entry)} · {relativeTime(entry.createdAt)}
+                </span>
               </span>
             </div>
             {entry.branchedFrom !== null && (
@@ -592,36 +659,26 @@ export default function CenterView() {
             {entry.intent.clarifyPrompt && (
               <p className="small warn" role="note">{entry.intent.clarifyPrompt}</p>
             )}
-            <details className="small" open={entry.status === "preview"}>
-              <summary>Plan: {entry.plan.goal}</summary>
-              <ol className="cc-steps">
-                {entry.plan.steps.map((step, i) => (
-                  <li key={i}>{step}</li>
-                ))}
-              </ol>
-              {entry.plan.affected.length > 0 && (
-                <p className="muted">Affected: {entry.plan.affected.join("; ")}</p>
-              )}
-              {entry.plan.estimates.length > 0 && (
-                <p className="muted">Estimates: {entry.plan.estimates.join("; ")}</p>
-              )}
-              {entry.intent.confirmationRequired && (
-                <p className="warn">Confirmation required: {entry.intent.confirmReason}</p>
-              )}
-            </details>
+            <PlanPreviewView entry={entry} />
+            <ApprovalInline entry={entry} />
             <p className="small" role="status">{entry.statusText}</p>
             {entry.error && <p className="error-text small" role="alert">{entry.error}</p>}
             {entry.findings.map((finding, i) => (
               <div key={i} className="cc-finding">
                 <div className="strong small">{finding.title}</div>
                 {finding.detail && <div className="small muted">{finding.detail}</div>}
-                {finding.refs.length > 0 && (
+                {(finding.refs.length > 0 || finding.artifactId) && (
                   <div className="row wrap gap4">
                     {finding.refs.map((ref, j) => (
                       <button key={j} className="btn btn-small" onClick={ref.run}>
                         {ref.label}
                       </button>
                     ))}
+                    {finding.artifactId && (
+                      <button className="btn btn-small" onClick={() => finding.artifactId && setPreviewArtifactId(finding.artifactId)}>
+                        View evidence
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -640,10 +697,11 @@ export default function CenterView() {
                 )}
               </div>
             ))}
+            {entry.status === "done" && <CompletionReceipt entry={entry} />}
             <div className="row wrap gap4">
               {entry.status === "preview" && entry.plan.actions.length > 0 && (
                 <button
-                  className="btn btn-small"
+                  className="btn btn-small btn-primary"
                   disabled={!project}
                   onClick={() => void executeEntry({ ...entry, findings: [], dispatches: [] })}
                 >
@@ -679,14 +737,21 @@ export default function CenterView() {
           <button
             className="btn btn-small"
             onClick={() => {
-              if (window.confirm("Clear the Command Center conversation? Dispatched work is unaffected.")) {
-                setWorkspace({ centerEntries: [] });
-              }
+              void confirmAction({
+                title: "Clear the Command Center conversation?",
+                body: "Dispatched work is unaffected.",
+                confirmLabel: "Clear",
+              }).then((ok) => {
+                if (ok) setWorkspace({ centerEntries: [] });
+              });
             }}
           >
             Clear conversation
           </button>
         </div>
+      )}
+      {previewArtifactId && (
+        <ArtifactPreview artifactId={previewArtifactId} onClose={() => setPreviewArtifactId(null)} />
       )}
     </div>
   );
@@ -703,6 +768,10 @@ function LiveTaskStatus({ taskId, reviewVerdict }: { taskId: string; reviewVerdi
   const tasks = useOffice((s) => s.tasks);
   const setWorkspace = useStore((s) => s.set);
   const task = tasks.find((t) => t.id === taskId);
+  const openAgents = (): void => {
+    setWorkspace({ view: "office", sidebarOpen: true });
+    useOffice.getState().set({ tab: "team", selectedTaskId: taskId, selectedAgentId: null });
+  };
   return (
     <div className="small row wrap gap4">
       <span className="muted">Live status:</span>
@@ -710,19 +779,20 @@ function LiveTaskStatus({ taskId, reviewVerdict }: { taskId: string; reviewVerdi
         <>
           <StatusLabel state={task.status} />
           <span className="muted">{task.attempts.length} attempt(s)</span>
+          {(task.status === "failed" || task.status === "blocked") && (
+            <span className="warn">
+              {task.status === "failed"
+                ? "Inspect attempts and evidence, then retry from Agents or the palette."
+                : "Waiting on dependencies or input — inspect in Agents."}
+            </span>
+          )}
         </>
       ) : (
         <span className="muted">task not in snapshot — resyncing…</span>
       )}
       {reviewVerdict && <span className="muted">reviewers: {reviewVerdict}</span>}
-      <button
-        className="link"
-        onClick={() => {
-          setWorkspace({ view: "office", sidebarOpen: true });
-          useOffice.getState().set({ tab: "team", selectedTaskId: taskId });
-        }}
-      >
-        Open in Office
+      <button className="link" onClick={openAgents}>
+        Open in Agents
       </button>
       <button
         className="link"
