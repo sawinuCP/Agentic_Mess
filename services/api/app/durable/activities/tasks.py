@@ -188,8 +188,11 @@ async def set_task_status_activity(input: dict[str, Any]) -> None:
     factory, _store = refs()
 
     def _set() -> None:
+        from app.services.planning.tasks import assert_task_transition  # noqa: PLC0415
+
         with factory() as session:
             task = load_task_row(session, uuid.UUID(input["task_id"]))
+            assert_task_transition(task.status, input["status"])
             task.status = input["status"]
             session.commit()
 

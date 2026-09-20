@@ -13,6 +13,26 @@ from app.core.errors import DomainError
 from app.db.models import Task, TaskAttempt, TaskDependency
 from app.schemas.planning.tasks import AttemptOut, TaskIn, TaskOut
 
+#: Task lifecycle (G6): the only lawful status transitions. Terminal states
+#: are terminal; retry re-enters via failed → ready/running. Unknown statuses
+#: are rejected outright — arbitrary strings must never become task state.
+TASK_TRANSITIONS: dict[str, tuple[str, ...]] = {
+    "pending": ("ready", "cancelled"),
+    "ready": ("running", "blocked", "cancelled"),
+    "running": ("blocked", "completed", "failed", "cancelled"),
+    "blocked": ("ready", "running", "failed", "cancelled"),
+    "failed": ("ready", "running", "cancelled"),
+    "completed": (),
+    "cancelled": (),
+}
+
+
+def assert_task_transition(current: str, target: str) -> None:
+    """Reject unknown statuses and unlawful transitions (422, fail-closed)."""
+    allowed = TASK_TRANSITIONS.get(current)
+    if allowed is None or target not in TASK_TRANSITIONS or target not in allowed:
+        raise DomainError(f"Invalid task transition: {current} -> {target}", 422)
+
 
 def _task_or_404(task_id: uuid.UUID, db: Session) -> Task:
     task = db.get(Task, task_id)
@@ -169,6 +189,7 @@ def create_task(
 
 def mark_status(db: Session, task_id: uuid.UUID, status: str) -> Task:
     task = _task_or_404(task_id, db)
+    assert_task_transition(task.status, status)
     task.status = status
     db.commit()
     return task

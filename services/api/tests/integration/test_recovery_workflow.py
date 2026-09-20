@@ -21,7 +21,7 @@ from temporalio.worker import Worker
 from app.artifacts.store import ArtifactStore
 from app.core.config import Settings
 from app.db.base import build_engine, build_session_factory
-from app.db.models import Agent, AgentSession, Event, Project, Task
+from app.db.models import Agent, AgentSession, Event, Project, Task, TaskAttempt
 from app.durable.activities import (
     agent_execute_activity,
     dependency_status_activity,
@@ -147,6 +147,24 @@ def _events(task_id: str, *types: str) -> list[Event]:
 
 def _event_types(task_id: str) -> list[str]:
     return [e.event_type for e in _events(task_id)]
+
+
+def _session():
+    """Throwaway session factory on the harness DB (polling helpers only)."""
+    from contextlib import contextmanager
+
+    engine = build_engine(_settings().database_url)
+    factory = build_session_factory(engine)
+
+    @contextmanager
+    def _scope():
+        try:
+            with factory() as session:
+                yield session
+        finally:
+            engine.dispose()
+
+    return _scope()
 
 
 def test_retry_then_success_completes(tmp_path: Path) -> None:
@@ -462,3 +480,81 @@ def test_dependency_signal_resumes_parked_workflow(tmp_path: Path) -> None:
         "escalate_or_replan",
     ]
     assert "DEPENDENCY_RESUMED" in _event_types(blocked_id)
+
+
+def test_pause_parks_and_resume_completes_without_duplication(tmp_path: Path) -> None:
+    """Pause/resume during real work: the workflow parks at a checkpoint
+    (agent → paused), resumes on signal, and finishes with one attempt —
+    no duplicate work, no lost state."""
+    import time as _time
+
+    from app.db.models import Agent
+
+    script = tmp_path / "slow.py"
+    script.write_text("import time\ntime.sleep(8)\n", encoding="utf-8")
+    settings, _project_id, task_id = _seed(tmp_path, [sys.executable, str(script)], max_attempts=2)
+
+    async def _paused_run() -> dict:
+        from datetime import timedelta
+
+        # Real clock (not time-skipping): a parked workflow has no deadline
+        # pressure, but the test server still needs a generous execution
+        # timeout — and time-skipping would fast-forward any finite timeout
+        # the moment the workflow parks.
+        async with (
+            await WorkflowEnvironment.start_local() as env,
+            Worker(
+                env.client,
+                task_queue="wave2-test",
+                workflows=[TaskExecutionWorkflow],
+                activities=_ACTIVITIES,
+            ),
+        ):
+            run = asyncio.ensure_future(
+                env.client.execute_workflow(
+                    TaskExecutionWorkflow.run,
+                    TaskExecutionInput(task_id=task_id),
+                    id=f"task-exec-{task_id}",
+                    task_queue="wave2-test",
+                    # Real sleeps + polling outlast the test server's default
+                    # execution timeout; the product sets its own timeouts.
+                    execution_timeout=timedelta(seconds=600),
+                )
+            )
+            handle = env.client.get_workflow_handle(f"task-exec-{task_id}")
+            # Wait until the attempt is executing, then pause mid-flight.
+            deadline = _time.monotonic() + 60
+            started = False
+            while not started and _time.monotonic() < deadline:
+                with _session() as session:
+                    started = (
+                        session.scalars(
+                            select(TaskAttempt).where(TaskAttempt.task_id == uuid.UUID(task_id))
+                        ).first()
+                        is not None
+                    )
+                await asyncio.sleep(0.5)
+            assert started, "attempt never started"
+            await handle.signal("pause")
+            # Parked: the agent row reaches paused at the post-execute checkpoint.
+            deadline = _time.monotonic() + 60
+            parked = False
+            while not parked and _time.monotonic() < deadline:
+                with _session() as session:
+                    parked = (
+                        session.scalars(
+                            select(Agent).where(
+                                Agent.name.like(f"agent-{task_id[:8]}%"),
+                                Agent.state == "paused",
+                            )
+                        ).first()
+                        is not None
+                    )
+                await asyncio.sleep(0.5)
+            assert parked, "workflow never parked on pause"
+            await handle.signal("resume")
+            return await run
+
+    summary = asyncio.run(_paused_run())
+    assert summary["outcome"] == "success", summary
+    assert summary["attempts"] == 1  # resume continues; nothing re-ran

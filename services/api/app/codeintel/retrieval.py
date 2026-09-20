@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 from app.codeintel.embeddings import embed_text
 from app.db.models import Symbol, SymbolFile
 
-_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 _SEMANTIC_CANDIDATES = 60
 _SCAN_LIMIT = 5000
@@ -38,7 +39,18 @@ class RetrievedChunk:
 
 
 def _tokens(text: str) -> set[str]:
-    return {t.lower() for t in _TOKEN_RE.findall(text) if len(t) >= 2}
+    """Lexical tokens with the same snake_case/camelCase split as the
+    embedding tokenizer — identifiers like ``process_payload_1999`` must
+    match on every constituent (including digit parts), or digit-suffixed
+    symbols become invisible to exact search."""
+    out: set[str] = set()
+    for raw in _TOKEN_RE.findall(text):
+        for chunk in raw.split("_"):
+            for part in _CAMEL_RE.split(chunk):
+                part = part.lower()
+                if len(part) >= 2:
+                    out.add(part)
+    return out
 
 
 def _lexical_scores(symbols: Sequence[Symbol], query: str) -> dict[uuid.UUID, float]:
@@ -108,7 +120,10 @@ def retrieve(
         sem = semantic.get(symbol.id, 0.0)
         lex_norm = lex / max_lexical if max_lexical else 0.0
         if lex > 0 and sem > 0:
-            score, matched = 0.6 * lex_norm + 0.4 * sem, "hybrid"
+            # Hybrid, but an exact lexical match is never outranked by
+            # embedding noise: with uninformative vectors (offline default)
+            # the semantic term is arbitrary, while identifiers are precise.
+            score, matched = max(lex_norm, 0.6 * lex_norm + 0.4 * sem), "hybrid"
         elif lex > 0:
             score, matched = lex_norm, "lexical"
         elif sem > 0:

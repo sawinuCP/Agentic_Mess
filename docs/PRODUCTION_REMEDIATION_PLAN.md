@@ -187,6 +187,31 @@ Deliberate positions retained: scripted offline evaluation (no autonomous
 planner loop — documented limitation); no evaluator model; `timeout` remains
 the expired-state name.
 
+## Wave 12 verification — real-world validation & beta hardening
+
+Real fixture repos (A–F, generated, local-only) driven through production
+paths; every failure below was reproduced, root-caused, fixed, and
+regression-tested (§24 loop):
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Retrieval tokenizer asymmetry (P1) | Fixed | Lexical scan ignored identifier structure (digit-suffixed symbols invisible), dropped digit-leading query terms, and let embedding noise outrank exact matches. Aligned both tokenizers (snake/camel split, digit-leading terms) + max-guard on the hybrid blend; 2000-file exact match proven |
+| Pause lifecycle violations (P1) | Fixed | `running → paused` and `resuming → verifying` both crashed checkpoints (pause of ANY execution failed the workflow). Lawful multi-step transitions; park/resume/complete proven with 1 attempt |
+| Fixture/ambiguity/docker/multi-client coverage | Delivered | Index/retrieval per project, messy-repo read-only comprehension, UNKNOWN-without-evidence, docker execution + network isolation, two-client cursor convergence |
+| Beta docs (7) | Delivered | validation plan/results, beta readiness + scorecard, known limitations, failure patterns, performance envelope, operational runbook |
+
+## Wave 12 verification — real-world validation & beta hardening
+
+| Item | Disposition | Evidence |
+|------|-------------|----------|
+| Fixture repos A–F | Delivered | `tests/fixtures/e2e_projects.py` (generated, local-only): Python, TS/React, FastAPI, multi-module, messy legacy, 2000-module scale |
+| Retrieval quality (§8/§9) | Fixed (3 bugs) | Snake/camel splitting, digit-leading terms, hybrid max-guard in `app/codeintel/retrieval.py` + `embeddings.py`; 2000-file exact match proven |
+| Pause lifecycle (§13) | Fixed (2 unlawful transitions) | `running → pause_requested → paused`, resume through `running`; park/resume/complete proven with 1 attempt |
+| Docker backend (§7/§15) | Verified live | Cached `python:3.11-slim` executes (`6*7=42`); `--network none` proven unreachable |
+| Ambiguity safety (§4/§10) | Verified | Vague requirement without evidence stays UNKNOWN, never VERIFIED |
+| Multi-client convergence (§14) | Verified | Two SSE clients observe identical cursors |
+| Beta docs (7) | Delivered | validation plan/results, beta readiness + scorecard, known limitations, failure patterns, performance envelope, operational runbook |
+
 ## Wave 11 verification — end-to-end acceptance (this log)
 
 | Item | Disposition | Evidence |

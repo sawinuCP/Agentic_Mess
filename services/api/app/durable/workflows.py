@@ -73,19 +73,26 @@ class TaskExecutionWorkflow:
         """Safe checkpoint between activities: suspends new work while pausing."""
         if agent_id is None or not self._paused:
             return
-        await workflow.execute_activity(
-            "set_agent_state_activity",
-            {"agent_id": agent_id, "state": "paused"},
-            start_to_close_timeout=_ACTIVITY_TIMEOUT,
-            retry_policy=RETRY_DB,
-        )
+        # Lawful lifecycle path (spec §12): running → pause_requested →
+        # paused. Skipping straight to paused violates the transition matrix
+        # and fails the activity (found by the pause/resume acceptance test).
+        for state in ("pause_requested", "paused"):
+            await workflow.execute_activity(
+                "set_agent_state_activity",
+                {"agent_id": agent_id, "state": state},
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_DB,
+            )
         await workflow.wait_condition(lambda: not self._paused)
-        await workflow.execute_activity(
-            "set_agent_state_activity",
-            {"agent_id": agent_id, "state": "resuming"},
-            start_to_close_timeout=_ACTIVITY_TIMEOUT,
-            retry_policy=RETRY_DB,
-        )
+        # Resume runs back through running: the post-execute flow sets
+        # verifying next, and resuming → verifying is unlawful.
+        for state in ("resuming", "running"):
+            await workflow.execute_activity(
+                "set_agent_state_activity",
+                {"agent_id": agent_id, "state": state},
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_DB,
+            )
 
     async def _record(self, task_id: str, event_type: str, payload: dict[str, Any]) -> None:
         await workflow.execute_activity(

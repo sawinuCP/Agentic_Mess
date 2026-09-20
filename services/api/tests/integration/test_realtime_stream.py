@@ -225,3 +225,40 @@ def test_metrics_endpoint_exposes_realtime_instruments(project: tuple, make_enve
     assert "harness_events_delivered_total" in body
     assert "harness_realtime_connections_total" in body
     assert "harness_event_delivery_latency_seconds" in body
+
+
+def test_two_clients_converge_on_the_same_live_state(
+    project: tuple,
+    sse: type[SseTestClient],
+    seed_events: Any,
+    make_envelope: Any,
+    event_frames_of: Any,
+) -> None:
+    """Wave 12 §14: two simultaneous subscribers observe identical replay +
+    live frames (no divergence); missed-event catch-up itself is covered by
+    the replay-after-disconnect test over durable rows."""
+    app, client, project_id, _tmp = project
+    gateway = app.state.realtime
+    seed_events(client, project_id, 2)
+
+    async def scenario() -> tuple[list[str], list[str]]:
+        first = sse(app, f"/api/events/stream?project_id={project_id}&since=0")
+        second = sse(app, f"/api/events/stream?project_id={project_id}&since=0")
+        first.start()
+        second.start()
+        assert await first.wait_status() == 200
+        assert await second.wait_status() == 200
+        gateway.broadcast(make_envelope(project_id, 901, "AGENT_CREATED"))
+        first_frames = await first.frames(4)  # status + 2 replayed + 1 live
+        second_frames = await second.frames(4)
+        await first.disconnect()
+        await second.disconnect()
+        return (
+            [f["id"] for f in event_frames_of(first_frames) if f.get("id", "").isdigit()],
+            [f["id"] for f in event_frames_of(second_frames) if f.get("id", "").isdigit()],
+        )
+
+    first_ids, second_ids = asyncio.run(scenario())
+    # Identical cursors on both clients: 2 durable replayed + 1 live frame.
+    assert first_ids == second_ids
+    assert len(first_ids) == 3

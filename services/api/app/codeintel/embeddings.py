@@ -14,7 +14,7 @@ import re
 
 EMBEDDING_DIM = 256
 
-_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 

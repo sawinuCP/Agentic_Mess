@@ -22,7 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.agents_runtime.spawn_policy import may_schedule_depth
 from app.core.errors import DomainError
-from app.db.models import Event, Task
+from app.db.models import Task
+from app.services.core.events import emit_event
 from app.services.orchestration import leases as lease_service
 
 DEFAULT_ROLE = "implementer"
@@ -241,14 +242,13 @@ def commit_scheduled(db: Session, project_id: uuid.UUID, started: Mapping[uuid.U
         if task.status in SCHEDULABLE_STATUSES:
             task.status = "running"
             db.add(task)
-            db.add(
-                Event(
-                    event_type="TASK_SCHEDULED",
-                    source="scheduler",
-                    project_id=project_id,
-                    task_id=task.id,
-                    payload={"workflow_id": workflow_id, "role": _task_role(task)},
-                )
+            emit_event(
+                db,
+                "TASK_SCHEDULED",
+                source="scheduler",
+                project_id=project_id,
+                task_id=task.id,
+                payload={"workflow_id": workflow_id, "role": _task_role(task)},
             )
             committed += 1
     if committed:

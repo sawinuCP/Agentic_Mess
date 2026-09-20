@@ -157,3 +157,29 @@ def test_requirement_to_verified_journey(project: tuple) -> None:
     ).json()
     assert costs["total_tokens"] > 0
     assert costs["invocations"] >= 1
+
+
+def test_ambiguous_requirement_without_evidence_stays_unknown(project: tuple) -> None:
+    """Ambiguity safety (§4/§10): a vague requirement with no evidence must
+    report UNKNOWN — never auto-VERIFIED, no matter how the task ended."""
+    app, client, project_id, _tmp = project
+    requirement = client.post(
+        f"/api/projects/{project_id}/requirements",
+        json={
+            "title": "Make it better somehow",
+            "description": "exact scope unclear",
+            "criteria": [
+                {"description": "something improved", "kind": "manual", "mandatory": True}
+            ],
+        },
+    )
+    assert requirement.status_code == 201, requirement.text
+    requirement_id = requirement.json()["id"]
+    created = client.post(
+        f"/api/projects/{project_id}/tasks",
+        json={"title": "Try something", "requirement_id": requirement_id},
+    )
+    assert created.status_code == 201, created.text
+    traceability = client.get(f"/api/projects/{project_id}/oversight/traceability").json()
+    mine = [e for e in traceability.get("requirements", []) if e.get("id") == requirement_id]
+    assert mine and mine[0]["status"] == "UNKNOWN", mine

@@ -20,7 +20,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
-from app.db.models import Event, PortAllocation
+from app.db.models import PortAllocation
+from app.services.core.events import emit_event
 
 STATUS_ACTIVE = "active"
 STATUS_EXPIRED = "expired"
@@ -54,18 +55,17 @@ def _out(allocation: PortAllocation) -> dict[str, Any]:
 
 
 def _emit(db: Session, event_type: str, allocation: PortAllocation, extra: dict[str, Any]) -> None:
-    db.add(
-        Event(
-            event_type=event_type,
-            source="ports",
-            project_id=allocation.project_id,
-            payload={
-                "port": allocation.port,
-                "purpose": allocation.purpose,
-                "allocation_id": str(allocation.id),
-                **extra,
-            },
-        )
+    emit_event(
+        db,
+        event_type,
+        source="ports",
+        project_id=allocation.project_id,
+        payload={
+            "port": allocation.port,
+            "purpose": allocation.purpose,
+            "allocation_id": str(allocation.id),
+            **extra,
+        },
     )
 
 

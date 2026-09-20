@@ -42,14 +42,15 @@ def _event_exists(session: Session, event_type: str, idempotency_key: str) -> Ev
 
 
 def _task_event(session: Session, task: Task, event_type: str, payload: dict[str, Any]) -> None:
-    session.add(
-        Event(
-            event_type=event_type,
-            source="temporal",
-            project_id=task.project_id,
-            task_id=task.id,
-            payload=payload,
-        )
+    from app.services.core.events import emit_event
+
+    emit_event(
+        session,
+        event_type,
+        source="temporal",
+        project_id=task.project_id,
+        task_id=task.id,
+        payload=payload,
     )
 
 

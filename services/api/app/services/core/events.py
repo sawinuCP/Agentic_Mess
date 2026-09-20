@@ -73,4 +73,34 @@ async def record_event(
             correlation_id,
         )
     except Exception as exc:  # noqa: BLE001 — observability must not break requests
-        logger.warning("event_write_failed type=%s error=%s", event_type, exc)
+        logger.warning("event_record_failed type=%s error=%s", event_type, exc)
+        return
+
+
+def emit_event(
+    db: Session,
+    event_type: str,
+    *,
+    source: str,
+    project_id: uuid.UUID | None,
+    task_id: uuid.UUID | None = None,
+    agent_id: str | None = None,
+    payload: Mapping[str, Any] | None = None,
+) -> Event:
+    """Add one durable event row in the caller's transaction (no commit).
+
+    The single owned constructor for service/activity event writes: callers
+    build domain payloads, this function owns the row shape. Replaces the
+    five private ``_emit``/``_task_event`` helpers that each constructed
+    ``Event`` directly.
+    """
+    row = Event(
+        event_type=event_type,
+        source=source,
+        project_id=project_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        payload=dict(payload or {}),
+    )
+    db.add(row)
+    return row

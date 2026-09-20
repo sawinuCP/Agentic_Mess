@@ -15,8 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
-from app.db.models import Event, Task, Worktree
+from app.db.models import Task, Worktree
 from app.schemas.orchestration.worktrees import WorktreeOut
+from app.services.core.events import emit_event
 
 VALID_BRANCH_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-")
 
@@ -36,19 +37,18 @@ def worktree_out(worktree: Worktree) -> WorktreeOut:
 
 
 def _emit(db: Session, event_type: str, worktree: Worktree, extra: dict[str, Any]) -> None:
-    db.add(
-        Event(
-            event_type=event_type,
-            source="worktrees",
-            project_id=worktree.project_id,
-            task_id=worktree.task_id,
-            payload={
-                "worktree_id": str(worktree.id),
-                "branch": worktree.branch,
-                "path": worktree.path,
-                **extra,
-            },
-        )
+    emit_event(
+        db,
+        event_type,
+        source="worktrees",
+        project_id=worktree.project_id,
+        task_id=worktree.task_id,
+        payload={
+            "worktree_id": str(worktree.id),
+            "branch": worktree.branch,
+            "path": worktree.path,
+            **extra,
+        },
     )
 
 

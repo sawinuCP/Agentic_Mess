@@ -559,6 +559,16 @@ websocket push (polled); Tauri desktop shell (ADR-0008); full SEC-007 policy eng
 
 ## Change log
 
+- 2026-09-19 — Wave 12 beta validation: fixture repos A–F with real-path
+  coverage; retrieval tokenizer alignment + hybrid guard; pause lifecycle
+  fixes; docker-backend and ambiguity/multi-client proofs; seven beta docs +
+  scorecard. Full suite green (see validation below).
+
+- 2026-09-19 — Wave 12 beta validation: fixture repos A–F; retrieval fixes
+  (tokenizer alignment, hybrid guard); pause lifecycle fixes; docker-backend
+  proofs; ambiguity/multi-client coverage; seven beta docs + scorecard. Full
+  suite green (see validation below).
+
 - 2026-09-19 — Wave 11 acceptance: failure-injection harness, e2e journey with
   cross-surface agreement, P1 HITL/slot race fixes, idempotent execute,
   executable task payloads, health depth, shutdown/Redis/stress/history proofs,

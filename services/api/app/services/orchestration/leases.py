@@ -18,8 +18,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
-from app.db.models import Event, Resource
+from app.db.models import Resource
 from app.schemas.orchestration.leases import LeaseIn, LeaseOut, LeaseRenewIn
+from app.services.core.events import emit_event
 
 STATUS_ACTIVE = "active"
 STATUS_EXPIRED = "expired"
@@ -54,21 +55,20 @@ def _lease_out(resource: Resource) -> LeaseOut:
 
 def _emit(db: Session, event_type: str, resource: Resource, extra: dict[str, Any]) -> None:
     """Write the audit event in the same transaction as the lease mutation."""
-    db.add(
-        Event(
-            event_type=event_type,
-            source="leases",
-            project_id=resource.project_id,
-            payload={
-                "lease_id": str(resource.id),
-                "kind": resource.kind,
-                "key": resource.key,
-                "holder_agent_id": (
-                    str(resource.holder_agent_id) if resource.holder_agent_id else None
-                ),
-                **extra,
-            },
-        )
+    emit_event(
+        db,
+        event_type,
+        source="leases",
+        project_id=resource.project_id,
+        payload={
+            "lease_id": str(resource.id),
+            "kind": resource.kind,
+            "key": resource.key,
+            "holder_agent_id": (
+                str(resource.holder_agent_id) if resource.holder_agent_id else None
+            ),
+            **extra,
+        },
     )
 
 
