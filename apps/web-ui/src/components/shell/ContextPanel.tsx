@@ -100,20 +100,64 @@ function ProjectOverview() {
   const tasks = useOffice((s) => s.tasks);
   const hitl = useOffice((s) => s.hitl);
   const costs = useOffice((s) => s.costs);
+  const setOffice = useOffice((s) => s.set);
   if (!project) return <p className="muted">Open a project to see workspace context.</p>;
+  const pending = hitl.filter((h) => h.status === "pending");
+  const openAgents = (): void => {
+    setFn({ view: "office", sidebarOpen: true });
+    setOffice({ tab: "team", selectedAgentId: null });
+  };
   return (
     <div className="stack">
       <div className="text-heading wrap-break">{project.name}</div>
       <div className="text-caption wrap-break mono">{project.root_path}</div>
       <Row label="Agents">{agents.length}</Row>
       <Row label="Tasks">{tasks.length}</Row>
-      <Row label="Approvals">{hitl.length}</Row>
+      <Row label="Approvals">{pending.length}</Row>
       <Row label="Tokens">{validCosts(costs) ? <span className="numeric">{formatTokens(costs.total_tokens)}</span> : "—"}</Row>
+      {pending.length > 0 && (
+        <>
+          <div className="text-section">Needs you</div>
+          <div className="stack">
+            {pending.slice(0, 3).map((h) => (
+              <div key={h.id} className="row spread">
+                <span className="small truncate">{h.question || h.kind}</span>
+                <button className="btn btn-small" onClick={openAgents}>Review</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <div className="text-section">Suggested</div>
       <div className="stack">
         <button className="btn btn-small" onClick={() => setFn({ view: "command", sidebarOpen: true })}>New AI task</button>
-        <button className="btn btn-small" onClick={() => setFn({ view: "office", sidebarOpen: true })}>Open Agents</button>
+        <button className="btn btn-small" onClick={openAgents}>Open Agents</button>
         <button className="btn btn-small" onClick={() => setFn({ view: "graph", sidebarOpen: true })}>Open Execution graph</button>
+      </div>
+    </div>
+  );
+}
+
+function FileContext({ path }: { path: string }) {
+  const git = useStore((s) => s.git);
+  const tabs = useStore((s) => s.tabs);
+  const setFn = useStore((s) => s.set);
+  const entry = git?.entries.find((e) => e.path === path);
+  const dirty = tabs.some((t) => t.kind === "file" && t.path === path);
+  const changeState = !entry
+    ? "unchanged in git"
+    : `index ${entry.index_status.trim() || "—"} · worktree ${entry.worktree_status.trim() || "—"}`;
+  return (
+    <div className="stack">
+      <div className="text-heading wrap-break">{path.split("/").pop()}</div>
+      <div className="text-caption wrap-break mono">{path}</div>
+      <Row label="Change">{changeState}</Row>
+      <Row label="Unsaved">{dirty ? "Yes" : "No"}</Row>
+      <Row label="Branch">{git?.branch ?? "—"}</Row>
+      <div className="row">
+        <button className="btn btn-small" onClick={() => setFn({ view: "git", sidebarOpen: true })}>
+          Open Changes
+        </button>
       </div>
     </div>
   );
@@ -125,7 +169,11 @@ export default function ContextPanel({ width, onWidth, onClose }: {
   const agentId = useOffice((s) => s.selectedAgentId);
   const taskId = useOffice((s) => s.selectedTaskId);
   const requirementId = useOffice((s) => s.selectedRequirementId);
-  const kind = agentId ? "Agent" : taskId ? "Task" : requirementId ? "Requirement" : "Workspace";
+  const activePath = useStore((s) => s.activePath);
+  const tabs = useStore((s) => s.tabs);
+  // Diff tabs key as `diff:path` — only real file tabs count as file context.
+  const activeFile = tabs.find((t) => t.kind === "file" && t.path === activePath) ?? null;
+  const kind = agentId ? "Agent" : taskId ? "Task" : requirementId ? "Requirement" : activeFile ? "File" : "Workspace";
 
   return (
     <aside
@@ -173,6 +221,7 @@ export default function ContextPanel({ width, onWidth, onClose }: {
         {agentId ? <AgentContext agentId={agentId} />
           : taskId ? <TaskContext taskId={taskId} />
           : requirementId ? <RequirementContext requirementId={requirementId} />
+          : activeFile ? <FileContext path={activeFile.path} />
           : <ProjectOverview />}
       </div>
     </aside>

@@ -2,6 +2,46 @@ import { DiffEditor } from "@monaco-editor/react";
 import { isDirty, useStore, type FileTab } from "../../state/store";
 import CodeEditor from "./CodeEditor";
 
+const STARTERS = [
+  "Implement OAuth login with tests",
+  "Fix the failing migration",
+  "Explain the payment module",
+  "Where is retry logic used?",
+];
+
+function FirstUse() {
+  const setWorkspace = useStore((s) => s.set);
+  const startWith = (request: string): void => {
+    setWorkspace({ centerPrefill: request, view: "command", sidebarOpen: true });
+  };
+  return (
+    <div className="editor-empty">
+      <div className="stack first-use">
+        <div className="text-heading">Build something with your AI engineering team</div>
+        <p className="muted small">
+          Describe what to build, fix, refactor, test, or investigate. The Command
+          Center turns it into a reviewed plan before agents run anything.
+        </p>
+        <div className="row wrap gap4" aria-label="Example requests">
+          {STARTERS.map((example) => (
+            <button key={example} className="btn btn-small" onClick={() => startWith(example)}>
+              {example}
+            </button>
+          ))}
+        </div>
+        <div className="row wrap gap4">
+          <button className="btn btn-small btn-primary" onClick={() => setWorkspace({ view: "command", sidebarOpen: true })}>
+            Start with a request
+          </button>
+          <button className="btn btn-small" onClick={() => setWorkspace({ view: "office", sidebarOpen: true })}>
+            Open Agents
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EditorArea() {
   const tabs = useStore((s) => s.tabs);
   const activePath = useStore((s) => s.activePath);
@@ -39,7 +79,9 @@ export default function EditorArea() {
           );
         })}
       </div>
-      {active === null && <div className="editor-empty">Open a file from the explorer, or press Ctrl+P.</div>}
+      {active === null && (tabs.length === 0 ? <FirstUse /> : (
+        <div className="editor-empty">Open a file from the explorer, or press Ctrl+P.</div>
+      ))}
       {active?.kind === "file" && <CodeEditor tab={active as FileTab} />}
       {active?.kind === "diff" && (
         <DiffEditor
