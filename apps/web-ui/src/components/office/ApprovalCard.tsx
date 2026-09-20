@@ -15,7 +15,7 @@ const RISK_CLASS: Record<string, string> = {
   low: "muted",
 };
 
-export default function ApprovalCard() {
+export default function ApprovalCard({ taskIds }: { taskIds?: string[] | null }) {
   const hitl = useOffice((s) => s.hitl);
   const tasks = useOffice((s) => s.tasks);
   const setOffice = useOffice((s) => s.set);
@@ -24,6 +24,8 @@ export default function ApprovalCard() {
   const pending = useRef(new Set<string>());
   const [busy, setBusy] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const scoped = taskIds ? new Set(taskIds) : null;
+  const requests = scoped ? hitl.filter((h) => h.task_id !== null && scoped.has(h.task_id)) : hitl;
   const decide = async (id: string, decision: "approved" | "rejected") => {
     if (pending.current.has(id)) return;
     pending.current.add(id);
@@ -34,12 +36,16 @@ export default function ApprovalCard() {
     finally { pending.current.delete(id); setBusy([...pending.current]); }
   };
 
-  if (hitl.length === 0) return null;
+  if (requests.length === 0) {
+    return scoped ? (
+      <div className="muted small">No pending approvals for this agent's tasks.</div>
+    ) : null;
+  }
 
   return (
     <div className="stack">
       {error && <p className="error-text" role="alert">{error}</p>}
-      {hitl.map((request) => (
+      {requests.map((request) => (
         <div key={request.id} className="approval-card">
           <div className="row spread">
             <span className={`risk-badge ${RISK_CLASS[request.risk] ?? "muted"}`}>

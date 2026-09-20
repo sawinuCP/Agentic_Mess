@@ -4,6 +4,8 @@
 // shows the project overview (never a chatbot).
 
 import { currentTaskForAgent, elapsedSince, firstAgentEvent, formatTokens, validCosts } from "../../office/selectors";
+import { agentAttention } from "../../office/agentStates";
+import AgentStatusLabel from "../../office/AgentStatusLabel";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import { StatusLabel } from "../shell/UiState";
@@ -21,26 +23,37 @@ function AgentContext({ agentId }: { agentId: string }) {
   const agents = useOffice((s) => s.agents);
   const tasks = useOffice((s) => s.tasks);
   const events = useOffice((s) => s.events);
+  const hitl = useOffice((s) => s.hitl);
+  const worktrees = useOffice((s) => s.worktrees);
   const setOffice = useOffice((s) => s.set);
   const setFn = useStore((s) => s.set);
   const agent = agents.find((a) => a.id === agentId);
   if (!agent) return <p className="muted">Agent no longer recorded.</p>;
   const current = currentTaskForAgent(tasks, agent.id);
   const since = firstAgentEvent(events, agent.id);
-  const openOffice = (): void => {
+  const attention = agentAttention(agent.id, tasks, hitl);
+  const last = events.find((e) => e.agent_id === agent.id);
+  const ownedIds = new Set(
+    tasks.filter((t) => t.attempts.some((a) => a.agent_id === agent.id)).map((t) => t.id),
+  );
+  const branch = worktrees.find((w) => w.task_id !== null && ownedIds.has(w.task_id))?.branch ?? null;
+  const openDetail = (): void => {
     setFn({ view: "office", sidebarOpen: true });
     setOffice({ tab: "team", selectedAgentId: agent.id });
   };
   return (
     <div className="stack">
       <div className="text-heading wrap-break">{agent.name}</div>
-      <StatusLabel state={agent.state} />
+      <AgentStatusLabel state={agent.state} />
+      {attention && <div className="small warn" role="note">⚠ {attention.detail}</div>}
       <Row label="Role">{agent.role}</Row>
       {agent.model && <Row label="Model"><span className="mono">{agent.model}</span></Row>}
       <Row label="Current task">{current ? current.title : "—"}</Row>
-      <Row label="Active for">{since ? elapsedSince(since.occurred_at) : "—"}</Row>
+      {last && <Row label="Activity"><span className="truncate">{last.event_type.replaceAll("_", " ").toLowerCase()}</span></Row>}
+      {branch && <Row label="Branch"><span className="mono truncate">{branch}</span></Row>}
+      <Row label="Active for">{since && elapsedSince(since.occurred_at) ? elapsedSince(since.occurred_at) : "—"}</Row>
       <div className="row">
-        <button className="btn btn-small" onClick={openOffice}>Open in Agents</button>
+        <button className="btn btn-small" onClick={openDetail}>Open detail</button>
       </div>
     </div>
   );

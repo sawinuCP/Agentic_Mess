@@ -25,11 +25,15 @@ import {
   validCosts,
   waitingReason,
 } from "../../office/selectors";
+import { agentAttention } from "../../office/agentStates";
+import AgentStatusLabel from "../../office/AgentStatusLabel";
 import { useBulkAction, type BulkAction } from "../../office/useBulkAction";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
-import { StatusLabel } from "../shell/UiState";
-import { UiState } from "../shell/UiState";
+import { confirmAction } from "../shell/confirm";
+import { StatusLabel, UiState } from "../shell/UiState";
+import ArtifactMetaView from "../shared/ArtifactMeta";
+import ApprovalCard from "./ApprovalCard";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -50,6 +54,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
   const worktreesLoading = useOffice((s) => s.worktreesLoading);
   const costs = useOffice((s) => s.costs);
   const taskCosts = useOffice((s) => s.taskCosts);
+  const hitl = useOffice((s) => s.hitl);
   const setOffice = useOffice((s) => s.set);
   const loadMessages = useOffice((s) => s.loadMessages);
   const loadWorktrees = useOffice((s) => s.loadWorktrees);
@@ -162,7 +167,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           >
             Ask AI
           </button>
-          <StatusLabel state={agent.state} />
+          <AgentStatusLabel state={agent.state} />
         </span>
       </div>
       <div>
@@ -171,6 +176,11 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           {agent.role}
           {agent.model ? ` · ${agent.model}` : ""}
         </div>
+        {agentAttention(agent.id, tasks, hitl) && (
+          <div className="small warn" role="note">
+            ⚠ {agentAttention(agent.id, tasks, hitl)?.detail}
+          </div>
+        )}
       </div>
 
       <Section title="Overview">
@@ -192,76 +202,7 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           {agent.capabilities.length > 0 && (
             <span className="muted">Capabilities: {agent.capabilities.join(", ")}</span>
           )}
-          {agentWorktrees.length > 0 && (
-            <span>
-              Worktree:{" "}
-              <span className="mono">{agentWorktrees[0].branch}</span>{" "}
-              <span className="muted">({agentWorktrees[0].integration_status})</span>
-            </span>
-          )}
         </div>
-      </Section>
-
-      <Section title="Sessions">
-        <div className="small muted">
-          Runtime-owned session history, newest first. Stale sessions are marked
-          lost automatically; release a stuck <em>running</em> session here only
-          if supervision has not caught up yet.
-        </div>
-        {sessions === null && !sessionsError && (
-          <div className="muted small">Loading sessions…</div>
-        )}
-        {sessionsError && (
-          <div className="error-text small" role="alert">{sessionsError}</div>
-        )}
-        {sessions !== null && sessions.length === 0 && (
-          <div className="muted small">No sessions recorded for this agent.</div>
-        )}
-        {(sessions ?? []).slice(0, 6).map((session) => (
-          <div key={session.id} className="small mono" title={`session ${session.id}`}>
-            {session.runtime} · {session.status}
-            {session.heartbeat_at ? ` · beat ${new Date(session.heartbeat_at).toLocaleTimeString()}` : ""}
-            {session.finished_at ? ` · ended ${new Date(session.finished_at).toLocaleTimeString()}` : ""}
-            {session.status === "running" && (
-              <button
-                className="btn btn-small"
-                title="End this session now (supervision marks stale sessions lost automatically)"
-                aria-label={`Release session ${session.id.slice(0, 8)}`}
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      "End this session now? The agent's recorded work is preserved; " +
-                        "use this only for a session stuck running.",
-                    )
-                  ) {
-                    return;
-                  }
-                  void endSession(session.id)
-                    .then((ended) =>
-                      setSessions((rows) =>
-                        (rows ?? []).map((row) => (row.id === ended.id ? ended : row)),
-                      ),
-                    )
-                    .catch((err: unknown) => setSessionsError(errorMessage(err)));
-                }}
-              >
-                Release
-              </button>
-            )}
-          </div>
-        ))}
-      </Section>
-
-      <Section title="Activity">
-        {activity.length === 0 && <div className="muted small">No events for this agent in the feed.</div>}
-        <ul className="activity-list small">
-          {activity.map((e) => (
-            <li key={e.id} title={new Date(e.occurred_at).toLocaleString()}>
-              <span className="mono muted">{new Date(e.occurred_at).toLocaleTimeString()}</span>{" "}
-              {describeEvent(e)}
-            </li>
-          ))}
-        </ul>
       </Section>
 
       <Section title={`Tasks (${owned.length})`}>
@@ -292,6 +233,46 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
             </div>
           </div>
         ))}
+      </Section>
+
+      <Section title="Activity">
+        {activity.length === 0 && <div className="muted small">No events for this agent in the feed.</div>}
+        <ul className="activity-list small">
+          {activity.map((e) => (
+            <li key={e.id} title={new Date(e.occurred_at).toLocaleString()}>
+              <span className="mono muted">{new Date(e.occurred_at).toLocaleTimeString()}</span>{" "}
+              {describeEvent(e)}
+            </li>
+          ))}
+        </ul>
+        <button
+          className="btn btn-small"
+          onClick={() => setOffice({ tab: "timeline", activityFilter: { agentId: agent.id, taskId: null } })}
+        >
+          View full activity
+        </button>
+      </Section>
+
+      <Section title="Dependencies">
+        {depLines.length === 0 && <div className="muted small">Nothing waiting on dependencies.</div>}
+        {depLines.map(({ task: t, reason }) => (
+          <div key={t.id} className="small">
+            <button className="link" onClick={() => jumpToTask(t.id)}>{t.title}</button>
+            <span className="warn"> — {reason}</span>
+          </div>
+        ))}
+        {depLines.length > 0 && (
+          <button
+            className="btn btn-small"
+            title="Open the execution graph for full causal inspection"
+            onClick={() => {
+              setOffice({ selectedAgentId: agent.id });
+              useStore.getState().set({ view: "graph", sidebarOpen: true });
+            }}
+          >
+            Open in graph
+          </button>
+        )}
       </Section>
 
       <Section title="Tools">
@@ -328,12 +309,14 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
           <div className="muted small">No tests, artifacts, or validation evidence recorded.</div>
         )}
         {evidenceIds.length > 0 && (
-          <div className="small">
-            {evidenceIds.length} artifact(s):{" "}
-            <span className="mono muted">
-              {evidenceIds.slice(0, 8).map((id) => id.slice(0, 8)).join(", ")}
-              {evidenceIds.length > 8 ? "…" : ""}
-            </span>
+          <div className="small stack">
+            <span className="muted">{evidenceIds.length} artifact(s) recorded:</span>
+            {evidenceIds.slice(0, 8).map((id) => (
+              <ArtifactMetaView key={id} artifactId={id} />
+            ))}
+            {evidenceIds.length > 8 && (
+              <span className="muted small">+{evidenceIds.length - 8} more in History</span>
+            )}
           </div>
         )}
         {validationEvents.map((e) => (
@@ -344,14 +327,32 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
         ))}
       </Section>
 
-      <Section title="Dependencies">
-        {depLines.length === 0 && <div className="muted small">Nothing waiting on dependencies.</div>}
-        {depLines.map(({ task: t, reason }) => (
-          <div key={t.id} className="small">
-            <button className="link" onClick={() => jumpToTask(t.id)}>{t.title}</button>
-            <span className="warn"> — {reason}</span>
+      <Section title="Worktree">
+        {agentWorktrees.length === 0 && (
+          <div className="muted small">No isolated worktree recorded for this agent's tasks.</div>
+        )}
+        {agentWorktrees.slice(0, 4).map((w) => (
+          <div key={w.id} className="small">
+            <span className="mono">{w.branch}</span>{" "}
+            <span className="muted">({w.integration_status})</span>
           </div>
         ))}
+        {agentWorktrees.length > 0 && (
+          <button
+            className="btn btn-small"
+            title="Open the execution graph focused on this agent"
+            onClick={() => {
+              setOffice({ selectedAgentId: agent.id });
+              useStore.getState().set({ view: "graph", sidebarOpen: true });
+            }}
+          >
+            Open changes in graph
+          </button>
+        )}
+      </Section>
+
+      <Section title="Approvals">
+        <ApprovalCard taskIds={[...ownedIds]} />
       </Section>
 
       <Section title="Communication">
@@ -390,6 +391,55 @@ export default function AgentDetail({ agentId }: { agentId: string }) {
               ))}
             </ol>
           </details>
+        ))}
+      </Section>
+
+      <Section title="Sessions">
+        <div className="small muted">
+          Runtime-owned session history, newest first. Stale sessions are marked
+          lost automatically; release a stuck <em>running</em> session here only
+          if supervision has not caught up yet.
+        </div>
+        {sessions === null && !sessionsError && (
+          <div className="muted small">Loading sessions…</div>
+        )}
+        {sessionsError && (
+          <div className="error-text small" role="alert">{sessionsError}</div>
+        )}
+        {sessions !== null && sessions.length === 0 && (
+          <div className="muted small">No sessions recorded for this agent.</div>
+        )}
+        {(sessions ?? []).slice(0, 6).map((session) => (
+          <div key={session.id} className="small mono" title={`session ${session.id}`}>
+            {session.runtime} · {session.status}
+            {session.heartbeat_at ? ` · beat ${new Date(session.heartbeat_at).toLocaleTimeString()}` : ""}
+            {session.finished_at ? ` · ended ${new Date(session.finished_at).toLocaleTimeString()}` : ""}
+            {session.status === "running" && (
+              <button
+                className="btn btn-small"
+                title="End this session now (supervision marks stale sessions lost automatically)"
+                aria-label={`Release session ${session.id.slice(0, 8)}`}
+                onClick={() => {
+                  void confirmAction({
+                    title: `Release session ${session.id.slice(0, 8)}?`,
+                    body: "The agent's recorded work is preserved; use this only for a session stuck running.",
+                    confirmLabel: "Release",
+                  }).then((ok) => {
+                    if (!ok) return;
+                    void endSession(session.id)
+                      .then((ended) =>
+                        setSessions((rows) =>
+                          (rows ?? []).map((row) => (row.id === ended.id ? ended : row)),
+                        ),
+                      )
+                      .catch((err: unknown) => setSessionsError(errorMessage(err)));
+                  });
+                }}
+              >
+                Release
+              </button>
+            )}
+          </div>
         ))}
       </Section>
 
