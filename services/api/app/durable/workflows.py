@@ -55,6 +55,7 @@ class TaskExecutionWorkflow:
     def __init__(self) -> None:
         self._paused = False
         self._dependency_completed = False
+        self._current_attempt_id: str | None = None
 
     @workflow.signal
     def pause(self) -> None:
@@ -146,6 +147,94 @@ class TaskExecutionWorkflow:
         await self._set_status(task_id, "running")
         return True
 
+    async def _reconcile_terminal_failure(
+        self, task_id: str, attempt_id: str | None, error: BaseException
+    ) -> None:
+        """Best-effort terminal marking when the run body escapes with an error.
+
+        A failed Temporal run must never orphan its task in a non-terminal
+        state with zero product signal: reload fresh state, finish an
+        unfinished attempt, record the terminal failure (idempotent), move the
+        task to failed (cancelled when it never started), and emit TASK_FAILED.
+        Every step is individually guarded — cleanup must never mask the
+        original failure, which is re-raised afterwards so the Temporal run
+        status stays truthful. Terminal task states always win (never rewrite
+        completed/cancelled/failed). Cancellation/timeout/terminate paths
+        raise CancelledError (BaseException), not Exception, and are therefore
+        outside this net — documented limitation, not silent handling.
+        """
+        detail = f"{type(error).__name__}: {error}"[:500]
+        try:
+            task = await workflow.execute_activity(
+                "load_task_activity",
+                task_id,
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_DB,
+            )
+        except Exception:
+            return
+        if task.get("status") in ("completed", "cancelled", "failed"):
+            return
+        target = "cancelled" if task.get("status") == "pending" else "failed"
+        attempt_outcome = "cancelled" if target == "cancelled" else "failed"
+        if attempt_id is not None:
+            with contextlib.suppress(Exception):
+                current = next(
+                    (
+                        a
+                        for a in task.get("attempts", [])
+                        if a.get("id") == attempt_id and a.get("outcome") is None
+                    ),
+                    None,
+                )
+                if current is not None:
+                    await workflow.execute_activity(
+                        "finish_attempt_activity",
+                        {
+                            "attempt_id": attempt_id,
+                            "outcome": attempt_outcome,
+                            "failure_class": "TASK_FAILURE",
+                            "failure_detail": detail,
+                            "evidence_artifact_ids": [],
+                        },
+                        start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                        retry_policy=RETRY_DB,
+                    )
+        with contextlib.suppress(Exception):
+            await workflow.execute_activity(
+                "terminal_failure_activity",
+                {
+                    "idempotency_key": f"reconcile:{task_id}",
+                    "task_id": task_id,
+                    "failure_class": "TASK_FAILURE",
+                    "failure_detail": detail,
+                    "evidence_artifact_ids": [],
+                    "recommended_action": (
+                        "The execution run failed unexpectedly; inspect the "
+                        "failure detail, then retry the task"
+                    ),
+                },
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=RETRY_DB,
+            )
+        with contextlib.suppress(Exception):
+            # ready → failed is unlawful per the task matrix; route through
+            # running exactly like the normal entry path does.
+            if task.get("status") == "ready" and target == "failed":
+                await self._set_status(task_id, "running")
+            await self._set_status(task_id, target)
+        with contextlib.suppress(Exception):
+            await self._record(
+                task_id,
+                "TASK_FAILED",
+                {
+                    "reconciled": True,
+                    "failure_class": "TASK_FAILURE",
+                    "failure_detail": detail,
+                    "target_status": target,
+                },
+            )
+
     @workflow.run
     async def run(self, input: TaskExecutionInput) -> dict:
         task = await workflow.execute_activity(
@@ -154,6 +243,13 @@ class TaskExecutionWorkflow:
             start_to_close_timeout=_ACTIVITY_TIMEOUT,
             retry_policy=RETRY_DB,
         )
+        try:
+            return await self._execute(input, task)
+        except Exception as exc:
+            await self._reconcile_terminal_failure(input.task_id, self._current_attempt_id, exc)
+            raise
+
+    async def _execute(self, input: TaskExecutionInput, task: dict[str, Any]) -> dict:
         retry_policy = task.get("retry_policy") or {}
         recovery_policy = task.get("recovery_policy") or {}
         max_attempts = max(1, min(int(retry_policy.get("max_attempts", 3)), 10))
@@ -186,6 +282,7 @@ class TaskExecutionWorkflow:
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=RETRY_DB,
             )
+            self._current_attempt_id = str(attempt["id"])
             agent = await workflow.execute_activity(
                 "start_agent_activity",
                 {

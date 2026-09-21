@@ -31,6 +31,18 @@ async def load_task_activity(task_id: str) -> dict[str, Any]:
         with factory() as session:
             task = load_task_row(session, uuid.UUID(task_id))
             settings = current_settings()
+            attempts = [
+                {
+                    "id": str(attempt.id),
+                    "attempt_number": attempt.attempt_number,
+                    "outcome": attempt.outcome,
+                }
+                for attempt in session.scalars(
+                    select(TaskAttempt)
+                    .where(TaskAttempt.task_id == task.id)
+                    .order_by(TaskAttempt.attempt_number)
+                ).all()
+            ]
             return {
                 "id": str(task.id),
                 "project_id": str(task.project_id) if task.project_id else None,
@@ -38,6 +50,7 @@ async def load_task_activity(task_id: str) -> dict[str, Any]:
                 "plan_id": str(task.plan_id) if task.plan_id else None,
                 "title": task.title,
                 "status": task.status,
+                "attempts": attempts,
                 "payload": task.payload or {},
                 "retry_policy": task.retry_policy or {},
                 "recovery_policy": {
