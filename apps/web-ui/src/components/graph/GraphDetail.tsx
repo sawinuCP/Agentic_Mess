@@ -520,7 +520,10 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
         </span>
       ) : null}
       {recovery && <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>}
-      {task && (task.status === "blocked" || task.status === "waiting") && waitingReason(task, tasks) && (
+      {/* §13: a live task with unresolved dependencies explains the wait — the
+          durable workflow parks dependency waits in `running` (DEPENDENCY_WAIT),
+          so the status alone must not gate the explanation. */}
+      {task && !["completed", "cancelled", "failed"].includes(task.status) && waitingReason(task, tasks) && (
         <span className="warn">{waitingReason(task, tasks)}</span>
       )}
       {task && task.attempts.length > 0 && (
@@ -548,7 +551,7 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
       )}
       {deps.length > 0 && (
         <span>
-          Depended on by:{" "}
+          Depends on:{" "}
           {deps.map((d, i) => (
             <span key={d.id}>
               {i > 0 && ", "}
@@ -560,7 +563,7 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
       )}
       {blockedBy.length > 0 && (
         <span>
-          Depends on:{" "}
+          Depended on by:{" "}
           {blockedBy.map((d, i) => (
             <span key={d.id}>
               {i > 0 && ", "}

@@ -158,7 +158,9 @@ def main():
             # Requirement detail: criteria, UNKNOWN honesty, no invented mapping.
             page.get_by_role("button", name="requirement: OAuth login, UNKNOWN", exact=True).click()
             expect(page.get_by_text("Users can log in with OAuth.", exact=False)).to_be_visible()
-            expect(page.get_by_text("Login works", exact=False)).to_be_visible()
+            # WhyPanel (UI-5) also names unknown criteria, so scope to the
+            # criteria summary row to stay strict-mode safe.
+            expect(page.locator("details summary", has_text="Login works")).to_be_visible()
             expect(page.get_by_text("stays UNKNOWN", exact=False)).to_be_visible()
             page.locator("details summary", has_text="Login works").click()
             expect(page.get_by_text("no criterion-level mapping", exact=False).first).to_be_visible()
@@ -166,7 +168,9 @@ def main():
             # Follow requirement → task → agent → evidence.
             page.get_by_role("button", name="Implement auth (running)", exact=True).click()
             expect(page.get_by_text("Agents:", exact=False)).to_be_visible()
-            page.locator(".graph-detail").get_by_role("button", name="Backend", exact=True).click()
+            # UI-5 attempt rows also link the agent (same destination), so
+            # pick the first match — outcome is identical either way.
+            page.locator(".graph-detail").get_by_role("button", name="Backend", exact=True).first.click()
             expect(page.get_by_text("Inspect in Office", exact=False)).to_be_visible()
 
             # Test → evidence metadata → file → editor.
