@@ -200,3 +200,62 @@ export function agentToolRuns(events: EventEntry[], agentId: string, limit = 5):
       taskId: e.task_id,
     }));
 }
+
+export interface EvidenceSource {
+  taskId: string;
+  taskTitle: string;
+  taskStatus: string;
+  attemptNumber: number;
+  agentId: string | null;
+}
+
+export interface EvidenceCriterion {
+  requirementId: string;
+  requirementTitle: string;
+  criterion: string;
+  verifiedAt: string | null;
+}
+
+/**
+ * Backward chain for one artifact (§15/F): which attempts recorded it
+ * (PERSISTED id lists) and which verified criteria bound it at verify time
+ * (PERSISTED validation rows). Anything absent stays absent — no guessing
+ * the "verifying attempt".
+ */
+export function evidenceSources(artifactId: string, tasks: TaskInfo[]): EvidenceSource[] {
+  const out: EvidenceSource[] = [];
+  for (const task of tasks) {
+    for (const attempt of task.attempts) {
+      if (attempt.evidence_artifact_ids.includes(artifactId)) {
+        out.push({
+          taskId: task.id,
+          taskTitle: task.title,
+          taskStatus: task.status,
+          attemptNumber: attempt.attempt_number,
+          agentId: attempt.agent_id,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+export function evidenceCriteria(
+  artifactId: string,
+  requirements: TraceabilityRequirement[],
+): EvidenceCriterion[] {
+  const out: EvidenceCriterion[] = [];
+  for (const req of requirements) {
+    for (const criterion of req.criteria ?? []) {
+      if (criterion.verification?.evidence_artifact_id === artifactId) {
+        out.push({
+          requirementId: req.id,
+          requirementTitle: req.title,
+          criterion: criterion.description,
+          verifiedAt: criterion.verification.verified_at,
+        });
+      }
+    }
+  }
+  return out;
+}

@@ -17,7 +17,7 @@ import {
   type GraphAuthority,
   type GraphNode,
 } from "../../graph/build";
-import { agentAttempts, agentToolRuns, attemptRows } from "../../graph/explain";
+import { agentAttempts, agentToolRuns, attemptRows, evidenceCriteria, evidenceSources } from "../../graph/explain";
 import { currentTaskForAgent, recoveryState, waitingReason } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
@@ -154,10 +154,16 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
           </button>
           {outgoing("verifies").length > 0 && <span className="muted">Referenced by evidence below.</span>}
           {incoming("changed").map((c) => (
-            <Jump key={c.id} label={`Commit: ${c.label}`} title="Inspect the commit" onJump={() => onSelect(c)} />
+            <span key={c.id}>
+              <Jump label={`Commit: ${c.label}`} title="Inspect the commit" onJump={() => onSelect(c)} />{" "}
+              <AuthorityTag authority="event-derived" reason="File path appeared in the commit's recorded event payload." />
+            </span>
           ))}
           {incoming("targeted").map((t) => (
-            <Jump key={t.id} label={`Test run: ${t.label}`} title="Inspect the test run" onJump={() => onSelect(t)} />
+            <span key={t.id}>
+              <Jump label={`Test run: ${t.label}`} title="Inspect the test run" onJump={() => onSelect(t)} />{" "}
+              <AuthorityTag authority="event-derived" reason="File path appeared in the test run's recorded event payload." />
+            </span>
           ))}
         </div>
       )}
@@ -184,18 +190,21 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
           <span className="muted">{new Date(String(node.metadata.occurredAt)).toLocaleString()}</span>
           <span className="muted">Project test activity is unattributed server-side; task links appear only where recorded.</span>
           {outgoing("produced").map((e) => (
-            <Jump key={e.id} label={`Evidence: ${e.label}`} title="Inspect the evidence" onJump={() => onSelect(e)} />
+            <span key={e.id}>
+              <Jump label={`Evidence: ${e.label}`} title="Inspect the evidence" onJump={() => onSelect(e)} />{" "}
+              <AuthorityTag authority="event-derived" reason="Artifact id appeared in the tool run's recorded event payload." />
+            </span>
           ))}
         </div>
       )}
       {node.type === "evidence" && (
-        <div className="stack small">
-          <span className="mono muted" title={String(node.metadata.artifactId)}>artifact {String(node.metadata.artifactId).slice(0, 8)}…</span>
-          <EvidenceMeta artifactId={String(node.metadata.artifactId)} />
-          {outgoing("verifies").map((r) => (
-            <Jump key={r.id} label={`Verifies: ${r.label}`} title="Inspect the requirement" onJump={() => onSelect(r)} />
-          ))}
-        </div>
+        <EvidenceInvestigation
+          node={node}
+          tasks={tasks}
+          traceability={traceability}
+          graph={graph}
+          onSelect={onSelect}
+        />
       )}
     </aside>
   );
@@ -203,6 +212,74 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
 
 function asPaths(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/** Evidence backward chain (§15/F): attempts that recorded it, criteria that bound it. */
+function EvidenceInvestigation({ node, tasks, traceability, graph, onSelect }: {
+  node: GraphNode;
+  tasks: TaskInfo[];
+  traceability: TraceabilityReport;
+  graph: BuiltGraph;
+  onSelect: (node: GraphNode | null) => void;
+}) {
+  const artifactId = String(node.metadata.artifactId);
+  const sources = evidenceSources(artifactId, tasks);
+  const criteria = evidenceCriteria(artifactId, traceability.requirements);
+  const find = (id: string): GraphNode | null => graph.nodes.find((n) => n.id === id) ?? null;
+  return (
+    <div className="stack small">
+      <span className="mono muted" title={artifactId}>artifact {artifactId.slice(0, 8)}…</span>
+      <EvidenceMeta artifactId={artifactId} />
+      <span className="muted">Claim ≠ result ≠ evidence ≠ verification: this artifact is evidence only.</span>
+      {sources.length > 0 ? (
+        <span>
+          Recorded by:{" "}
+          {sources.map((s, i) => {
+            const target = find(`task:${s.taskId}`);
+            return (
+              <span key={`${s.taskId}-${s.attemptNumber}`}>
+                {i > 0 && ", "}
+                {target ? (
+                  <button
+                    className="link"
+                    title={`Attempt #${s.attemptNumber} on ${s.taskTitle} (${s.taskStatus})`}
+                    onClick={() => onSelect(target)}
+                  >
+                    {s.taskTitle} #{s.attemptNumber}
+                  </button>
+                ) : (
+                  `${s.taskTitle} #${s.attemptNumber}`
+                )}
+              </span>
+            );
+          })}{" "}
+          <AuthorityTag authority="persisted" reason="Artifact id listed on durable attempt rows." />
+        </span>
+      ) : (
+        <span className="muted">No recording attempt found in the loaded tasks — see Timeline for older events.</span>
+      )}
+      {criteria.map((c) => {
+        const target = find(`req:${c.requirementId}`);
+        return (
+          <span key={`${c.requirementId}-${c.criterion}`}>
+            Bound at verify time to criterion “{c.criterion}” (
+            {target ? (
+              <button className="link" title={`Inspect ${c.requirementTitle}`} onClick={() => onSelect(target)}>
+                {c.requirementTitle}
+              </button>
+            ) : (
+              c.requirementTitle
+            )}
+            {c.verifiedAt ? `, verified ${new Date(c.verifiedAt).toLocaleString()}` : ""}){" "}
+            <AuthorityTag authority="persisted" reason="Validation row binds this artifact at verify time." />
+          </span>
+        );
+      })}
+      {criteria.length === 0 && (
+        <span className="muted">Not bound to any verified criterion — recorded evidence, not verification.</span>
+      )}
+    </div>
+  );
 }
 
 /** Agent causal investigation (§11): connections only, detail stays in the Office. */
@@ -343,13 +420,13 @@ function RequirementDetail({ node, tasks, agents, rawRequirements, traceability,
           </div>
         </details>
       ))}
-      <div className="strong">Tasks ({linkedTasks.length})</div>
+      <div className="strong">Tasks ({linkedTasks.length}) <AuthorityTag authority="persisted" reason="Task rows carry this requirement's id (durable foreign key)." /></div>
       {linkedTasks.map((t) => (
         <button key={t.id} className="link" onClick={() => onSelect(t)}>
           {t.label} ({t.status.replaceAll("_", " ")})
         </button>
       ))}
-      <div className="strong">Agents ({agentSet.size})</div>
+      <div className="strong">Agents ({agentSet.size}) <AuthorityTag authority="persisted" reason="Agents recorded on the tasks' durable attempt rows." /></div>
       {[...agentSet.values()].map((a) => (
         <button key={a.id} className="link" onClick={() => onSelect(a)}>
           {a.label} ({a.status.replaceAll("_", " ")})

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EventEntry, TaskInfo } from "../types";
-import { agentAttempts, agentToolRuns, attemptRows, whyRequirement } from "./explain";
+import { agentAttempts, agentToolRuns, attemptRows, evidenceCriteria, evidenceSources, whyRequirement } from "./explain";
 import { task as makeTask, requirement as makeRequirement, agent as makeAgent } from "./testFixtures";
 
 describe("whyRequirement", () => {
@@ -140,5 +140,39 @@ describe("agentToolRuns", () => {
     expect(runs.map((r) => r.tool)).toEqual(["shell", "test"]);
     expect(runs[0]).toMatchObject({ exitCode: 1, path: null });
     expect(agentToolRuns([toolEvent()], "a1", 0)).toHaveLength(0);
+  });
+});
+
+describe("evidenceSources / evidenceCriteria", () => {
+  const tasks: TaskInfo[] = [makeTask({
+    attempts: [{
+      attempt_number: 3, agent_id: "a1", outcome: "success",
+      evidence_artifact_ids: ["art9"], failure_class: null, failure_detail: null,
+    }],
+  })];
+  const reqs = [makeRequirement({
+    status: "VERIFIED",
+    criteria: [{
+      id: "c1", description: "EPF", kind: "command", mandatory: true, state: "verified",
+      verification: {
+        validation_id: "v1", verified_at: "2026-09-21T10:00:00Z", status: "passed",
+        evidence_artifact_id: "art9", task_id: "t1",
+        source_head_sha: null, source_branch: null, source_dirty: null,
+      },
+    }],
+  })];
+
+  it("walks evidence backwards to attempts and criteria only where recorded", () => {
+    const sources = evidenceSources("art9", tasks);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ taskId: "t1", taskTitle: "Build auth", attemptNumber: 3, agentId: "a1" });
+    const criteria = evidenceCriteria("art9", reqs);
+    expect(criteria).toHaveLength(1);
+    expect(criteria[0]).toMatchObject({ requirementId: "r1", criterion: "EPF" });
+  });
+
+  it("stays empty for unrecorded artifacts", () => {
+    expect(evidenceSources("nope", tasks)).toHaveLength(0);
+    expect(evidenceCriteria("nope", reqs)).toHaveLength(0);
   });
 });
