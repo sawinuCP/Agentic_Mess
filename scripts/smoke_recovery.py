@@ -13,6 +13,7 @@ evidence (REC-003) instead of looping.
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import time
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000"
+BASE = os.environ.get("SMOKE_BASE_URL", "http://localhost:8000")
 
 
 def _events(client: httpx.Client, project_id: str, event_type: str) -> list[dict]:
@@ -95,11 +96,16 @@ def main() -> int:
     print("[2] scenario A: transient failure retried with backoff and completed")
 
     # --- Scenario B: exhausted ladder escalates to replan + terminal -----------
+    # Uses a TIMEOUT failure (hanging command + short timeout_seconds): TIMEOUT
+    # has no last-attempt specialization, so the ladder runs the full budget
+    # (retry_then_replan) and ends at escalate_or_replan (REC-002/REC-003).
+    # (TASK_FAILURE would take the designed spawn_debugger branch instead —
+    # 1 parent attempt + Debug child + terminal — which is a different ladder.)
     requirement2 = client.post(
         f"/api/projects/{project_id}/requirements",
         json={
             "title": "Exhausted recovery",
-            "description": "Always fails; must replan terminally.",
+            "description": "Always times out; must replan terminally.",
             "criteria": [{"description": "never succeeds", "kind": "command"}],
         },
     ).json()
@@ -111,7 +117,14 @@ def main() -> int:
                 {
                     "title": "Doomed command",
                     "request": "Run the doomed command",
-                    "payload": {"command": [sys.executable, "-c", "import sys; sys.exit(2)"]},
+                    "payload": {
+                        "command": [
+                            sys.executable,
+                            "-c",
+                            "import time; time.sleep(30)",
+                        ],
+                        "timeout_seconds": 10,
+                    },
                     "retry_policy": {"max_attempts": 2, "backoff_seconds": 1},
                 }
             ],

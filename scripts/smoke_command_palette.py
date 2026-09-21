@@ -107,7 +107,7 @@ def main() -> None:
             expect(rows.first).not_to_contain_text("Open a project first")
             page.keyboard.press("Enter")
             expect(page.locator(".command-palette")).to_have_count(0)
-            explorer_btn = page.locator('.activity-btn[title="Explorer"]')
+            explorer_btn = page.locator('.activity-btn[title^="Workspace"]')
             expect(explorer_btn).to_have_class(re.compile(r"\bactive\b"))
 
             # Toggle closed again with Ctrl+K.

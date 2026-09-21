@@ -91,7 +91,7 @@ export default function RequirementsView() {
     ),
     [traceability, statusFilter],
   );
-  const selected = traceability?.requirements.find((r) => r.id === selectedRequirementId)
+  const selected = (traceability?.requirements ?? []).find((r) => r.id === selectedRequirementId)
     ?? requirements[0] ?? null;
   const infoById = useMemo(() => new Map((infos ?? []).map((i) => [i.id, i])), [infos]);
   const coverage = traceability?.coverage;
@@ -161,7 +161,7 @@ export default function RequirementsView() {
         <ul className="plain-list req-list" aria-label={`${requirements.length} requirements`}>
           {requirements.length === 0 && (
             <li className="muted small pad">
-              {traceability && traceability.requirements.length === 0 ? (
+              {traceability && (traceability.requirements ?? []).length === 0 ? (
                 <span>
                   No requirements yet. Requirements are registered by planning flows,{" "}
                   or <button className="link" onClick={() => setCreating(true)}>create the first one</button>.

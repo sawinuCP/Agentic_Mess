@@ -4,7 +4,14 @@
 // roving focus. No hover-only controls.
 
 import { activitySummary, agentAttention, agentStatus } from "./agentStates";
-import { bulkEligible, currentTaskForAgent, elapsedSince, firstAgentEvent, tasksForAgent } from "./selectors";
+import {
+  agentWaitingReason,
+  bulkEligible,
+  currentTaskForAgent,
+  elapsedSince,
+  firstAgentEvent,
+  tasksForAgent,
+} from "./selectors";
 import { useBulkAction } from "./useBulkAction";
 import type { AgentInfo, EventEntry, HitlRequestInfo, TaskInfo, WorktreeInfo } from "../types";
 import { useOffice } from "../state/officeStore";
@@ -23,6 +30,7 @@ export default function AgentRow({ agent, tasks, events, hitl, worktrees }: {
   const owned = tasksForAgent(tasks, agent.id);
   const ownedIds = new Set(owned.map((t) => t.id));
   const attention = agentAttention(agent.id, tasks, hitl, events);
+  const waiting = agentWaitingReason(agent.id, agent.state, tasks);
   const activity = activitySummary(agent.id, tasks, events);
   const since = firstAgentEvent(events, agent.id);
   const branches = [...new Set(
@@ -51,6 +59,9 @@ export default function AgentRow({ agent, tasks, events, hitl, worktrees }: {
           {agent.role}{agent.model ? ` · ${agent.model}` : ""}
           {current ? <> · <button className="link" onClick={() => setOffice({ selectedTaskId: current.id, selectedAgentId: null, tab: "team" })}>{current.title}</button></> : " · no task recorded"}
         </div>
+        {waiting && (
+          <div className="small warn" role="note">⏳ {waiting}</div>
+        )}
         {attention ? (
           <div className="small warn" role="note">⚠ {attention.detail}</div>
         ) : (

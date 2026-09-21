@@ -159,7 +159,7 @@ def main():
             page.route(f"{URL}/api/**", api)
             page.goto(URL)
             page.get_by_role("button", name="Local", exact=False).click()
-            page.get_by_role("button", name="Execution History", exact=True).click()
+            page.get_by_role("button", name="History", exact=True).click()
 
             # Live head page + bounded rendering.
             expect(page.get_by_text("● live", exact=True)).to_be_visible()
@@ -212,7 +212,7 @@ def main():
             page.get_by_role("button", name="GIT_COMMIT: Fix auth bug", exact=False).click()
             page.locator(".history-detail").get_by_role("button", name="auth.py", exact=True).click()
             expect(page.locator(".tab-strip").get_by_text("auth.py", exact=False)).to_be_visible()
-            page.get_by_role("button", name="Execution History", exact=True).click()
+            page.get_by_role("button", name="History", exact=True).click()
 
             # Replay: scrubber, speeds, reconstruction, return to live.
             page.get_by_role("button", name="Replay", exact=True).click()

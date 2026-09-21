@@ -22,8 +22,8 @@ from pathlib import Path
 import httpx
 from sqlalchemy import create_engine, text
 
-BASE = "http://localhost:8000"
-UI = "http://localhost:5173"
+BASE = os.environ.get("SMOKE_BASE_URL", "http://localhost:8000")
+UI = os.environ.get("SMOKE_UI_URL", "http://localhost:5173")
 WEB_UI = Path(__file__).resolve().parent.parent / "apps" / "web-ui"
 DATABASE_URL = os.environ.get(
     "HARNESS_DATABASE_URL",
@@ -66,8 +66,9 @@ def seed_hitl_request(project_id: str, task_id: str) -> str:
 
 
 def main() -> int:
+    ui_port = str(httpx.URL(UI).port or 5173)
     dev = subprocess.Popen(
-        ["npm", "run", "dev", "--", "--strictPort"],
+        ["npm", "run", "dev", "--", "--port", ui_port, "--strictPort"],
         cwd=str(WEB_UI),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -126,7 +127,7 @@ def run_ui_smoke() -> None:
             expect(page.locator(".status-bar")).to_be_visible(timeout=20000)
 
             # The HITL approval card renders even before switching to the office.
-            page.click("button.activity-btn >> nth=4")
+            page.click('button.activity-btn[title^="Agents"]')
             expect(page.locator(".office-title")).to_have_text("Engineering office")
             expect(page.locator(".approval-card")).to_contain_text(
                 "Approve the plan for the search feature?", timeout=15000

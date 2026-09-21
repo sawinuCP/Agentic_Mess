@@ -8,6 +8,7 @@ chains, agent detail, comms thread + message detail, grouped activity with
 filters, approval flow, and no page errors.
 Run from repository root: .venv\\Scripts\\python scripts\\smoke_agent_office.py
 """
+import re
 import shutil
 import subprocess
 import time
@@ -221,7 +222,9 @@ def main():
             page.route(f"{URL}/api/**", api)
             page.goto(URL)
             page.get_by_role("button", name="Local", exact=False).click()
-            page.get_by_title("Engineering office", exact=False).click()
+            expect(page.locator('button.activity-btn[title^="Agents"]')).to_be_visible()
+            page.wait_for_timeout(2500)
+            page.locator('button.activity-btn[title^="Agents"]').click()
 
             # Header: derived execution state, counts, cost snapshot.
             expect(page.get_by_text("Needs attention", exact=True)).to_be_visible()
@@ -229,23 +232,29 @@ def main():
             expect(page.get_by_text("45.0k tokens")).to_be_visible()
             expect(page.locator(".office-summary", has_text="Local")).to_be_visible()
 
-            # Team: live work, waiting reason, recovery badge.
-            expect(page.get_by_text("▸ Implement auth (running)")).to_be_visible()
-            expect(page.get_by_text("Waiting for Implement auth (running)", exact=False).first).to_be_visible()
-            expect(page.get_by_text("Recovery attempted · still failing", exact=False).first).to_be_visible()
+            # Team: live work, waiting reason, attention flags.
+            expect(page.locator(".agent-row", has_text="Backend").get_by_text("Implement auth", exact=True)).to_be_visible()
+            notes = page.locator(".agent-roster div[role=note]")
+            expect(notes).to_have_count(4)
+            expect(notes.nth(0)).to_contain_text("1 failed task")
+            expect(notes.nth(1)).to_contain_text("1 failed task")
+            expect(notes.nth(2)).to_contain_text("Waiting for Implement auth (running)")
+            expect(notes.nth(3)).to_contain_text("1 blocked task")
 
             # Bulk execution: one confirmation fans out over per-task endpoints.
             page.get_by_role("button", name="Pause 2 tasks", exact=True).click()
+            page.get_by_role("alertdialog").get_by_role("button", name="Pause", exact=True).click()
             expect(page.get_by_text("Pause signal sent to 2 of 2 tasks", exact=False)).to_be_visible()
             assert task_requests == [("POST", "tasks/t1/pause"), ("POST", "tasks/t2/pause")], task_requests
 
             # Retry re-dispatches the failed task through the execute endpoint.
             page.get_by_role("button", name="Retry task: Fix flaky test", exact=True).click()
+            page.get_by_role("alertdialog").get_by_role("button", name="Retry task", exact=True).click()
             expect(page.get_by_text("Retry dispatched.", exact=False)).to_be_visible()
             assert ("POST", "tasks/t3/execute") in task_requests, task_requests
 
             # Agent detail: overview, activity, tasks, tools, files, recovery, cost.
-            page.get_by_role("button", name="Inspect agent Backend", exact=True).click()
+            page.locator(".agent-row", has_text="Backend").get_by_role("button", name=re.compile(r"^Open agent Backend")).click()
             expect(page.get_by_text("Current work:", exact=False)).to_be_visible()
             expect(page.get_by_text("temporal-worker · running", exact=False)).to_be_visible()
             expect(page.get_by_text("local · ended", exact=False)).to_be_visible()
@@ -258,6 +267,7 @@ def main():
             # Agent scope: pause only this agent's eligible tasks (t1 + t3).
             page.locator(".agent-detail").get_by_role(
                 "button", name="Pause Backend's 2 eligible tasks", exact=True).click()
+            page.get_by_role("alertdialog").get_by_role("button", name="Pause", exact=True).click()
             expect(page.get_by_text("Pause signal sent to 2 of 2 tasks", exact=False)).to_be_visible()
             assert task_requests[-2:] == [("POST", "tasks/t1/pause"), ("POST", "tasks/t3/pause")], task_requests
             page.locator("details summary", has_text="Fix flaky test").click()
@@ -279,12 +289,12 @@ def main():
             page.get_by_role("button", name="← Back to team", exact=True).click()
 
             # Spawn agent: registry insert + roster refresh, no session started.
-            page.get_by_role("button", name="Spawn agent", exact=True).click()
-            spawn_dialog = page.get_by_role("dialog", name="Spawn agent")
+            page.get_by_role("button", name="New agent", exact=True).click()
+            spawn_dialog = page.get_by_role("dialog", name="New agent")
             spawn_dialog.get_by_label("Agent name").fill("Scout")
-            spawn_dialog.get_by_role("button", name="Spawn agent", exact=True).click()
+            spawn_dialog.get_by_role("button", name="Create agent", exact=True).click()
             expect(page.get_by_text("Scout", exact=False)).to_be_visible()
-            expect(page.get_by_text("No task recorded for this agent", exact=False)).to_be_visible()
+            expect(page.locator(".agent-row", has_text="Scout").get_by_text("no task recorded", exact=False)).to_be_visible()
 
             # New task: creation + roster refresh, starts pending.
             page.get_by_role("button", name="New task", exact=True).click()
@@ -294,14 +304,16 @@ def main():
             create_dialog.get_by_role("button", name="Create task", exact=True).click()
             expect(page.get_by_role("button", name="Inspect task Write docs", exact=True)).to_be_visible()
 
-            # Related requirement jumps to oversight coverage.
+            # Related requirement jumps to the requirements surface.
             page.get_by_role("button", name="Inspect task Integration tests", exact=True).click()
             page.get_by_role("button", name="linked to requirement", exact=False).click()
-            expect(page.get_by_text("Auth requirement", exact=False)).to_be_visible()
+            page.wait_for_timeout(1500)
             # Requirement explorer: expand, follow the linked task back.
-            page.get_by_text("Auth requirement", exact=False).click()
+            row = page.locator(".req-row", has_text="Auth requirement")
+            expect(row).to_be_visible()
+            row.click()
             expect(page.get_by_text("1 linked task", exact=False)).to_be_visible()
-            page.get_by_role("button", name="Integration tests", exact=True).click()
+            page.locator(".req-detail").get_by_role("button", name="Integration tests", exact=True).click()
             expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
 
             # Comms: thread + selectable message detail.
@@ -354,9 +366,13 @@ def main():
 
             # Approval: prominent card with task link, approve refreshes.
             # (The symbol jump left the sidebar on the explorer — go back.)
-            page.get_by_role("button", name="Engineering Office", exact=True).click()
+            page.locator('button.activity-btn[title^="Agents"]').click()
             page.get_by_role("button", name="Team", exact=False).click()
-            expect(page.get_by_label("approvals needed")).to_be_visible()
+            page.wait_for_timeout(1500)
+            # Approvals pill renders inside the office summary (DOM-truth wait:
+            # locator text matching is unreliable for this live-updating pill).
+            page.wait_for_function(
+                "document.querySelector('.office-summary')?.innerText.includes('1 approval')", timeout=8000)
             page.get_by_role("button", name="Approve", exact=True).click()
             expect(page.get_by_text("Approve local change?", exact=False)).to_have_count(0)
 

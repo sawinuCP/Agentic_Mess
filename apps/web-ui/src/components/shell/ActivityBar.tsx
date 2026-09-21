@@ -148,7 +148,7 @@ export default function ActivityBar({ onNavigate }: { onNavigate: () => void }) 
 
   const approvals = hitl.length;
   const problemCount = collectProblems({ tasks, output, hitl }).length;
-  const failedRequirements = useOffice((s) => s.traceability?.coverage.failed ?? 0);
+  const failedRequirements = useOffice((s) => s.traceability?.coverage?.failed ?? 0);
 
   const go = (door: NavDoor): void => {
     if (door.officeTab) setOffice({ tab: door.officeTab, selectedAgentId: null });

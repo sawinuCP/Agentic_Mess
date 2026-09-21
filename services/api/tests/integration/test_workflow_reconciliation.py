@@ -128,9 +128,7 @@ def _read(task_id: str) -> tuple[Task, list[TaskAttempt], list[str]]:
                 .where(TaskAttempt.task_id == task.id)
                 .order_by(TaskAttempt.attempt_number)
             ).all()
-            types = session.scalars(
-                select(Event.event_type).where(Event.task_id == task.id)
-            ).all()
+            types = session.scalars(select(Event.event_type).where(Event.task_id == task.id)).all()
             session.expunge_all()
             return task, list(attempts), [str(t) for t in types]
     finally:

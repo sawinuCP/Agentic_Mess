@@ -89,7 +89,7 @@ function RequirementContext({ requirementId }: { requirementId: string }) {
   const tasks = useOffice((s) => s.tasks);
   const setOffice = useOffice((s) => s.set);
   const setFn = useStore((s) => s.set);
-  const entry = traceability?.requirements.find((r) => r.id === requirementId);
+  const entry = (traceability?.requirements ?? []).find((r) => r.id === requirementId);
   if (!entry) return <p className="muted">Requirement not in the latest traceability snapshot.</p>;
   const linked = tasks.filter((t) => entry.task_ids.includes(t.id));
   const verifiedCount = entry.criteria.filter((c) => c.state === "verified").length;

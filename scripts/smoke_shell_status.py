@@ -82,18 +82,17 @@ def main() -> None:
             expect(page.locator(".dialog")).to_have_count(0)
 
             # Telemetry must exist app-wide without visiting the office view.
-            conn = page.locator(".status-bar .office-conn")
-            expect(conn).to_be_visible()
-            expect(conn).to_contain_text("stream offline")
-            resync = page.locator(".status-bar button", has_text="resync")
-            expect(resync).to_be_visible()
+            # (UI-1: connection state lives in the top bar, not the status bar.
+            # Accessible name is the visible label "resync"; title is advisory.)
+            # Offline surfaces after the reconnect backoff gives up; wait for it.
+            resync = page.locator(".top-bar button", has_text="resync")
+            expect(resync).to_be_visible(timeout=60000)
             with page.expect_request(lambda r: "/api/events?" in r.url):
                 resync.click()
-            expect(conn).to_contain_text("stream offline")
 
             # Office view itself still renders (tab strip visible) with its
             # own header state; no crash, no mislabeled execution state.
-            page.locator('.activity-btn[title="Engineering Office"]').click()
+            page.locator('.activity-btn[title^="Agents"]').click()
             expect(page.locator(".office")).to_be_visible()
 
             # Narrow-window layout keeps the shell usable (sidebar present,

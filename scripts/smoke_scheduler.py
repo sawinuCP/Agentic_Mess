@@ -9,6 +9,7 @@ Usage (with the API running and Temporal reachable):
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import time
@@ -17,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000"
+BASE = os.environ.get("SMOKE_BASE_URL", "http://localhost:8000")
 
 
 def _wait_task(client: httpx.Client, task_id: str, timeout: float = 240) -> dict:
@@ -84,7 +85,9 @@ def main() -> int:
     lease.raise_for_status()
     print(f"[3] lease held on branch/{lease_key}")
 
-    tick = client.post(f"/api/projects/{project_id}/scheduler/tick").json()
+    tick_resp = client.post(f"/api/projects/{project_id}/scheduler/tick")
+    tick_resp.raise_for_status()
+    tick = tick_resp.json()
     scheduled_titles = {entry["title"] for entry in tick["scheduled"]}
     skipped = {entry["title"]: entry["reason"] for entry in tick["skipped"]}
     assert scheduled_titles == {"Free scheduled work"}, f"unexpected schedule: {tick}"

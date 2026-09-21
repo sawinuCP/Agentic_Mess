@@ -381,7 +381,8 @@ export function collectAttention(
   const byId = new Map(tasks.map((t) => [t.id, t]));
   const requirementByTask = new Map<string, string>();
   for (const requirement of requirements) {
-    for (const taskId of requirement.task_ids) {
+    const taskIds = Array.isArray(requirement.task_ids) ? requirement.task_ids : [];
+    for (const taskId of taskIds) {
       if (!requirementByTask.has(taskId)) requirementByTask.set(taskId, requirement.title);
     }
   }
@@ -438,7 +439,8 @@ export function collectAttention(
     });
   }
   for (const requirement of requirements) {
-    const state = requirement.status.toUpperCase();
+    const state = String(requirement.status ?? "").toUpperCase();
+    const taskIds = Array.isArray(requirement.task_ids) ? requirement.task_ids : [];
     if (state === "FAILED") {
       items.push({
         kind: "requirement-failed",
@@ -449,7 +451,7 @@ export function collectAttention(
         requirementId: requirement.id,
       });
     } else if (state !== "VERIFIED") {
-      const linked = requirement.task_ids.map((id) => byId.get(id)).filter((t): t is TaskInfo => !!t);
+      const linked = taskIds.map((id) => byId.get(id)).filter((t): t is TaskInfo => !!t);
       if (linked.some((t) => t.status === "blocked" || t.status === "failed")) {
         items.push({
           kind: "requirement-blocked",

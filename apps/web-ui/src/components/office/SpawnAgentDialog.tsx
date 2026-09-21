@@ -1,4 +1,4 @@
-// Spawn-agent dialog (Wave 7 completion): creates a registry entry via the
+// New-agent dialog (Wave 7 completion): creates a registry entry via the
 // existing POST /api/projects/{id}/agents endpoint (verified side-effect
 // free: pure insert, no session, nothing scheduled). The dialog says so
 // plainly — agents do real work when tasks execute; a fresh entry waits in
@@ -46,11 +46,11 @@ export default function SpawnAgentDialog({ onClose }: { onClose: () => void }) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Spawn agent"
+        aria-label="New agent"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>Spawn agent</h2>
+        <h2>New agent</h2>
         <p className="muted small">
           Creates a registry entry (state <span className="mono">created</span>). No session
           starts and nothing is scheduled — the agent does real work when a task executes.
@@ -89,7 +89,7 @@ export default function SpawnAgentDialog({ onClose }: { onClose: () => void }) {
         </label>
         <div className="dialog-actions">
           <button className="button" disabled={!name.trim() || busy} onClick={() => void submit()}>
-            {busy ? "Spawning…" : "Spawn agent"}
+            {busy ? "Creating…" : "Create agent"}
           </button>
           <button className="button secondary" onClick={onClose}>Cancel</button>
         </div>

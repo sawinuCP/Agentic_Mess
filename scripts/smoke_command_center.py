@@ -177,7 +177,7 @@ def main():
             page.route(f"{URL}/api/**", api)
             page.goto(URL)
             page.get_by_role("button", name="Local", exact=False).click()
-            page.get_by_role("button", name="Command Center", exact=True).click()
+            page.get_by_role("button", name="Command", exact=True).click()
 
             # Header ledger + scoped implementation dispatch with live handoff.
             expect(page.get_by_text("12 model calls", exact=False)).to_be_visible()
@@ -185,21 +185,22 @@ def main():
             page.get_by_label("Engineering request").fill("Implement OAuth login")
             page.get_by_role("button", name="Ask", exact=True).click()
             expect(page.get_by_text("Implement: Implement OAuth login", exact=False)).to_be_visible()
-            expect(page.get_by_text("Confirmation required", exact=False)).to_be_visible()
+            expect(page.get_by_text("Consequential:", exact=False)).to_be_visible()
             page.get_by_role("button", name="Review & start", exact=True).click()
-            expect(page.get_by_text("Task created: Implement OAuth login", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Approve & run", exact=True).click()
+            expect(page.locator(".cc-dispatch").get_by_text("Task created: Implement OAuth login", exact=False)).to_be_visible()
             expect(page.get_by_text("Live status:", exact=False)).to_be_visible()
             assert ("tasks", posted[0][1]) and posted[0][1]["requirement_id"] == "r1", posted
 
             # Editor selection → palette → deterministic explanation.
-            page.get_by_role("button", name="Explorer", exact=True).click()
+            page.get_by_role("button", name="Workspace", exact=True).click()
             page.get_by_text("auth.py", exact=True).click()
             expect(page.locator(".tab-strip").get_by_text("auth.py", exact=False)).to_be_visible()
             page.locator(".monaco-editor textarea.inputarea").wait_for()
             expect(page.locator(".monaco-editor .view-lines")).to_be_visible()
             # Triple-click selects the whole first line regardless of cursor start.
             page.locator(".monaco-editor").click(position={"x": 100, "y": 20}, click_count=3)
-            page.get_by_role("button", name="Command Center", exact=True).click()
+            page.get_by_role("button", name="Command", exact=True).click()
             expect(page.locator(".cc-context").get_by_text("auth.py", exact=False).first).to_be_visible()
             # Note: Monaco swallows Ctrl+K as a chord prefix, so the palette
             # opens here via its activity button (documented limitation).
@@ -217,7 +218,10 @@ def main():
             page.get_by_label("Engineering request").fill("Run the tests")
             page.get_by_role("button", name="Ask", exact=True).click()
             page.get_by_role("button", name="Review & start", exact=True).click()
-            expect(page.get_by_text("Tests passed", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Approve & run", exact=True).click()
+            page.wait_for_timeout(4000)
+            Path("C:\\Users\\Lap.lk\\AppData\\Local\\Temp\\opencode\\dbg-test.txt").write_text("x", encoding="utf-8")
+            expect(page.locator(".cc-dispatch").get_by_text("Tests passed", exact=False)).to_be_visible()
             assert any(kind == "run" for kind, _ in posted), posted
 
             # Model-backed review is confirmed and cost-labeled.
@@ -226,17 +230,23 @@ def main():
             page.get_by_label("Engineering request").fill("Review this implementation")
             page.get_by_role("button", name="Ask", exact=True).click()
             page.get_by_role("button", name="Review & start", exact=True).click()
-            expect(page.get_by_text("Reviewers: approve", exact=False)).to_be_visible()
-            expect(page.get_by_text("Looks good", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Approve & run", exact=True).click()
+            expect(page.locator(".cc-dispatch").get_by_text("Reviewers: approve", exact=False)).to_be_visible()
+            Path("C:\\Users\\Lap.lk\\AppData\\Local\\Temp\\opencode\\dbg-review.txt").write_text(
+                page.evaluate("() => document.querySelectorAll('.cc-entry')[0]?.innerText ?? 'none'"),
+                encoding="utf-8")
+            expect(page.locator(".cc-dispatch").get_by_text("Looks good", exact=False)).to_be_visible()
             assert any(kind == "review" for kind, _ in posted), posted
 
             # Research search + confirmed fetch with provenance.
             page.get_by_label("Engineering request").fill("What is the current best practice for OAuth?")
             page.get_by_role("button", name="Ask", exact=True).click()
             page.get_by_role("button", name="Review & start", exact=True).click()
+            page.get_by_role("button", name="Approve & run", exact=True).click()
             expect(page.get_by_text("1 sources (provenance preserved)", exact=False)).to_be_visible()
             page.get_by_role("button", name="Fetch: OAuth guide", exact=True).click()
-            expect(page.get_by_text("Fetched: OAuth guide", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Fetch", exact=True).click()
+            expect(page.locator(".cc-finding").get_by_text("Fetched: OAuth guide", exact=False)).to_be_visible()
             assert any(kind == "fetch" for kind, _ in posted), posted
 
             # Branch restores scope as a new draft without re-executing.
@@ -272,13 +282,14 @@ def main():
 
             # Draft survives view switches; scope selects persist in store.
             page.get_by_label("Engineering request").fill("draft xyz")
-            page.get_by_role("button", name="Explorer", exact=True).click()
-            page.get_by_role("button", name="Command Center", exact=True).click()
+            page.get_by_role("button", name="Workspace", exact=True).click()
+            page.get_by_role("button", name="Command", exact=True).click()
             expect(page.get_by_label("Engineering request")).to_have_value("draft xyz")
             page.get_by_label("Engineering request").fill("")
 
             # Clear conversation with confirmation.
             page.get_by_role("button", name="Clear conversation", exact=True).click()
+            page.get_by_role("button", name="Clear", exact=True).click()
             expect(page.get_by_text("Start from any context above.", exact=False)).to_be_visible()
 
             # Cost, unknown, and unsupported handling without dispatch.
@@ -293,7 +304,7 @@ def main():
             expect(page.get_by_text("not supported", exact=False)).to_be_visible()
 
             # Alt+K focuses the Command Center without conflicting bindings.
-            page.get_by_role("button", name="Explorer", exact=True).click()
+            page.get_by_role("button", name="Workspace", exact=True).click()
             page.keyboard.press("Alt+K")
             expect(page.get_by_label("Engineering request")).to_be_focused()
 

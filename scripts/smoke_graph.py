@@ -143,7 +143,7 @@ def main():
             page.route(f"{URL}/api/**", api)
             page.goto(URL)
             page.get_by_role("button", name="Local", exact=False).click()
-            page.get_by_role("button", name="Execution Graph", exact=True).click()
+            page.get_by_role("button", name="Execution", exact=True).click()
 
             # Real nodes for every type + honest coverage counts.
             expect(page.get_by_text("1 requirements · 0 verified · 0 failed · 1 unknown", exact=False)).to_be_visible()
@@ -170,13 +170,14 @@ def main():
             expect(page.get_by_text("Inspect in Office", exact=False)).to_be_visible()
 
             # Test → evidence metadata → file → editor.
+            page.get_by_role("button", name="Fit", exact=True).click()
             page.get_by_role("button", name="test: test test_auth.py, failed", exact=True).click()
             page.get_by_role("button", name="Evidence: art2", exact=True).click()
             expect(page.get_by_text("pytest.xml", exact=False)).to_be_visible()
             page.get_by_role("button", name="file: auth.py, recorded", exact=True).click()
             page.get_by_role("button", name="Open in editor", exact=True).click()
             expect(page.locator(".tab-strip").get_by_text("auth.py", exact=False)).to_be_visible()
-            page.get_by_role("button", name="Execution Graph", exact=True).click()
+            page.get_by_role("button", name="Execution", exact=True).click()
 
             # Derived task → commit edge via the deterministic merge message.
             page.get_by_role("button", name="commit: Integrate agent/task-1 (worktree a1b2c3d4), integration", exact=True).click()
@@ -215,7 +216,7 @@ def main():
             page.get_by_role("button", name="task: Integration tests, blocked", exact=True).click()
             page.get_by_role("button", name="Open in Office", exact=True).click()
             expect(page.get_by_text("Depends on:", exact=False)).to_be_visible()
-            page.get_by_role("button", name="Execution Graph", exact=True).click()
+            page.get_by_role("button", name="Execution", exact=True).click()
             page.get_by_role("button", name="task: Integration tests, blocked", exact=True).click()
             page.locator(".graph-detail").get_by_role("button", name="View activity", exact=True).click()
             expect(page.get_by_text("DEPENDENCY_WAIT_STARTED", exact=False)).to_be_visible()
@@ -224,7 +225,7 @@ def main():
             tasks[0]["status"] = "completed"
             page.reload()
             page.get_by_role("button", name="Local", exact=False).click()
-            page.get_by_role("button", name="Execution Graph", exact=True).click()
+            page.get_by_role("button", name="Execution", exact=True).click()
             expect(page.get_by_role("button", name="task: Implement auth, completed", exact=True)).to_be_visible()
             # ...while the requirement stays honestly UNKNOWN.
             page.get_by_role("button", name="requirement: OAuth login, UNKNOWN", exact=True).click()

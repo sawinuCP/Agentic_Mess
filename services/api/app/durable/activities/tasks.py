@@ -205,6 +205,13 @@ async def set_task_status_activity(input: dict[str, Any]) -> None:
 
         with factory() as session:
             task = load_task_row(session, uuid.UUID(input["task_id"]))
+            # Idempotent under at-least-once delivery: Temporal retries this
+            # activity, and the scheduler pre-claims tasks as running before
+            # the workflow starts. Re-asserting the current state is already
+            # applied, not a transition, so it succeeds without a write.
+            # Genuine transitions still go through TASK_TRANSITIONS.
+            if task.status == input["status"]:
+                return
             assert_task_transition(task.status, input["status"])
             task.status = input["status"]
             session.commit()
