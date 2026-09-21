@@ -16,7 +16,9 @@ import {
   emptyFilter,
   failureTrace,
   filterGraph,
+  investigationNeighborhood,
   layoutGraph,
+  MAX_INVESTIGATION_DEPTH,
   parseMergeCommit,
   textTree,
   type GraphInputs,
@@ -290,6 +292,45 @@ describe("filterGraph", () => {
   it("search matches labels with context", () => {
     const out = filterGraph(g, { ...emptyFilter(), query: "backend" });
     expect(out.nodes.some((n) => n.id === "agent:a1")).toBe(true);
+  });
+});
+
+describe("investigationNeighborhood", () => {
+  const g = buildGraph(inputs({
+    tasks: [
+      task({ attempts: [{ attempt_number: 1, agent_id: "a1", outcome: null, evidence_artifact_ids: [], failure_class: null, failure_detail: null }] }),
+      task({ id: "t2", title: "Two", requirement_id: null }),
+    ],
+  }));
+
+  it("depth 1 is the root plus direct neighbors only", () => {
+    const out = investigationNeighborhood(g, "req:r1", 1);
+    const ids = new Set(out.nodes.map((n) => n.id));
+    expect(ids.has("req:r1")).toBe(true);
+    expect(ids.has("task:t1")).toBe(true);
+    expect(ids.has("agent:a1")).toBe(false);
+    expect(out.truncated).toBe(0);
+  });
+
+  it("depth 2 reaches agents through tasks", () => {
+    const out = investigationNeighborhood(g, "req:r1", 2);
+    const ids = new Set(out.nodes.map((n) => n.id));
+    expect(ids.has("agent:a1")).toBe(true);
+    expect(ids.has("task:t2")).toBe(false); // unlinked task stays out
+  });
+
+  it("clamps depth and misses honestly", () => {
+    const out = investigationNeighborhood(g, "req:r1", 99);
+    expect(out.nodes.length).toBeLessThanOrEqual(g.nodes.length);
+    const miss = investigationNeighborhood(g, "req:nope", 2);
+    expect(miss).toEqual({ nodes: [], edges: [], truncated: 0 });
+    expect(MAX_INVESTIGATION_DEPTH).toBeGreaterThanOrEqual(2);
+  });
+
+  it("respects the authority edge filter", () => {
+    const out = investigationNeighborhood(g, "req:r1", 2, new Set(["event-derived", "inferred"]));
+    const ids = new Set(out.nodes.map((n) => n.id));
+    expect(ids).toEqual(new Set(["req:r1"])); // persisted links removed, root alone
   });
 });
 

@@ -15,11 +15,13 @@ import {
   GRAPH_GAP_X,
   GRAPH_NODE_H,
   GRAPH_NODE_W,
+  MAX_INVESTIGATION_DEPTH,
   buildGraph,
   coverageCounts,
   emptyFilter,
   filterGraph,
   graphDimensions,
+  investigationNeighborhood,
   layoutGraph,
   textTree,
   type GraphAuthority,
@@ -100,6 +102,8 @@ export default function GraphView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [types, setTypes] = useState<Set<GraphNodeType>>(new Set(ALL_TYPES));
   const [authorities, setAuthorities] = useState<Set<GraphAuthority>>(new Set(ALL_AUTHORITIES));
+  const [investigating, setInvestigating] = useState(false);
+  const [depth, setDepth] = useState(1);
   const [failuresOnly, setFailuresOnly] = useState(false);
   const [focusReq, setFocusReq] = useState("all");
   const [focusTask, setFocusTask] = useState("all");
@@ -154,7 +158,24 @@ export default function GraphView() {
     [types, authorities, focusReq, focusTask, focusAgent, failuresOnly, query],
   );
   const visible = useMemo(() => filterGraph(graph, filter), [graph, filter]);
-  const positions = useMemo(() => layoutGraph(visible.nodes), [visible.nodes]);
+  // Investigation scope (UI-5 §6-7): bounded neighborhood around the
+  // selection. The root follows selection (follow); type/status lenses are
+  // bypassed so the chain renders as-is; only the authority filter applies.
+  const investigation = useMemo(
+    () =>
+      investigating && selectedId
+        ? investigationNeighborhood(
+            graph,
+            selectedId,
+            depth,
+            authorities.size === ALL_AUTHORITIES.length ? null : authorities,
+          )
+        : null,
+    [investigating, selectedId, depth, graph, authorities],
+  );
+  const shownNodes = investigation?.nodes ?? visible.nodes;
+  const shownEdges = investigation?.edges ?? visible.edges;
+  const positions = useMemo(() => layoutGraph(shownNodes), [shownNodes]);
   const dims = useMemo(() => graphDimensions(positions), [positions]);
   const coverage = useMemo(
     () => coverageCounts(traceability?.requirements ?? [], tasks),
@@ -172,7 +193,7 @@ export default function GraphView() {
     else if (storeReqId) setSelectedId(`req:${storeReqId}`);
   }, [storeTaskId, storeAgentId, storeReqId]);
 
-  const selected = nodeById(visible.nodes, selectedId) ?? nodeById(graph.nodes, selectedId);
+  const selected = nodeById(shownNodes, selectedId) ?? nodeById(graph.nodes, selectedId);
 
   const select = (node: GraphNode | null): void => {
     setSelectedId(node?.id ?? null);
@@ -252,7 +273,10 @@ export default function GraphView() {
     if (e.key === "+" || e.key === "=") setTransform((t) => ({ ...t, k: Math.min(2.5, t.k * 1.2) }));
     else if (e.key === "-") setTransform((t) => ({ ...t, k: Math.max(0.25, t.k / 1.2) }));
     else if (e.key === "0") fit();
-    else if (e.key.startsWith("Arrow")) {
+    else if (e.key === "Escape") {
+      if (investigating) setInvestigating(false);
+      else select(null);
+    } else if (e.key.startsWith("Arrow")) {
       e.preventDefault();
       const step = 40;
       setTransform((t) => ({
@@ -278,12 +302,12 @@ export default function GraphView() {
   const neighborIds = useMemo(() => {
     if (!selectedId) return null;
     const out = new Set<string>([selectedId]);
-    for (const e of visible.edges) {
+    for (const e of shownEdges) {
       if (e.source === selectedId) out.add(e.target);
       if (e.target === selectedId) out.add(e.source);
     }
     return out;
-  }, [selectedId, visible.edges]);
+  }, [selectedId, shownEdges]);
 
   if (!project) {
     return <div className="graph-empty muted">Open a project to see the execution graph.</div>;
@@ -422,16 +446,57 @@ export default function GraphView() {
             <button className="btn btn-small" disabled={!selectedId} onClick={() => selectedId && centerOn(selectedId)}>
               Center selection
             </button>
+            {!investigating ? (
+              <button
+                className="btn btn-small"
+                disabled={!selectedId}
+                title="Scope the canvas to this object and its causal neighborhood"
+                onClick={() => { setDepth(1); setInvestigating(true); }}
+              >
+                Investigate
+              </button>
+            ) : (
+              <>
+                <button
+                  className="btn btn-small"
+                  disabled={depth >= MAX_INVESTIGATION_DEPTH}
+                  title="Reveal one more hop of relationships"
+                  onClick={() => setDepth((d) => Math.min(MAX_INVESTIGATION_DEPTH, d + 1))}
+                >
+                  Expand
+                </button>
+                <button
+                  className="btn btn-small"
+                  disabled={depth <= 1}
+                  title="Hide the outermost hop"
+                  onClick={() => setDepth((d) => Math.max(1, d - 1))}
+                >
+                  Collapse
+                </button>
+                <button className="btn btn-small" onClick={() => setInvestigating(false)}>
+                  Exit investigation
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
-      {(visible.hidden > 0 || graph.hiddenFiles > 0 || graph.hiddenEvidence > 0) && (
+      {investigation ? (
         <div className="small muted pad-h" role="note">
-          {visible.hidden > 0 && `${visible.hidden} hidden by filters. `}
-          {graph.hiddenFiles > 0 && `${graph.hiddenFiles} more files. `}
-          {graph.hiddenEvidence > 0 && `${graph.hiddenEvidence} more evidence items. `}
-          Filtering never invents relationships.
+          Investigating {selected?.label ?? "selection"}: {investigation.nodes.length} node(s) within {depth}{" "}
+          hop{depth === 1 ? "" : "s"}
+          {investigation.truncated > 0 && ` (${investigation.truncated} more beyond the bound) `}· type
+          filters bypassed so the chain renders as-is.
         </div>
+      ) : (
+        (visible.hidden > 0 || graph.hiddenFiles > 0 || graph.hiddenEvidence > 0) && (
+          <div className="small muted pad-h" role="note">
+            {visible.hidden > 0 && `${visible.hidden} hidden by filters. `}
+            {graph.hiddenFiles > 0 && `${graph.hiddenFiles} more files. `}
+            {graph.hiddenEvidence > 0 && `${graph.hiddenEvidence} more evidence items. `}
+            Filtering never invents relationships.
+          </div>
+        )
       )}
       <div className="graph-body">
         {mode === "graph" ? (
@@ -440,7 +505,7 @@ export default function GraphView() {
             className="graph-canvas"
             tabIndex={0}
             role="group"
-            aria-label="Execution graph canvas. Arrow keys pan, plus and minus zoom, zero fits."
+            aria-label="Execution graph canvas. Arrow keys pan, plus and minus zoom, zero fits, escape exits investigation or clears selection."
             onKeyDown={onCanvasKey}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
@@ -463,10 +528,10 @@ export default function GraphView() {
             <svg
               style={{ width: "100%", height: "100%", display: "block" }}
               role="img"
-              aria-label={`${visible.nodes.length} nodes, ${visible.edges.length} relationships`}
+              aria-label={`${shownNodes.length} nodes, ${shownEdges.length} relationships`}
             >
               <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
-                {visible.edges.map((e) => {
+                {shownEdges.map((e) => {
                   const d = edgePath(e);
                   if (!d) return null;
                   const stroke = edgeStroke(e);
@@ -484,7 +549,7 @@ export default function GraphView() {
                     </path>
                   );
                 })}
-                {visible.nodes.map((n) => {
+                {shownNodes.map((n) => {
                   const pos = positions.get(n.id);
                   if (!pos) return null;
                   const x = pos.x * (GRAPH_NODE_W + GRAPH_GAP_X);
@@ -557,6 +622,7 @@ export default function GraphView() {
           traceability={traceability}
           onSelect={select}
           onCenter={centerOn}
+          onInvestigate={() => { setDepth(1); setInvestigating(true); }}
         />
       </div>
     </div>

@@ -540,6 +540,57 @@ export function filterGraph(graph: BuiltGraph, filter: GraphFilter): {
   return { nodes, edges, hidden: graph.nodes.length - nodes.length };
 }
 
+// --- investigation ------------------------------------------------------------
+
+export const MAX_INVESTIGATION_NODES = 100;
+export const MAX_INVESTIGATION_DEPTH = 3;
+
+export interface Investigation {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** Nodes beyond the bound (disclosed, never silently dropped). */
+  truncated: number;
+}
+
+/**
+ * Bounded neighborhood around one root node (UI-5 §6-7: focus/expand/
+ * collapse/follow). Breadth-first over edges up to `depth` hops, capped at
+ * MAX_INVESTIGATION_NODES. Only the authority edge filter applies here —
+ * type/status lenses are bypassed so the causal chain renders as-is.
+ */
+export function investigationNeighborhood(
+  graph: BuiltGraph,
+  rootId: string,
+  depth: number,
+  authorities: Set<GraphAuthority> | null = null,
+): Investigation {
+  const clamped = Math.max(1, Math.min(MAX_INVESTIGATION_DEPTH, depth));
+  const edges = authorities ? graph.edges.filter((e) => authorities.has(e.authority)) : graph.edges;
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  if (!byId.has(rootId)) return { nodes: [], edges: [], truncated: 0 };
+  const visited = new Set<string>([rootId]);
+  let frontier = [rootId];
+  let truncated = 0;
+  for (let hop = 0; hop < clamped && frontier.length > 0; hop++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const n of neighborsOf(id, edges)) {
+        if (visited.has(n)) continue;
+        if (visited.size >= MAX_INVESTIGATION_NODES) {
+          truncated += 1;
+          continue;
+        }
+        visited.add(n);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  const nodes = [...visited].map((id) => byId.get(id)).filter((n): n is GraphNode => !!n);
+  const ids = new Set(nodes.map((n) => n.id));
+  return { nodes, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)), truncated };
+}
+
 // --- coverage -----------------------------------------------------------------
 
 export interface CoverageCounts {

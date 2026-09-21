@@ -37,7 +37,7 @@ function Jump({ label, title, onJump }: { label: string; title: string; onJump: 
 
 const EvidenceMeta = ArtifactMetaView;
 
-export default function GraphDetail({ node, graph, tasks, agents, events, rawRequirements, traceability, onSelect, onCenter }: {
+export default function GraphDetail({ node, graph, tasks, agents, events, rawRequirements, traceability, onSelect, onCenter, onInvestigate }: {
   node: GraphNode | null;
   graph: BuiltGraph;
   tasks: TaskInfo[];
@@ -47,6 +47,7 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
   traceability: TraceabilityReport;
   onSelect: (node: GraphNode | null) => void;
   onCenter: (id: string) => void;
+  onInvestigate: () => void;
 }) {
   const setWorkspace = useStore((s) => s.set);
   const openFile = useStore((s) => s.openFile);
@@ -85,6 +86,13 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
       <div className="row wrap gap4">
         <button className="btn btn-small" onClick={() => onCenter(node.id)}>Center</button>
         <button className="btn btn-small" onClick={() => onSelect(null)}>Clear</button>
+        <button
+          className="btn btn-small"
+          title="Scope the graph to this object and its causal neighborhood"
+          onClick={onInvestigate}
+        >
+          Investigate
+        </button>
       </div>
       {node.type === "requirement" && (
         <RequirementDetail
