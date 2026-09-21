@@ -2257,6 +2257,36 @@ button.topbar-item:hover { background: var(--surface-hover); }
 }
 .attention-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--border-soft); }
 .attention-row:last-child { border-bottom: none; }
+
+/* --- UI4 requirements: compact rows + two-pane verification detail ---------- */
+.req-view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.req-header { padding: var(--space-3); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-2); }
+.req-body { flex: 1; min-height: 0; display: flex; }
+.req-list { width: min(360px, 40%); border-right: 1px solid var(--border); overflow-y: auto; padding: var(--space-2); }
+.req-detail { flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-3); }
+.req-row { margin-bottom: var(--space-1); }
+.req-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: var(--space-2);
+}
+.req-row-main:hover { background: var(--surface-hover); }
+.req-row.selected .req-row-main { border-color: var(--accent); background: var(--surface-selected); }
+.req-detail .stack { gap: var(--space-3); }
+.criterion-block { border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
+@media (max-width: 1024px) {
+  .req-body { flex-direction: column; }
+  .req-list { width: auto; border-right: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
+}
 @media (max-width: 768px) {
   .agent-row { flex-direction: column; }
   .agent-row-actions { justify-content: flex-start; }

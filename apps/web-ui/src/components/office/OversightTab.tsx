@@ -120,6 +120,16 @@ export default function OversightTab() {
             </button>
             <button
               className="btn btn-small"
+              title="Open requirement verification detail"
+              onClick={() => {
+                setOffice({ selectedRequirementId: requirement.id });
+                useStore.getState().set({ view: "requirements", sidebarOpen: true });
+              }}
+            >
+              Open in Requirements
+            </button>
+            <button
+              className="btn btn-small"
               title="Analyze this requirement in the Command Center"
               onClick={() => {
                 setOffice({ selectedRequirementId: requirement.id, selectedTaskId: null, selectedAgentId: null });

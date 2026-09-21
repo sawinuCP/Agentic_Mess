@@ -10,6 +10,7 @@ import SettingsView from "./components/panels/SettingsView";
 import GraphView from "./components/graph/GraphView";
 import HistoryView from "./components/history/HistoryView";
 import CenterView from "./components/command/CenterView";
+import RequirementsView from "./components/requirements/RequirementsView";
 import OfficeView from "./components/office/OfficeView";
 import RunView from "./components/panels/RunView";
 import SearchView from "./components/panels/SearchView";
@@ -45,6 +46,8 @@ const SIDEBARS: Record<ViewId, () => JSX.Element> = {
   history: ExplorerView,
   // Command Center is a main-area surface; the sidebar keeps office context.
   command: OfficeView,
+  // Requirements is a main-area verification surface; sidebar keeps office.
+  requirements: OfficeView,
 };
 
 export default function App() {
@@ -153,6 +156,8 @@ export default function App() {
             <ViewBoundary name="Execution history"><HistoryView /></ViewBoundary>
           ) : view === "command" ? (
             <ViewBoundary name="Command Center"><CenterView /></ViewBoundary>
+          ) : view === "requirements" ? (
+            <ViewBoundary name="Requirements"><RequirementsView /></ViewBoundary>
           ) : (
             <ViewBoundary name="Editor"><EditorArea /></ViewBoundary>
           )}

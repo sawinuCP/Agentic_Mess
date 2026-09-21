@@ -114,13 +114,13 @@ interface NavDoor {
   title: string;
 }
 
-// PRIMARY doors answer BUILD / ORCHESTRATE / UNDERSTAND. Tasks and
-// Requirements deep-link into office tabs until dedicated views land.
+// PRIMARY doors answer BUILD / ORCHESTRATE / UNDERSTAND. Tasks deep-links
+// into the office team tab; Requirements owns its verification surface.
 const PRIMARY: NavDoor[] = [
   { key: "workspace", label: "Workspace", view: "explorer", title: "Workspace — files and editor (Build)" },
   { key: "agents", label: "Agents", view: "office", officeTab: "team", title: "Agents — supervise running agents (Orchestrate)" },
   { key: "tasks", label: "Tasks", view: "office", officeTab: "team", title: "Tasks — work queue (Orchestrate)" },
-  { key: "requirements", label: "Requirements", view: "office", officeTab: "oversight", title: "Requirements — verification (Understand)" },
+  { key: "requirements", label: "Requirements", view: "requirements", title: "Requirements — verification (Understand)" },
   { key: "changes", label: "Changes", view: "git", title: "Changes — source control and diffs (Build)" },
   { key: "execution", label: "Execution", view: "graph", title: "Execution — requirement to evidence graph (Understand)" },
   { key: "history", label: "History", view: "history", title: "History — durable record and replay (Understand)" },
@@ -148,6 +148,7 @@ export default function ActivityBar({ onNavigate }: { onNavigate: () => void }) 
 
   const approvals = hitl.length;
   const problemCount = collectProblems({ tasks, output, hitl }).length;
+  const failedRequirements = useOffice((s) => s.traceability?.coverage.failed ?? 0);
 
   const go = (door: NavDoor): void => {
     if (door.officeTab) setOffice({ tab: door.officeTab, selectedAgentId: null });
@@ -167,9 +168,11 @@ export default function ActivityBar({ onNavigate }: { onNavigate: () => void }) 
       ? { n: approvals, label: `${approvals} approvals needed` }
       : door.key === "problems" && problemCount > 0
         ? { n: problemCount, label: `${problemCount} problems` }
-        : door.key === "agents" && runningAgents(agents).length > 0
-          ? { n: runningAgents(agents).length, label: "agents working" }
-          : null;
+        : door.key === "requirements" && failedRequirements > 0
+          ? { n: failedRequirements, label: `${failedRequirements} failed requirements` }
+          : door.key === "agents" && runningAgents(agents).length > 0
+            ? { n: runningAgents(agents).length, label: "agents working" }
+            : null;
     const active = isActive(door);
     return (
       <button

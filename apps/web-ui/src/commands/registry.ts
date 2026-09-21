@@ -340,8 +340,7 @@ export function buildCommands(ctx: CommandContext, a: CommandActions) {
       category: "Agents",
       keywords: ["oversight", "traceability", "criteria", "verification", "completion", "coverage", "requirements"],
       run: () => {
-        a.setView("office");
-        a.setOfficeTab("oversight");
+        a.setView("requirements");
       },
     },
   ];

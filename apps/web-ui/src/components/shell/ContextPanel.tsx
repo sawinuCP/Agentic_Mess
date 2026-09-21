@@ -4,6 +4,7 @@
 // shows the project overview (never a chatbot).
 
 import { currentTaskForAgent, elapsedSince, firstAgentEvent, formatTokens, validCosts } from "../../office/selectors";
+import { workState } from "../../requirements/requirementModel";
 import { agentAttention } from "../../office/agentStates";
 import AgentStatusLabel from "../../office/AgentStatusLabel";
 import { useOffice } from "../../state/officeStore";
@@ -85,22 +86,30 @@ function TaskContext({ taskId }: { taskId: string }) {
 
 function RequirementContext({ requirementId }: { requirementId: string }) {
   const traceability = useOffice((s) => s.traceability);
+  const tasks = useOffice((s) => s.tasks);
   const setOffice = useOffice((s) => s.set);
   const setFn = useStore((s) => s.set);
   const entry = traceability?.requirements.find((r) => r.id === requirementId);
   if (!entry) return <p className="muted">Requirement not in the latest traceability snapshot.</p>;
+  const linked = tasks.filter((t) => entry.task_ids.includes(t.id));
+  const verifiedCount = entry.criteria.filter((c) => c.state === "verified").length;
   return (
     <div className="stack">
       <div className="text-heading wrap-break">{entry.title}</div>
       <StatusLabel state={entry.status.toLowerCase()} />
       <Row label="Priority">{entry.priority}</Row>
-      <Row label="Implemented">{entry.implemented ? "Yes" : "No"}</Row>
-      <Row label="Tasks">{entry.task_ids.length}</Row>
+      <Row label="Tasks">{linked.length > 0 ? workState(linked).label : "No tasks linked"}</Row>
+      {entry.criteria.length > 0 && (
+        <Row label="Criteria">{verifiedCount}/{entry.criteria.length} verified</Row>
+      )}
+      {entry.validation_evidence_artifact_ids.length > 0 && (
+        <Row label="Evidence">{entry.validation_evidence_artifact_ids.length} recorded artifacts</Row>
+      )}
       <div className="row">
         <button className="btn btn-small" onClick={() => {
-          setFn({ view: "office", sidebarOpen: true });
-          setOffice({ tab: "oversight" });
-        }}>Open in Requirements</button>
+          setFn({ view: "requirements", sidebarOpen: true });
+          setOffice({ selectedRequirementId: entry.id });
+        }}>Open requirement</button>
       </div>
     </div>
   );

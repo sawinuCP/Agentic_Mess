@@ -10,7 +10,7 @@ import { readLayout, saveLayout } from "./layout";
 import { applyTheme, readTheme, type ThemeId } from "./theme";
 
 export type ViewId = "explorer" | "search" | "git" | "run" | "office" | "graph" |
-  "history" | "command" | "problems" | "runtime" | "settings";
+  "history" | "command" | "problems" | "runtime" | "settings" | "requirements";
 
 export interface FileTab {
   kind: "file";

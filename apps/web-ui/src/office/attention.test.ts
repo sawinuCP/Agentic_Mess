@@ -46,4 +46,23 @@ describe("collectAttention", () => {
     );
     expect(items).toEqual([]);
   });
+
+  it("flags failed and blocked requirements with jumps", () => {
+    const reqs = [
+      { id: "r1", title: "Payroll", status: "FAILED", task_ids: ["t1"] },
+      { id: "r2", title: "Auth", status: "UNKNOWN", task_ids: ["t2"] },
+      { id: "r3", title: "Docs", status: "VERIFIED", task_ids: [] },
+    ];
+    const items = collectAttention(
+      [],
+      [task("t1", "failed"), task("t2", "blocked")],
+      [],
+      reqs,
+    );
+    const failed = items.find((i) => i.kind === "requirement-failed");
+    expect(failed?.requirementId).toBe("r1");
+    const blocked = items.find((i) => i.kind === "requirement-blocked");
+    expect(blocked?.requirementId).toBe("r2");
+    expect(items.some((i) => i.requirementId === "r3")).toBe(false);
+  });
 });

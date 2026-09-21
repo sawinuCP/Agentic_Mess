@@ -355,26 +355,36 @@ export function bulkConfirm(
 // --- attention (UI3): backend-side failures included -------------------------
 
 export interface AttentionItem {
-  kind: "task-failed" | "task-blocked" | "tool-failed" | "approval";
+  kind: "task-failed" | "task-blocked" | "tool-failed" | "approval" | "requirement-failed" | "requirement-blocked";
   title: string;
   detail: string | null;
   taskId: string | null;
   agentId: string | null;
+  requirementId?: string | null;
 }
 
 /**
  * Everything that needs the supervisor, from RECORDED state: failed/blocked
- * tasks, failed tool runs (latest per task), pending approvals. Client-only
- * output failures stay with the caller (Center keeps its last-run row).
- * Sorted: approvals and failures first (actionable), then blocks.
+ * tasks, failed tool runs (latest per signature), pending approvals, and
+ * failed/blocked requirements (UI4). Client-only output failures stay with
+ * the caller (Center keeps its last-run row). Requirements are optional so
+ * older callers keep working. Sorted: approvals and failures first, blocks
+ * (tasks, then requirements) last.
  */
 export function collectAttention(
   events: EventEntry[],
   tasks: TaskInfo[],
   hitl: HitlRequestInfo[],
+  requirements: { id: string; title: string; status: string; task_ids: string[] }[] = [],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   const byId = new Map(tasks.map((t) => [t.id, t]));
+  const requirementByTask = new Map<string, string>();
+  for (const requirement of requirements) {
+    for (const taskId of requirement.task_ids) {
+      if (!requirementByTask.has(taskId)) requirementByTask.set(taskId, requirement.title);
+    }
+  }
   for (const task of tasks) {
     if (task.status === "failed") {
       const last = [...task.attempts].sort((a, b) => b.attempt_number - a.attempt_number)[0];
@@ -418,19 +428,47 @@ export function collectAttention(
   }
   for (const h of hitl) {
     if (h.status !== "pending") continue;
+    const reqTitle = h.task_id ? requirementByTask.get(h.task_id) ?? null : null;
     items.push({
       kind: "approval",
       title: `Approval: ${h.question}`,
-      detail: h.task_id ? byId.get(h.task_id)?.title ?? null : null,
+      detail: h.task_id ? (reqTitle ? `${byId.get(h.task_id)?.title ?? "task"} · ${reqTitle}` : (byId.get(h.task_id)?.title ?? null)) : null,
       taskId: h.task_id,
       agentId: null,
     });
   }
+  for (const requirement of requirements) {
+    const state = requirement.status.toUpperCase();
+    if (state === "FAILED") {
+      items.push({
+        kind: "requirement-failed",
+        title: `Verification failed: ${requirement.title}`,
+        detail: null,
+        taskId: null,
+        agentId: null,
+        requirementId: requirement.id,
+      });
+    } else if (state !== "VERIFIED") {
+      const linked = requirement.task_ids.map((id) => byId.get(id)).filter((t): t is TaskInfo => !!t);
+      if (linked.some((t) => t.status === "blocked" || t.status === "failed")) {
+        items.push({
+          kind: "requirement-blocked",
+          title: `Verification blocked: ${requirement.title}`,
+          detail: "A linked task is blocked or failed",
+          taskId: null,
+          agentId: null,
+          requirementId: requirement.id,
+        });
+      }
+    }
+  }
   const rank: Record<AttentionItem["kind"], number> = {
     approval: 0,
     "task-failed": 1,
+    "requirement-failed": 1,
     "tool-failed": 2,
     "task-blocked": 3,
+    "requirement-blocked": 3,
   };
   return items.sort((a, b) => rank[a.kind] - rank[b.kind]);
 }

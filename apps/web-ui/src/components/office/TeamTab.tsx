@@ -61,8 +61,11 @@ function TaskInspector({ task, allTasks, agents, events }: {
             {" · "}
             <button
               className="link"
-              title="Open requirement coverage"
-              onClick={() => setOffice({ tab: "oversight" })}
+              title="Open requirement verification"
+              onClick={() => {
+                setOffice({ selectedRequirementId: task.requirement_id });
+                useStore.getState().set({ view: "requirements", sidebarOpen: true });
+              }}
             >
               linked to requirement
             </button>

@@ -273,6 +273,21 @@ export const cancelTask = (taskId: string) =>
 export const listRequirements = (projectId: string) =>
   request<RequirementInfo[]>(`/api/projects/${projectId}/requirements`);
 
+export const createRequirement = (
+  projectId: string,
+  body: {
+    title: string;
+    description: string;
+    desired_outcome?: string | null;
+    priority?: string;
+    criteria: { description: string; kind: string; mandatory: boolean }[];
+  },
+) =>
+  request<RequirementInfo>(`/api/projects/${projectId}/requirements`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const listEvents = (projectId: string, limit = 120) =>
   request<EventEntry[]>(`/api/events?project_id=${enc(projectId)}&limit=${limit}`);
 
@@ -316,6 +331,26 @@ export const decideHitl = (
 
 export const getTraceability = (projectId: string) =>
   request<TraceabilityReport>(`/api/projects/${projectId}/oversight/traceability`);
+
+export interface VerifyCriterionResult {
+  criterion_id: string;
+  state: string;
+  validation_id: string;
+  evidence_artifact_id: string;
+}
+
+/** Record evidence-backed verification for one criterion (UI4). The backend
+ * requires a real evidence artifact (404 otherwise) and flips the criterion
+ * to verified — the only writer of verification state. */
+export const verifyCriterion = (
+  requirementId: string,
+  criterionId: string,
+  body: { evidence_artifact_id: string; task_id?: string | null; detail?: Record<string, unknown> },
+) =>
+  request<VerifyCriterionResult>(
+    `/api/requirements/${enc(requirementId)}/criteria/${enc(criterionId)}/verify`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
 
 export const requestCompletion = async (projectId: string) => {
   // 409 means "blocked" — the body still carries the freshest report with

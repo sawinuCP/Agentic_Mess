@@ -4,14 +4,17 @@
 
 import { collectAttention } from "./selectors";
 import { useOffice } from "../state/officeStore";
+import { useStore } from "../state/store";
 
 export default function OfficeAttention() {
   const events = useOffice((s) => s.events);
   const tasks = useOffice((s) => s.tasks);
   const hitl = useOffice((s) => s.hitl);
+  const traceability = useOffice((s) => s.traceability);
   const setOffice = useOffice((s) => s.set);
+  const setFn = useStore((s) => s.set);
 
-  const items = collectAttention(events, tasks, hitl);
+  const items = collectAttention(events, tasks, hitl, traceability?.requirements ?? []);
   if (items.length === 0) return null;
 
   const inspectTask = (taskId: string | null): void => {
@@ -20,6 +23,11 @@ export default function OfficeAttention() {
   const inspectAgent = (agentId: string | null): void => {
     if (!agentId) return;
     setOffice({ selectedAgentId: agentId, selectedTaskId: null });
+  };
+  const inspectRequirement = (requirementId: string | null | undefined): void => {
+    if (!requirementId) return;
+    setOffice({ selectedRequirementId: requirementId });
+    setFn({ view: "requirements", sidebarOpen: true });
   };
 
   return (
@@ -41,6 +49,11 @@ export default function OfficeAttention() {
               {item.agentId && (
                 <button className="btn btn-small" onClick={() => inspectAgent(item.agentId)}>
                   Open agent
+                </button>
+              )}
+              {item.requirementId && (
+                <button className="btn btn-small" onClick={() => inspectRequirement(item.requirementId)}>
+                  Inspect
                 </button>
               )}
             </div>

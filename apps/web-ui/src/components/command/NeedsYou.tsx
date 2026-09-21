@@ -13,11 +13,12 @@ export default function NeedsYou() {
   const tasks = useOffice((s) => s.tasks);
   const events = useOffice((s) => s.events);
   const hitl = useOffice((s) => s.hitl);
+  const traceability = useOffice((s) => s.traceability);
   const output = useStore((s) => s.output);
   const setWorkspace = useStore((s) => s.set);
   const setOffice = useOffice((s) => s.set);
 
-  const items = collectAttention(events, tasks, hitl);
+  const items = collectAttention(events, tasks, hitl, traceability?.requirements ?? []);
   const failedRun = output && output.exit_code !== 0 && output.exit_code !== null ? output : null;
   if (items.length === 0 && !failedRun) return null;
 
@@ -28,6 +29,11 @@ export default function NeedsYou() {
       selectedAgentId: agentId ?? null,
       ...(taskId ? { selectedTaskId: taskId } : {}),
     });
+  };
+  const openRequirement = (requirementId?: string | null): void => {
+    if (!requirementId) return;
+    setOffice({ selectedRequirementId: requirementId });
+    setWorkspace({ view: "requirements", sidebarOpen: true });
   };
 
   return (
@@ -46,6 +52,11 @@ export default function NeedsYou() {
               {item.agentId && (
                 <button className="btn btn-small" onClick={() => openAgents(null, item.agentId)}>
                   Open agent
+                </button>
+              )}
+              {item.requirementId && (
+                <button className="btn btn-small" onClick={() => openRequirement(item.requirementId)}>
+                  Inspect
                 </button>
               )}
             </span>
