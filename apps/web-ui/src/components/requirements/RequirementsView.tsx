@@ -61,6 +61,7 @@ function RequirementRow({ requirement, tasks, selected, onSelect }: {
 
 export default function RequirementsView() {
   const project = useStore((s) => s.project);
+  const setWorkspace = useStore((s) => s.set);
   const traceability = useOffice((s) => s.traceability);
   const tasks = useOffice((s) => s.tasks);
   const completionBusy = useOffice((s) => s.completionBusy);
@@ -188,6 +189,18 @@ export default function RequirementsView() {
               <div className="row spread">
                 <VerificationPill status={selected.status} />
                 <span className="small muted mono" title={selected.id}>REQ {selected.id.slice(0, 8)}</span>
+              </div>
+              <div className="row gap4">
+                <button
+                  className="btn btn-small"
+                  title="Open the execution graph focused on this requirement's causality"
+                  onClick={() => {
+                    setOffice({ selectedRequirementId: selected.id, selectedTaskId: null, selectedAgentId: null });
+                    setWorkspace({ view: "graph" });
+                  }}
+                >
+                  Investigate in graph
+                </button>
               </div>
               <RequirementDetail requirement={selected} info={infoById.get(selected.id)} />
             </div>

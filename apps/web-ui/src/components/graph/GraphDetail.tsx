@@ -92,6 +92,14 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
     setOffice({ tab: "timeline", activityFilter: { agentId, taskId } });
     setWorkspace({ view: "office", sidebarOpen: true });
   };
+  const openRequirements = (requirementId: string | null): void => {
+    if (!requirementId) return;
+    setOffice({ selectedRequirementId: requirementId, selectedTaskId: null, selectedAgentId: null });
+    setWorkspace({ view: "requirements" });
+  };
+  const openHistory = (): void => {
+    setWorkspace({ view: "history" });
+  };
 
   return (
     <aside className="graph-detail" aria-label={`${node.type} details`}>
@@ -122,6 +130,7 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
           onSelect={onSelect}
           onFollowNode={followNode}
           openInOffice={openInOffice}
+          openRequirements={openRequirements}
           analyze={(title) => {
             setOffice({ selectedRequirementId: node.requirementId, selectedTaskId: null, selectedAgentId: null });
             setWorkspace({ view: "command", sidebarOpen: true, centerPrefill: `Analyze coverage for ${title}` });
@@ -129,7 +138,7 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
         />
       )}
       {node.type === "task" && (
-        <TaskDetail node={node} tasks={tasks} agents={agents} traceability={traceability} graph={graph} outgoing={outgoing} incoming={incoming} events={events} onSelect={onSelect} openInOffice={openInOffice} viewActivity={viewActivity} />
+        <TaskDetail node={node} tasks={tasks} agents={agents} traceability={traceability} graph={graph} outgoing={outgoing} incoming={incoming} events={events} onSelect={onSelect} openInOffice={openInOffice} viewActivity={viewActivity} openRequirements={openRequirements} openHistory={openHistory} />
       )}
       {node.type === "agent" && (
         <AgentInvestigation
@@ -368,7 +377,7 @@ function AgentInvestigation({ node, tasks, events, graph, onSelect, openInOffice
   );
 }
 
-function RequirementDetail({ node, tasks, agents, rawRequirements, traceability, outgoing, onSelect, onFollowNode, openInOffice, analyze }: {
+function RequirementDetail({ node, tasks, agents, rawRequirements, traceability, outgoing, onSelect, onFollowNode, openInOffice, openRequirements, analyze }: {
   node: GraphNode;
   tasks: TaskInfo[];
   agents: AgentInfo[];
@@ -378,6 +387,7 @@ function RequirementDetail({ node, tasks, agents, rawRequirements, traceability,
   onSelect: (node: GraphNode | null) => void;
   onFollowNode: (nodeId: string) => void;
   openInOffice: (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight" }) => void;
+  openRequirements: (requirementId: string | null) => void;
   analyze: (title: string) => void;
 }) {
   const raw = rawRequirements.find((r) => r.id === node.requirementId);
@@ -444,6 +454,7 @@ function RequirementDetail({ node, tasks, agents, rawRequirements, traceability,
             : "Incomplete evidence: task completion without validated criteria stays UNKNOWN."}
       </span>
       <Jump label="Open in Office oversight" title="Open requirement coverage" onJump={() => openInOffice({ selectedRequirementId: node.requirementId, tab: "oversight" })} />
+      <Jump label="Open in Requirements" title="Open the verification narrative" onJump={() => openRequirements(node.requirementId)} />
       <Jump
         label="Analyze in Command Center"
         title="Open the Command Center scoped to this requirement"
@@ -470,7 +481,7 @@ function RequirementEvidence({ requirementId, tasks }: {
   );
 }
 
-function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incoming, events, onSelect, openInOffice, viewActivity }: {
+function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incoming, events, onSelect, openInOffice, viewActivity, openRequirements, openHistory }: {
   node: GraphNode;
   tasks: TaskInfo[];
   agents: AgentInfo[];
@@ -482,6 +493,8 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
   onSelect: (node: GraphNode | null) => void;
   openInOffice: (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight" }) => void;
   viewActivity: (agentId: string | null, taskId: string | null) => void;
+  openRequirements: (requirementId: string | null) => void;
+  openHistory: () => void;
 }) {
   const task = tasks.find((t) => t.id === node.taskId);
   const taskAgents = outgoing("executed by");
@@ -591,6 +604,14 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
         <button className="btn btn-small" onClick={() => viewActivity(null, node.taskId)}>
           View activity
         </button>
+        <button className="btn btn-small" title="Open the full event history" onClick={openHistory}>
+          Full history
+        </button>
+        {node.metadata.requirementLinked !== false && node.requirementId && (
+          <button className="btn btn-small" title="Open the verification narrative" onClick={() => openRequirements(node.requirementId)}>
+            View requirement
+          </button>
+        )}
       </div>
       {task && task.status === "failed" && (
         <FailurePath task={task} agents={agents} events={events} traceabilityRequirements={traceability.requirements} onSelect={onSelect} graph={graph} />
