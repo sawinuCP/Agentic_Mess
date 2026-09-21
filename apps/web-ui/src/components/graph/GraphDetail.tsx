@@ -11,12 +11,14 @@ import { glue } from "@typehug/en";
 
 import { errorMessage } from "../../api/errors";
 import {
+  AUTHORITY_LABEL,
   failureTrace,
   type BuiltGraph,
+  type GraphAuthority,
   type GraphNode,
 } from "../../graph/build";
-import { attemptRows } from "../../graph/explain";
-import { recoveryState, waitingReason } from "../../office/selectors";
+import { agentAttempts, agentToolRuns, attemptRows } from "../../graph/explain";
+import { currentTaskForAgent, recoveryState, waitingReason } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import type {
@@ -34,6 +36,15 @@ function Jump({ label, title, onJump }: { label: string; title: string; onJump: 
     <button className="link small" title={title} onClick={onJump}>
       {label}
     </button>
+  );
+}
+
+/** Authority chip for relationship rows (§24: text label, never color alone). */
+export function AuthorityTag({ authority, reason }: { authority: GraphAuthority; reason: string }) {
+  return (
+    <span className={`authority-tag authority-${authority}`} title={reason}>
+      {AUTHORITY_LABEL[authority]}
+    </span>
   );
 }
 
@@ -69,7 +80,7 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
   const incoming = (type: string): GraphNode[] =>
     graph.edges.filter((e) => e.target === node.id && e.type === type)
       .map((e) => find(e.source)).filter((n): n is GraphNode => !!n);
-  const openInOffice = (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight" }): void => {
+  const openInOffice = (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight"; commsRecipient?: string | null }): void => {
     setOffice({ selectedTaskId: null, selectedAgentId: null, ...partial });
     setWorkspace({ view: "office", sidebarOpen: true });
   };
@@ -121,12 +132,15 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
         <TaskDetail node={node} tasks={tasks} agents={agents} traceability={traceability} graph={graph} outgoing={outgoing} incoming={incoming} events={events} onSelect={onSelect} openInOffice={openInOffice} viewActivity={viewActivity} />
       )}
       {node.type === "agent" && (
-        <div className="stack small">
-          <span className="muted">Role: {String(node.metadata.role ?? "—")}{node.metadata.model ? ` · ${String(node.metadata.model)}` : ""}</span>
-          <Jump label="Inspect in Office" title="Open the agent detail panel" onJump={() => openInOffice({ selectedAgentId: node.agentId, tab: "team" })} />
-          <Jump label="View activity" title="Open the timeline for this agent" onJump={() => viewActivity(node.agentId, null)} />
-          <Jump label="Open in graph" title="Focus the graph on this agent" onJump={() => onSelect(node)} />
-        </div>
+        <AgentInvestigation
+          node={node}
+          tasks={tasks}
+          events={events}
+          graph={graph}
+          onSelect={onSelect}
+          openInOffice={openInOffice}
+          viewActivity={viewActivity}
+        />
       )}
       {node.type === "file" && (
         <div className="stack small">
@@ -189,6 +203,92 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
 
 function asPaths(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/** Agent causal investigation (§11): connections only, detail stays in the Office. */
+function AgentInvestigation({ node, tasks, events, graph, onSelect, openInOffice, viewActivity }: {
+  node: GraphNode;
+  tasks: TaskInfo[];
+  events: EventEntry[];
+  graph: BuiltGraph;
+  onSelect: (node: GraphNode | null) => void;
+  openInOffice: (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight"; commsRecipient?: string | null }) => void;
+  viewActivity: (agentId: string | null, taskId: string | null) => void;
+}) {
+  const current = node.agentId ? currentTaskForAgent(tasks, node.agentId) : null;
+  const attempts = node.agentId ? agentAttempts(tasks, node.agentId) : [];
+  const runs = node.agentId ? agentToolRuns(events, node.agentId) : [];
+  const failures = attempts.filter((a) => a.failure !== null);
+  const recoveries = tasks
+    .map((t) => ({ task: t, recovery: recoveryState(t, events) }))
+    .filter((r) => r.recovery !== null && r.task.attempts.some((a) => a.agent_id === node.agentId));
+  const taskNode = (id: string): GraphNode | null => graph.nodes.find((n) => n.id === `task:${id}`) ?? null;
+  return (
+    <div className="stack small">
+      <span className="muted">
+        Role: {String(node.metadata.role ?? "—")}{node.metadata.model ? ` · ${String(node.metadata.model)}` : ""} · state {node.status.replaceAll("_", " ")}
+      </span>
+      {current ? (
+        <span>
+          Current task:{" "}
+          {taskNode(current.id) ? (
+            <button className="link" title="Inspect the current task" onClick={() => onSelect(taskNode(current.id))}>{current.title}</button>
+          ) : (
+            current.title
+          )}{" "}
+          ({current.status.replaceAll("_", " ")}) <AuthorityTag authority="persisted" reason="Attempt rows record this agent on the task." />
+        </span>
+      ) : (
+        <span className="muted">{attempts.length > 0 ? "No active task — past attempts below." : "No recorded attempts on any task."}</span>
+      )}
+      {attempts.length > 0 && (
+        <span>
+          Attempts ({attempts.length}):{" "}
+          {attempts.slice(0, 8).map((a, i) => (
+            <span key={`${a.taskId}-${a.attemptNumber}`}>
+              {i > 0 && ", "}
+              {taskNode(a.taskId) ? (
+                <button className="link" title={`${a.taskTitle} — attempt #${a.attemptNumber} ${a.outcome}`} onClick={() => onSelect(taskNode(a.taskId))}>
+                  {a.taskTitle} #{a.attemptNumber}
+                </button>
+              ) : (
+                `${a.taskTitle} #${a.attemptNumber}`
+              )}{" "}
+              ({a.outcome}{a.failure ? ` · ${a.failure}` : ""})
+            </span>
+          ))}
+          {attempts.length > 8 && <span className="muted"> +{attempts.length - 8} more</span>}
+        </span>
+      )}
+      {failures.length > 0 && (
+        <span className="muted">Failures: {failures.map((f) => `${f.taskTitle} #${f.attemptNumber} (${f.failure})`).join("; ")}</span>
+      )}
+      {recoveries.map(({ task, recovery }) => (
+        <span key={task.id} className={`state-pill tiny ${recovery?.tone}`}>
+          {task.title}: {recovery?.label}
+        </span>
+      ))}
+      {runs.length > 0 && (
+        <span className="muted">
+          Tool runs: {runs.map((r) => `${r.tool}${r.path ? ` ${r.path.split("/").pop()}` : ""}${r.exitCode === null ? "" : ` (exit ${r.exitCode})`}`).join("; ")}
+        </span>
+      )}
+      {runs.length === 0 && attempts.length > 0 && (
+        <span className="muted">No tool runs recorded for this agent in the event feed.</span>
+      )}
+      <div className="row wrap gap4">
+        <button className="btn btn-small" onClick={() => openInOffice({ selectedAgentId: node.agentId, tab: "team" })}>
+          Inspect in Office
+        </button>
+        <button className="btn btn-small" onClick={() => viewActivity(node.agentId, null)}>
+          View activity
+        </button>
+        <button className="btn btn-small" onClick={() => openInOffice({ tab: "comms", commsRecipient: node.agentId })}>
+          Message
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function RequirementDetail({ node, tasks, agents, rawRequirements, traceability, outgoing, onSelect, onFollowNode, openInOffice, analyze }: {
@@ -364,7 +464,8 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
               {i > 0 && ", "}
               <button className="link" onClick={() => onSelect(d)}>{d.label}</button>
             </span>
-          ))}
+          ))}{" "}
+          <AuthorityTag authority="persisted" reason="Dependency recorded in the task dependency table." />
         </span>
       )}
       {blockedBy.length > 0 && (
@@ -375,7 +476,8 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
               {i > 0 && ", "}
               <button className="link" onClick={() => onSelect(d)}>{d.label}</button>
             </span>
-          ))}
+          ))}{" "}
+          <AuthorityTag authority="persisted" reason="Dependency recorded in the task dependency table." />
         </span>
       )}
       {taskAgents.length > 0 && (
@@ -386,17 +488,24 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
               {i > 0 && ", "}
               <button className="link" onClick={() => onSelect(a)}>{a.label}</button>
             </span>
-          ))}
+          ))}{" "}
+          <AuthorityTag authority="persisted" reason="Agent recorded on the task's durable attempt rows." />
         </span>
       )}
       {commits.map((c) => (
-        <Jump key={c.id} label={`Integrated as: ${c.label}`} title="Inspect the commit (derived link)" onJump={() => onSelect(c)} />
+        <span key={c.id}>
+          <Jump label={`Integrated as: ${c.label}`} title="Inspect the commit (derived link)" onJump={() => onSelect(c)} />{" "}
+          <AuthorityTag authority="inferred" reason="Commit association was derived from the recorded commit/worktree association (merge-message parse)." />
+        </span>
       ))}
       {evidence.length > 0 && (
         <span className="muted">{evidence.length} evidence artifact(s) — select below.</span>
       )}
       {evidence.map((e) => (
-        <Jump key={e.id} label={`Evidence: ${e.label}`} title="Inspect the evidence" onJump={() => onSelect(e)} />
+        <span key={e.id}>
+          <Jump label={`Evidence: ${e.label}`} title="Inspect the evidence" onJump={() => onSelect(e)} />{" "}
+          <AuthorityTag authority="persisted" reason="Artifact id listed on the task's durable attempt rows." />
+        </span>
       ))}
       <div className="row wrap gap4">
         <button className="btn btn-small" onClick={() => openInOffice({ selectedTaskId: node.taskId, selectedRequirementId: node.requirementId, tab: "team" })}>

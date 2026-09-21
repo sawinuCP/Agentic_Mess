@@ -6,6 +6,7 @@
 import { missingForVerification } from "../requirements/requirementModel";
 import type {
   AgentInfo,
+  EventEntry,
   TaskInfo,
   TraceabilityRequirement,
   VerificationProvenance,
@@ -145,4 +146,57 @@ export function attemptRows(task: TaskInfo, agents: AgentInfo[]): AttemptRow[] {
       : null,
     evidenceCount: a.evidence_artifact_ids.length,
   }));
+}
+
+export interface AgentAttemptRow {
+  taskId: string;
+  taskTitle: string;
+  taskStatus: string;
+  attemptNumber: number;
+  outcome: string;
+  failure: string | null;
+}
+
+/** Every recorded attempt by one agent, newest task order kept (§11). */
+export function agentAttempts(tasks: TaskInfo[], agentId: string): AgentAttemptRow[] {
+  const rows: AgentAttemptRow[] = [];
+  for (const task of tasks) {
+    for (const attempt of task.attempts) {
+      if (attempt.agent_id !== agentId) continue;
+      rows.push({
+        taskId: task.id,
+        taskTitle: task.title,
+        taskStatus: task.status,
+        attemptNumber: attempt.attempt_number,
+        outcome: attempt.outcome ?? "in progress",
+        failure: attempt.outcome !== null && attempt.outcome !== "success"
+          ? (attempt.failure_class ?? attempt.outcome)
+          : null,
+      });
+    }
+  }
+  return rows;
+}
+
+export interface AgentToolRun {
+  tool: string;
+  path: string | null;
+  exitCode: number | null;
+  occurredAt: string;
+  taskId: string | null;
+}
+
+/** Recorded tool runs for one agent, newest first, bounded (§11). */
+export function agentToolRuns(events: EventEntry[], agentId: string, limit = 5): AgentToolRun[] {
+  return events
+    .filter((e) => e.event_type === "TOOL_RUN_COMPLETED" && e.agent_id === agentId)
+    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))
+    .slice(0, Math.max(0, limit))
+    .map((e) => ({
+      tool: typeof e.payload.tool === "string" ? e.payload.tool : "tool",
+      path: typeof e.payload.path === "string" ? e.payload.path : null,
+      exitCode: typeof e.payload.exit_code === "number" ? e.payload.exit_code : null,
+      occurredAt: e.occurred_at,
+      taskId: e.task_id,
+    }));
 }

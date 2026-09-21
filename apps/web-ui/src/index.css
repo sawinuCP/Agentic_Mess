@@ -1937,6 +1937,26 @@ select.text-input.small {
   margin-right: 2px;
 }
 
+/* Authority chips (UI-5 §24): text label always present, never color alone. */
+.authority-tag {
+  display: inline-block;
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 4px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.authority-inferred {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
 .graph-body {
   flex: 1;
   display: flex;

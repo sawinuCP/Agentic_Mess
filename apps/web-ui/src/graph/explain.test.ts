@@ -1,8 +1,8 @@
 // Unit tests for investigation explanations (UI-5 §8; deterministic, no invention).
 import { describe, expect, it } from "vitest";
 
-import type { TaskInfo } from "../types";
-import { attemptRows, whyRequirement } from "./explain";
+import type { EventEntry, TaskInfo } from "../types";
+import { agentAttempts, agentToolRuns, attemptRows, whyRequirement } from "./explain";
 import { task as makeTask, requirement as makeRequirement, agent as makeAgent } from "./testFixtures";
 
 describe("whyRequirement", () => {
@@ -98,5 +98,47 @@ describe("attemptRows", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ attemptNumber: 1, agent: "Backend", outcome: "failed", failure: "TIMEOUT", evidenceCount: 0 });
     expect(rows[1]).toMatchObject({ agent: "unassigned", outcome: "in progress", failure: null, evidenceCount: 1 });
+  });
+});
+
+describe("agentAttempts", () => {
+  it("collects one agent's attempts across tasks, others excluded", () => {
+    const rows = agentAttempts([
+      makeTask({
+        attempts: [
+          { attempt_number: 1, agent_id: "a1", outcome: "failed", evidence_artifact_ids: [], failure_class: "TIMEOUT", failure_detail: null },
+          { attempt_number: 2, agent_id: "a9", outcome: "success", evidence_artifact_ids: [], failure_class: null, failure_detail: null },
+        ],
+      }),
+      makeTask({ id: "t2", title: "Other", requirement_id: null }),
+    ], "a1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ taskId: "t1", taskTitle: "Build auth", attemptNumber: 1, outcome: "failed", failure: "TIMEOUT" });
+  });
+});
+
+describe("agentToolRuns", () => {
+  const toolEvent = (overrides: Partial<EventEntry> = {}): EventEntry => ({
+    id: "e1",
+    occurred_at: "2026-09-21T10:00:00Z",
+    event_type: "TOOL_RUN_COMPLETED",
+    source: null,
+    project_id: "p",
+    task_id: "t1",
+    agent_id: "a1",
+    payload: { tool: "test", path: "a.py", exit_code: 0 },
+    ...overrides,
+  });
+
+  it("returns newest-first bounded runs for the agent only", () => {
+    const runs = agentToolRuns([
+      toolEvent({ id: "old", occurred_at: "2026-09-21T09:00:00Z" }),
+      toolEvent({ id: "new", occurred_at: "2026-09-21T11:00:00Z", payload: { tool: "shell", exit_code: 1 } }),
+      toolEvent({ id: "other", agent_id: "a9" }),
+      toolEvent({ id: "notool", event_type: "TASK_CREATED", payload: {} }),
+    ], "a1", 5);
+    expect(runs.map((r) => r.tool)).toEqual(["shell", "test"]);
+    expect(runs[0]).toMatchObject({ exitCode: 1, path: null });
+    expect(agentToolRuns([toolEvent()], "a1", 0)).toHaveLength(0);
   });
 });
