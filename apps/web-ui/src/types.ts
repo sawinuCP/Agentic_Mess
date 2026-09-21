@@ -270,6 +270,20 @@ export interface TraceabilityCriterion {
   kind: string;
   mandatory: boolean;
   state: string;
+  /** Latest verification record (overseer `_verification_provenance`); null when never verified. */
+  verification?: VerificationProvenance | null;
+}
+
+/** Latest verification record per criterion (UI-5 §8/15-16: historical, never current-validity). */
+export interface VerificationProvenance {
+  validation_id: string;
+  verified_at: string | null;
+  status: string;
+  evidence_artifact_id: string | null;
+  task_id: string | null;
+  source_head_sha: string | null;
+  source_branch: string | null;
+  source_dirty: boolean | null;
 }
 
 export interface TraceabilityRequirement {

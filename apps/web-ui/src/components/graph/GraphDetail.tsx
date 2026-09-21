@@ -15,7 +15,8 @@ import {
   type BuiltGraph,
   type GraphNode,
 } from "../../graph/build";
-import { recoveryState } from "../../office/selectors";
+import { attemptRows } from "../../graph/explain";
+import { recoveryState, waitingReason } from "../../office/selectors";
 import { useOffice } from "../../state/officeStore";
 import { useStore } from "../../state/store";
 import type {
@@ -26,6 +27,7 @@ import type {
   TraceabilityReport,
 } from "../../types";
 import ArtifactMetaView from "../shared/ArtifactMeta";
+import WhyPanel from "./WhyPanel";
 
 function Jump({ label, title, onJump }: { label: string; title: string; onJump: () => void }) {
   return (
@@ -71,6 +73,10 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
     setOffice({ selectedTaskId: null, selectedAgentId: null, ...partial });
     setWorkspace({ view: "office", sidebarOpen: true });
   };
+  const followNode = (id: string): void => {
+    const target = find(id);
+    if (target) onSelect(target);
+  };
   const viewActivity = (agentId: string | null, taskId: string | null): void => {
     setOffice({ tab: "timeline", activityFilter: { agentId, taskId } });
     setWorkspace({ view: "office", sidebarOpen: true });
@@ -98,9 +104,12 @@ export default function GraphDetail({ node, graph, tasks, agents, events, rawReq
         <RequirementDetail
           node={node}
           tasks={tasks}
+          agents={agents}
           rawRequirements={rawRequirements}
+          traceability={traceability}
           outgoing={outgoing}
           onSelect={onSelect}
+          onFollowNode={followNode}
           openInOffice={openInOffice}
           analyze={(title) => {
             setOffice({ selectedRequirementId: node.requirementId, selectedTaskId: null, selectedAgentId: null });
@@ -182,16 +191,20 @@ function asPaths(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-function RequirementDetail({ node, tasks, rawRequirements, outgoing, onSelect, openInOffice, analyze }: {
+function RequirementDetail({ node, tasks, agents, rawRequirements, traceability, outgoing, onSelect, onFollowNode, openInOffice, analyze }: {
   node: GraphNode;
   tasks: TaskInfo[];
+  agents: AgentInfo[];
   rawRequirements: RequirementInfo[];
+  traceability: TraceabilityReport;
   outgoing: (type: string) => GraphNode[];
   onSelect: (node: GraphNode | null) => void;
+  onFollowNode: (nodeId: string) => void;
   openInOffice: (partial: { selectedTaskId?: string | null; selectedAgentId?: string | null; selectedRequirementId?: string | null; tab?: "team" | "timeline" | "comms" | "oversight" }) => void;
   analyze: (title: string) => void;
 }) {
   const raw = rawRequirements.find((r) => r.id === node.requirementId);
+  const entry = traceability.requirements.find((r) => r.id === node.requirementId) ?? null;
   const criteria = (node.metadata.criteria ?? []) as { id: string; description: string; kind: string; mandatory: boolean; state: string }[];
   const linkedTasks = outgoing("planned for");
   const agentSet = new Map<string, GraphNode>();
@@ -245,6 +258,7 @@ function RequirementDetail({ node, tasks, rawRequirements, outgoing, onSelect, o
       <div className="strong">Evidence</div>
       <RequirementEvidence requirementId={node.requirementId} tasks={tasks} />
       <div className="strong">Verification: {node.status}</div>
+      {entry && <WhyPanel entry={entry} tasks={tasks} agents={agents} onFollowNode={onFollowNode} />}
       <span className="muted">
         {node.status === "VERIFIED"
           ? "All mandatory criteria verified with tasks implemented — from the overseer, never from task completion alone."
@@ -316,6 +330,32 @@ function TaskDetail({ node, tasks, agents, traceability, graph, outgoing, incomi
         </span>
       ) : null}
       {recovery && <span className={`state-pill tiny ${recovery.tone}`}>{recovery.label}</span>}
+      {task && (task.status === "blocked" || task.status === "waiting") && waitingReason(task, tasks) && (
+        <span className="warn">{waitingReason(task, tasks)}</span>
+      )}
+      {task && task.attempts.length > 0 && (
+        <>
+          <div className="strong">Attempts ({task.attempts.length})</div>
+          <span className="muted">
+            Task: durable work unit · attempt: one durable try · execution: Temporal workflow run ·
+            tool call: recorded event.
+          </span>
+          {attemptRows(task, agents).map((row) => {
+            const agentNode = row.agentId ? graph.nodes.find((n) => n.id === `agent:${row.agentId}`) ?? null : null;
+            return (
+              <span key={row.attemptNumber}>
+                Attempt #{row.attemptNumber} · {agentNode ? (
+                  <button className="link" title={`Inspect ${row.agent}`} onClick={() => onSelect(agentNode)}>{row.agent}</button>
+                ) : (
+                  row.agent
+                )} · {row.outcome}
+                {row.failure ? ` · ${row.failure}` : ""}
+                {row.evidenceCount > 0 ? ` · ${row.evidenceCount} evidence` : ""}
+              </span>
+            );
+          })}
+        </>
+      )}
       {deps.length > 0 && (
         <span>
           Depended on by:{" "}
