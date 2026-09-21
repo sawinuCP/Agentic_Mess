@@ -482,7 +482,7 @@ export default function GraphView() {
         )}
       </div>
       {investigation ? (
-        <div className="small muted pad-h" role="note">
+        <div className="small muted pad-h" role="note" aria-live="polite">
           Investigating {selected?.label ?? "selection"}: {investigation.nodes.length} node(s) within {depth}{" "}
           hop{depth === 1 ? "" : "s"}
           {investigation.truncated > 0 && ` (${investigation.truncated} more beyond the bound) `}· type
@@ -490,7 +490,7 @@ export default function GraphView() {
         </div>
       ) : (
         (visible.hidden > 0 || graph.hiddenFiles > 0 || graph.hiddenEvidence > 0) && (
-          <div className="small muted pad-h" role="note">
+          <div className="small muted pad-h" role="note" aria-live="polite">
             {visible.hidden > 0 && `${visible.hidden} hidden by filters. `}
             {graph.hiddenFiles > 0 && `${graph.hiddenFiles} more files. `}
             {graph.hiddenEvidence > 0 && `${graph.hiddenEvidence} more evidence items. `}
