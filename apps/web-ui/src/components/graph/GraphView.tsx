@@ -10,6 +10,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { listRequirements } from "../../api/client";
 import {
+  AUTHORITY_LABEL,
+  EDGE_EXPLANATION,
   GRAPH_GAP_X,
   GRAPH_NODE_H,
   GRAPH_NODE_W,
@@ -20,6 +22,7 @@ import {
   graphDimensions,
   layoutGraph,
   textTree,
+  type GraphAuthority,
   type GraphEdge,
   type GraphFilter,
   type GraphNode,
@@ -52,6 +55,27 @@ const TYPE_LABEL: Record<GraphNodeType, string> = {
   evidence: "Evidence",
 };
 
+const ALL_AUTHORITIES: GraphAuthority[] = ["persisted", "event-derived", "inferred"];
+
+const AUTHORITY_HINT: Record<GraphAuthority, string> = {
+  persisted: "database row",
+  "event-derived": "recorded events",
+  inferred: "heuristic",
+};
+
+/** Line treatment per authority: never color alone (§24). */
+function edgeStroke(e: GraphEdge): { stroke: string; width: number; dash: string | undefined } {
+  if (e.authority === "inferred") return { stroke: "var(--warn)", width: 1.6, dash: "2 3" };
+  if (e.authority === "event-derived") return { stroke: "var(--muted)", width: 1.1, dash: "7 3" };
+  return { stroke: "var(--muted)", width: 1.1, dash: undefined };
+}
+
+function edgeTitle(e: GraphEdge): string {
+  const entry = EDGE_EXPLANATION[e.type];
+  const label = AUTHORITY_LABEL[e.authority];
+  return entry ? `${e.type} — ${label}: ${entry.reason}` : `${e.type} — ${label}`;
+}
+
 function nodeById(nodes: GraphNode[], id: string | null): GraphNode | null {
   if (!id) return null;
   return nodes.find((n) => n.id === id) ?? null;
@@ -75,6 +99,7 @@ export default function GraphView() {
   const [mode, setMode] = useState<"graph" | "text">("graph");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [types, setTypes] = useState<Set<GraphNodeType>>(new Set(ALL_TYPES));
+  const [authorities, setAuthorities] = useState<Set<GraphAuthority>>(new Set(ALL_AUTHORITIES));
   const [failuresOnly, setFailuresOnly] = useState(false);
   const [focusReq, setFocusReq] = useState("all");
   const [focusTask, setFocusTask] = useState("all");
@@ -119,13 +144,14 @@ export default function GraphView() {
     () => ({
       ...emptyFilter(),
       types: types.size === ALL_TYPES.length ? null : types,
+      authorities: authorities.size === ALL_AUTHORITIES.length ? null : authorities,
       focusRequirementId: focusReq === "all" ? null : focusReq,
       focusTaskId: focusTask === "all" ? null : focusTask,
       focusAgentId: focusAgent === "all" ? null : focusAgent,
       failuresOnly,
       query,
     }),
-    [types, focusReq, focusTask, focusAgent, failuresOnly, query],
+    [types, authorities, focusReq, focusTask, focusAgent, failuresOnly, query],
   );
   const visible = useMemo(() => filterGraph(graph, filter), [graph, filter]);
   const positions = useMemo(() => layoutGraph(visible.nodes), [visible.nodes]);
@@ -168,6 +194,16 @@ export default function GraphView() {
       return next;
     });
   };
+
+  const toggleAuthority = (authority: GraphAuthority): void => {
+    setAuthorities((prev) => {
+      const next = new Set(prev);
+      if (next.has(authority)) next.delete(authority);
+      else next.add(authority);
+      return next;
+    });
+  };
+  const authorityActive = (a: GraphAuthority): boolean => authorities.has(a);
 
   const fit = (): void => {
     const el = containerRef.current;
@@ -314,6 +350,34 @@ export default function GraphView() {
             failures
           </button>
         </div>
+        <div className="row wrap" role="group" aria-label="Relationship authority filter">
+          {ALL_AUTHORITIES.map((a) => (
+            <button
+              key={a}
+              className={`chip ${authorityActive(a) ? "active" : ""}`}
+              aria-pressed={authorityActive(a)}
+              title={`${AUTHORITY_LABEL[a]}: ${AUTHORITY_HINT[a]}`}
+              onClick={() => toggleAuthority(a)}
+            >
+              {AUTHORITY_LABEL[a].toLowerCase()}
+            </button>
+          ))}
+        </div>
+        <div className="graph-legend" role="note" aria-label="Relationship authority legend">
+          <span className="strong small">Edges:</span>
+          <span className="small" title="PERSISTED: database row">
+            <svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="1.5" /></svg>{" "}
+            persisted
+          </span>
+          <span className="small" title="EVENT-DERIVED: recorded events">
+            <svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="1.5" strokeDasharray="7 3" /></svg>{" "}
+            event-derived
+          </span>
+          <span className="small" title="INFERRED: heuristic, never authoritative">
+            <svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--warn)" strokeWidth="1.5" strokeDasharray="2 3" /></svg>{" "}
+            inferred
+          </span>
+        </div>
         <div className="row wrap gap4">
           <label className="small muted row gap4">
             Requirement
@@ -405,17 +469,18 @@ export default function GraphView() {
                 {visible.edges.map((e) => {
                   const d = edgePath(e);
                   if (!d) return null;
+                  const stroke = edgeStroke(e);
                   return (
                     <path
                       key={e.id}
                       d={d}
                       fill="none"
-                      stroke={e.derived ? "var(--warn)" : "var(--muted)"}
-                      strokeWidth={e.derived ? 1.6 : 1.1}
-                      strokeDasharray={e.derived ? "5 3" : undefined}
+                      stroke={stroke.stroke}
+                      strokeWidth={stroke.width}
+                      strokeDasharray={stroke.dash}
                       opacity={0.75}
                     >
-                      <title>{`${e.type}${e.derived ? " (derived from merge message)" : ""}`}</title>
+                      <title>{edgeTitle(e)}</title>
                     </path>
                   );
                 })}

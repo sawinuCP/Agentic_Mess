@@ -9,8 +9,10 @@ import type {
   WorktreeInfo,
 } from "../types";
 import {
+  AUTHORITY_LABEL,
   buildGraph,
   coverageCounts,
+  EDGE_EXPLANATION,
   emptyFilter,
   failureTrace,
   filterGraph,
@@ -187,6 +189,76 @@ describe("buildGraph", () => {
     const twice = buildGraph(inputs({ events: [ev, { ...ev }] }));
     expect(twice.nodes).toHaveLength(once.nodes.length);
     expect(twice.edges).toHaveLength(once.edges.length);
+  });
+
+  it("classifies every built edge with UI-4.5 authority (UI5-02)", () => {
+    const worktrees: WorktreeInfo[] = [{
+      id: "abcdef12", project_id: "p", task_id: "t1", branch: "agent/task-1",
+      path: "/tmp", status: "merged", integration_status: "merged",
+      integration_position: null, created_at: "",
+    }];
+    const g = buildGraph(inputs({
+      tasks: [task({
+        depends_on: ["t2"],
+        attempts: [{ attempt_number: 1, agent_id: "a1", outcome: null, evidence_artifact_ids: ["art1"], failure_class: null, failure_detail: null }],
+      }), task({ id: "t2", title: "Dep", requirement_id: null })],
+      worktrees,
+      report: {
+        requirements: [requirement({ evidence_artifact_ids: ["art1"] })],
+        coverage: { total: 1, verified: 0, failed: 0, unknown: 1 },
+        generatedAt: "",
+      },
+      events: [
+        event({ id: "t9", payload: { tool: "test", exit_code: 1, duration_ms: 40, path: "tests/a.py", artifact_ids: ["art1"] } }),
+        event({ id: "c1", event_type: "GIT_COMMIT", payload: { message: "Integrate agent/task-1 (worktree abcdef12)", paths: ["a.py"] } }),
+      ],
+    }));
+    const byType = new Map(g.edges.map((e) => [e.type, e.authority]));
+    expect(byType.get("planned for")).toBe("persisted");
+    expect(byType.get("depends on")).toBe("persisted");
+    expect(byType.get("executed by")).toBe("persisted");
+    expect(byType.get("evidence recorded")).toBe("persisted");
+    expect(byType.get("verifies")).toBe("persisted");
+    expect(byType.get("produced")).toBe("event-derived");
+    expect(byType.get("targeted")).toBe("event-derived");
+    expect(byType.get("changed")).toBe("event-derived");
+    expect(byType.get("integrated as")).toBe("inferred");
+    // Only inferred edges keep the legacy derived flag.
+    for (const e of g.edges) {
+      expect(e.derived ?? false).toBe(e.authority === "inferred");
+    }
+  });
+
+  it("explains every edge type without inventing authority (UI5-02)", () => {
+    const g = buildGraph(inputs({ tasks: [task({ depends_on: ["t9"] })] }));
+    const types = new Set(g.edges.map((e) => e.type));
+    for (const t of types) {
+      const entry = EDGE_EXPLANATION[t];
+      expect(entry).toBeDefined();
+      expect(AUTHORITY_LABEL[entry.authority]).toMatch(/^(PERSISTED|EVENT-DERIVED|INFERRED)$/);
+      expect(entry.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("hides inferred edges without removing their endpoints (UI5-02)", () => {
+    const worktrees: WorktreeInfo[] = [{
+      id: "abcdef12", project_id: "p", task_id: "t1", branch: "agent/task-1",
+      path: "/tmp", status: "merged", integration_status: "merged",
+      integration_position: null, created_at: "",
+    }];
+    const g = buildGraph(inputs({
+      worktrees,
+      events: [
+        event({ id: "c1", event_type: "GIT_COMMIT", payload: { message: "Integrate agent/task-1 (worktree abcdef12)", paths: ["a.py"] } }),
+      ],
+    }));
+    expect(g.edges.some((e) => e.type === "integrated as")).toBe(true);
+    const nodeCount = g.nodes.length;
+    const out = filterGraph(g, { ...emptyFilter(), authorities: new Set(["persisted", "event-derived"]) });
+    expect(out.edges.some((e) => e.type === "integrated as")).toBe(false);
+    // Endpoints survive (only the edge is removed); event-derived file edge stays.
+    expect(out.nodes).toHaveLength(nodeCount);
+    expect(out.edges.some((e) => e.type === "changed")).toBe(true);
   });
 });
 

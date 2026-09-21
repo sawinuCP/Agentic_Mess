@@ -1,9 +1,11 @@
-// Execution Graph data layer (Wave 8): pure projection over durable state.
+// Execution Graph data layer (Wave 8; authority model UI-5): pure projection
+// over durable state.
 //
 // Builds nodes/edges ONLY from persisted or event-recorded relationships
-// (see docs/execution-graph-architecture.md §2). Derived edges are flagged
-// `derived: true` and never guessed: unparseable merge messages simply yield
-// no edge. No React, no fetch — unit-testable in node Vitest.
+// (see docs/execution-graph-architecture.md §2 and docs/ui-ux/ui5-baseline.md
+// §4). Every edge carries an `authority` (UI-4.5 vocabulary): persisted rows,
+// event-derived assembly, or inferred heuristics. Unparseable merge messages
+// simply yield no edge. No React, no fetch — unit-testable in node Vitest.
 
 import type {
   AgentInfo,
@@ -44,8 +46,67 @@ export interface GraphEdge {
   source: string;
   target: string;
   type: string;
+  /** Relationship authority (UI-4.5 vocabulary; see ui5-baseline.md §4). */
+  authority: GraphAuthority;
+  /** Legacy flag: true only for the inferred commit edge. Prefer `authority`. */
   derived?: boolean;
 }
+
+/**
+ * Relationship authority — how much the edge may claim (UI-4.5 §3).
+ * PERSISTED: durable row/FK. EVENT_DERIVED: assembled from durable events
+ * (feed-bounded). INFERRED: heuristic association, never authoritative.
+ * (DERIVED/UNAVAILABLE exist in the vocabulary for computed values and
+ * documented gaps; no built edge uses them yet.)
+ */
+export type GraphAuthority = "persisted" | "event-derived" | "inferred";
+
+export const AUTHORITY_LABEL: Record<GraphAuthority, string> = {
+  persisted: "PERSISTED",
+  "event-derived": "EVENT-DERIVED",
+  inferred: "INFERRED",
+};
+
+/** Human reason per edge type, for "Explain this relationship" (§28). */
+export const EDGE_EXPLANATION: Record<string, { authority: GraphAuthority; reason: string }> = {
+  "planned for": {
+    authority: "persisted",
+    reason: "Task row carries this requirement's id (durable foreign key).",
+  },
+  "depends on": {
+    authority: "persisted",
+    reason: "Dependency recorded in the task dependency table.",
+  },
+  "executed by": {
+    authority: "persisted",
+    reason: "Agent is recorded on the task's durable attempt rows.",
+  },
+  "evidence recorded": {
+    authority: "persisted",
+    reason: "Artifact id is listed on the task's durable attempt rows.",
+  },
+  verifies: {
+    authority: "persisted",
+    reason: "Validation row binds this artifact to the requirement at verify time.",
+  },
+  produced: {
+    authority: "event-derived",
+    reason: "Artifact id appeared in the tool run's recorded event payload.",
+  },
+  targeted: {
+    authority: "event-derived",
+    reason: "File path appeared in the test run's recorded event payload.",
+  },
+  changed: {
+    authority: "event-derived",
+    reason: "File path appeared in the commit's recorded event payload.",
+  },
+  "integrated as": {
+    authority: "inferred",
+    reason:
+      "Commit association was derived from the recorded commit/worktree association (merge-message parse).",
+  },
+};
 
 export interface BuiltGraph {
   nodes: GraphNode[];
@@ -99,6 +160,19 @@ function asStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+/** Build an edge with its authority from the registry — never hand-roll. */
+function makeEdge(id: string, source: string, target: string, type: string): GraphEdge {
+  const entry = EDGE_EXPLANATION[type];
+  const authority = entry?.authority ?? "inferred";
+  return {
+    id,
+    source,
+    target,
+    type,
+    authority,
+    ...(authority === "inferred" ? { derived: true as const } : {}),
+  };
+}
 /** Parse deterministic integration merge messages: "Integrate {branch} (worktree {id})". */
 export function parseMergeCommit(message: unknown): { branch: string; worktreeId: string } | null {
   if (typeof message !== "string") return null;
@@ -186,21 +260,11 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
       },
     });
     if (task.requirement_id && reqIds.has(task.requirement_id)) {
-      edges.push({
-        id: `edge:req-task:${task.id}`,
-        source: `req:${task.requirement_id}`,
-        target: `task:${task.id}`,
-        type: "planned for",
-      });
+      edges.push(makeEdge(`edge:req-task:${task.id}`, `req:${task.requirement_id}`, `task:${task.id}`, "planned for"));
     }
     for (const dep of task.depends_on) {
       if (taskById.has(dep)) {
-        edges.push({
-          id: `edge:dep:${dep}->${task.id}`,
-          source: `task:${dep}`,
-          target: `task:${task.id}`,
-          type: "depends on",
-        });
+        edges.push(makeEdge(`edge:dep:${dep}->${task.id}`, `task:${dep}`, `task:${task.id}`, "depends on"));
       }
     }
   }
@@ -223,12 +287,7 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
     const owners = [...new Set(task.attempts.map((a) => a.agent_id).filter(Boolean))] as string[];
     for (const owner of owners) {
       if (agentById.has(owner)) {
-        edges.push({
-          id: `edge:exec:${task.id}:${owner}`,
-          source: `task:${task.id}`,
-          target: `agent:${owner}`,
-          type: "executed by",
-        });
+        edges.push(makeEdge(`edge:exec:${task.id}:${owner}`, `task:${task.id}`, `agent:${owner}`, "executed by"));
       }
     }
   }
@@ -318,13 +377,7 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
       });
       for (const path of asStrings(event.payload.paths)) linkFile(path, "commits", nodeId);
       if (worktreeTask && taskById.has(worktreeTask)) {
-        edges.push({
-          id: `edge:commit-task:${event.id}`,
-          source: `task:${worktreeTask}`,
-          target: nodeId,
-          type: "integrated as",
-          derived: true,
-        });
+        edges.push(makeEdge(`edge:commit-task:${event.id}`, `task:${worktreeTask}`, nodeId, "integrated as"));
       }
     }
   }
@@ -348,10 +401,10 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
       metadata: { path },
     });
     for (const test of entry.tests) {
-      edges.push({ id: `edge:test-file:${test}:${path}`, source: test, target: nodeId, type: "targeted" });
+      edges.push(makeEdge(`edge:test-file:${test}:${path}`, test, nodeId, "targeted"));
     }
     for (const commit of entry.commits) {
-      edges.push({ id: `edge:commit-file:${commit}:${path}`, source: commit, target: nodeId, type: "changed" });
+      edges.push(makeEdge(`edge:commit-file:${commit}:${path}`, commit, nodeId, "changed"));
     }
   }
 
@@ -375,16 +428,16 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
     });
     for (const taskId of entry.tasks) {
       if (taskById.has(taskId)) {
-        edges.push({ id: `edge:task-ev:${taskId}:${id}`, source: `task:${taskId}`, target: nodeId, type: "evidence recorded" });
+        edges.push(makeEdge(`edge:task-ev:${taskId}:${id}`, `task:${taskId}`, nodeId, "evidence recorded"));
       }
     }
     for (const reqId of entry.requirements) {
       if (reqIds.has(reqId)) {
-        edges.push({ id: `edge:req-ev:${reqId}:${id}`, source: nodeId, target: `req:${reqId}`, type: "verifies" });
+        edges.push(makeEdge(`edge:req-ev:${reqId}:${id}`, nodeId, `req:${reqId}`, "verifies"));
       }
     }
     for (const test of entry.tests) {
-      edges.push({ id: `edge:test-ev:${test}:${id}`, source: test, target: nodeId, type: "produced" });
+      edges.push(makeEdge(`edge:test-ev:${test}:${id}`, test, nodeId, "produced"));
     }
   }
 
@@ -402,6 +455,8 @@ export function buildGraph(inputs: GraphInputs): BuiltGraph {
 export interface GraphFilter {
   types: Set<GraphNodeType> | null;
   statuses: Set<string> | null;
+  /** Hide edges below this authority (investigation filter, §27). */
+  authorities: Set<GraphAuthority> | null;
   focusRequirementId: string | null;
   focusTaskId: string | null;
   focusAgentId: string | null;
@@ -412,6 +467,7 @@ export interface GraphFilter {
 export const emptyFilter = (): GraphFilter => ({
   types: null,
   statuses: null,
+  authorities: null,
   focusRequirementId: null,
   focusTaskId: null,
   focusAgentId: null,
@@ -464,18 +520,23 @@ export function filterGraph(graph: BuiltGraph, filter: GraphFilter): {
     return true;
   };
   const matched = new Set(graph.nodes.filter(match).map((n) => n.id));
+  // Authority hides edges outright (never nodes): an inferred link is
+  // removed, not its endpoints — filtering cannot manufacture edges either.
+  const keptEdges = filter.authorities
+    ? graph.edges.filter((e) => filter.authorities?.has(e.authority))
+    : graph.edges;
   // 1-hop closure over hard-passing neighbors: matched nodes plus their
   // direct neighbors that survive the type/status filters.
   const visible = new Set(matched);
   for (const id of matched) {
-    for (const neighbor of neighborsOf(id, graph.edges)) {
+    for (const neighbor of neighborsOf(id, keptEdges)) {
       const node = graph.nodes.find((n) => n.id === neighbor);
       if (node && hardMatch(node)) visible.add(neighbor);
     }
   }
   const nodes = graph.nodes.filter((n) => visible.has(n.id));
   const ids = new Set(nodes.map((n) => n.id));
-  const edges = graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  const edges = keptEdges.filter((e) => ids.has(e.source) && ids.has(e.target));
   return { nodes, edges, hidden: graph.nodes.length - nodes.length };
 }
 
