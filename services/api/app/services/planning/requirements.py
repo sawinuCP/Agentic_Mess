@@ -44,6 +44,7 @@ def requirement_out(db: Session, requirement: Requirement) -> RequirementOut:
         priority=requirement.priority,
         status=requirement.status,
         version=requirement.version,
+        created_at=requirement.created_at,
         criteria=_criteria_out(db, requirement.id),
     )
 
@@ -108,6 +109,7 @@ def list_requirements(
             priority=r.priority,
             status=r.status,
             version=r.version,
+            created_at=r.created_at,
             criteria=criteria[r.id],
         )
         for r in rows

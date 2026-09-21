@@ -1,5 +1,6 @@
 """Requirement/acceptance-criteria/plan DTOs (spec §13, §23)."""
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -36,6 +37,7 @@ class RequirementOut(BaseModel):
     priority: str
     status: str
     version: int
+    created_at: datetime
     criteria: list[CriterionOut]
 
 

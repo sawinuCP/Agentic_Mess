@@ -7,7 +7,7 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.db.models import Artifact, Task, TaskAttempt
+from app.db.models import Artifact, Event, Task, TaskAttempt
 
 
 def _requirement_with_criteria(client: TestClient, project_id: str) -> tuple[str, list[str]]:
@@ -143,3 +143,103 @@ def test_task_completion_gate_requires_evidence(app: FastAPI, project: tuple) ->
     gate = client.post(f"/api/tasks/{task_id}/completion-gate")
     assert gate.status_code == 200
     assert gate.json()["completion_allowed"] is True
+
+
+def _criterion_events(app: FastAPI, project_id: str, criterion_id: str) -> list:
+    with app.state.session_factory() as session:
+        return (
+            session.query(Event)
+            .filter(
+                Event.project_id == uuid.UUID(project_id),
+                Event.event_type == "CRITERION_VERIFIED",
+            )
+            .all()
+        )
+
+
+def test_verification_records_provenance_and_event(
+    app: FastAPI, project: tuple, tmp_path: object
+) -> None:
+    """Invariant 3+4: verify writes provenance + emits exactly one transition event."""
+    import shutil
+    import subprocess
+
+    _app, client, project_id, _tmp = project
+    requirement_id, criteria = _requirement_with_criteria(client, project_id)
+    artifact_id = _make_evidence_artifact(_app, project_id)
+
+    verified = client.post(
+        f"/api/requirements/{requirement_id}/criteria/{criteria[0]}/verify",
+        json={"evidence_artifact_id": artifact_id},
+    )
+    assert verified.status_code == 200
+
+    trace = client.get(f"/api/projects/{project_id}/oversight/traceability").json()
+    (entry,) = [e for e in trace["requirements"] if e["id"] == requirement_id]
+    (criterion,) = [c for c in entry["criteria"] if c["id"] == criteria[0]]
+    provenance = criterion["verification"]
+    assert provenance is not None
+    assert provenance["evidence_artifact_id"] == artifact_id
+    assert provenance["verified_at"] is not None
+    # tmp project root is not a git repo: explicit nulls, never missing keys.
+    assert provenance["source_head_sha"] is None
+    assert provenance["source_branch"] is None
+    assert provenance["source_dirty"] is None
+
+    events = _criterion_events(_app, project_id, criteria[0])
+    assert len(events) == 1
+    assert events[0].payload["criterion_id"] == criteria[0]
+    assert events[0].payload["validation_id"] == provenance["validation_id"]
+    assert events[0].payload["source_head_sha"] is None
+
+    # Reads never duplicate verification events (transition, not read).
+    client.get(f"/api/projects/{project_id}/oversight/traceability")
+    client.post(f"/api/projects/{project_id}/oversight/completion")
+    assert len(_criterion_events(_app, project_id, criteria[0])) == 1
+
+    # Determinism: one of two mandatory criteria verified -> still UNKNOWN.
+    assert entry["status"] == "UNKNOWN"
+
+    if shutil.which("git") is None:
+        return
+    # Git-backed project root records the real HEAD sha.
+    repo = tmp_path / "repo"  # type: ignore[union-attr]
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"], cwd=repo, check=True, capture_output=True
+    )
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True)
+    (repo / "f.txt").write_text("x")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    opened = client.post("/api/projects/open", json={"root_path": str(repo)})
+    assert opened.status_code == 200, opened.text
+    git_project_id = opened.json()["id"]
+    git_req, git_criteria = _requirement_with_criteria(client, git_project_id)
+    git_artifact = _make_evidence_artifact(_app, git_project_id)
+    ok = client.post(
+        f"/api/requirements/{git_req}/criteria/{git_criteria[0]}/verify",
+        json={"evidence_artifact_id": git_artifact},
+    )
+    assert ok.status_code == 200, ok.text
+    git_trace = client.get(f"/api/projects/{git_project_id}/oversight/traceability").json()
+    (git_entry,) = [e for e in git_trace["requirements"] if e["id"] == git_req]
+    (git_criterion,) = [c for c in git_entry["criteria"] if c["id"] == git_criteria[0]]
+    assert git_criterion["verification"]["source_head_sha"] == head
+
+
+def test_requirement_dto_exposes_created_at(app: FastAPI, project: tuple) -> None:
+    """Identity improvement: RequirementOut carries the existing created_at."""
+    _app, client, project_id, _tmp = project
+    listed = client.get(f"/api/projects/{project_id}/requirements").json()
+    assert isinstance(listed, list)
+    requirement_id, _criteria = _requirement_with_criteria(client, project_id)
+    listed = client.get(f"/api/projects/{project_id}/requirements").json()
+    entry = next(r for r in listed if r["id"] == requirement_id)
+    assert entry["created_at"], "RequirementOut must expose created_at"
+    single = client.get(f"/api/requirements/{requirement_id}").json()
+    assert single["created_at"] == entry["created_at"]

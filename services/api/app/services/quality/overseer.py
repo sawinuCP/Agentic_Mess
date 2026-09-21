@@ -14,6 +14,7 @@ Rules enforced here (not negotiable by agents):
 
 from __future__ import annotations
 
+import subprocess
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -25,11 +26,13 @@ from app.core.errors import DomainError
 from app.db.models import (
     AcceptanceCriterion,
     Artifact,
+    Project,
     Requirement,
     Task,
     TaskAttempt,
     Validation,
 )
+from app.services.core.events import emit_event
 
 
 def criterion_state(db: Session, criterion: AcceptanceCriterion) -> str:
@@ -42,6 +45,30 @@ def criterion_state(db: Session, criterion: AcceptanceCriterion) -> str:
     if criterion.status == "verified" or any(v.status == "passed" for v in validations):
         return "verified"
     return "unknown"
+
+
+def _verification_provenance(validation: Validation | None) -> dict[str, Any] | None:
+    """Latest verification record per criterion for traceability readers.
+
+    Returns None when never verified — the UI renders the missing-evidence
+    path instead. Detail keys follow the provenance design note; created_at
+    is the verification timestamp (verified_at).
+    """
+    if validation is None:
+        return None
+    detail = validation.detail or {}
+    return {
+        "validation_id": str(validation.id),
+        "verified_at": validation.created_at.isoformat() if validation.created_at else None,
+        "status": validation.status,
+        "evidence_artifact_id": (
+            str(validation.evidence_artifact_id) if validation.evidence_artifact_id else None
+        ),
+        "task_id": str(validation.task_id) if validation.task_id else None,
+        "source_head_sha": detail.get("source_head_sha"),
+        "source_branch": detail.get("source_branch"),
+        "source_dirty": detail.get("source_dirty"),
+    }
 
 
 def _requirement_entry(db: Session, requirement: Requirement) -> dict[str, Any]:
@@ -57,6 +84,13 @@ def _requirement_entry(db: Session, requirement: Requirement) -> dict[str, Any]:
         if criterion_ids
         else []
     )
+    latest_by_criterion: dict[uuid.UUID, Validation] = {}
+    for validation in validations:
+        if validation.acceptance_criterion_id is None:
+            continue
+        current = latest_by_criterion.get(validation.acceptance_criterion_id)
+        if current is None or validation.created_at > current.created_at:
+            latest_by_criterion[validation.acceptance_criterion_id] = validation
     criterion_entries = [
         {
             "id": str(criterion.id),
@@ -64,6 +98,7 @@ def _requirement_entry(db: Session, requirement: Requirement) -> dict[str, Any]:
             "kind": criterion.kind,
             "mandatory": criterion.mandatory,
             "state": criterion_state(db, criterion),
+            "verification": _verification_provenance(latest_by_criterion.get(criterion.id)),
         }
         for criterion in criteria
     ]
@@ -140,6 +175,53 @@ def traceability_report(db: Session, project_id: uuid.UUID) -> dict[str, Any]:
     }
 
 
+def _source_provenance(root_path: str | None) -> dict[str, Any]:
+    """Best-effort source-state binding for a verification (design note
+    ``docs/architecture/verification-provenance.md``).
+
+    Sync subprocess (not GitClient) because verify_criterion runs in sync
+    service contexts. Every failure mode — non-git project, missing binary,
+    timeout — yields explicit nulls, never an exception: provenance must not
+    break verification itself.
+    """
+    provenance: dict[str, Any] = {
+        "source_head_sha": None,
+        "source_branch": None,
+        "source_dirty": None,
+    }
+    if not root_path:
+        return provenance
+    try:
+        completed = subprocess.run(
+            ["git", "-C", root_path, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if completed.returncode != 0:
+            return provenance
+        provenance["source_head_sha"] = completed.stdout.strip() or None
+        branch = subprocess.run(
+            ["git", "-C", root_path, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if branch.returncode == 0 and branch.stdout.strip():
+            provenance["source_branch"] = branch.stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", root_path, "status", "--porcelain=v1"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if dirty.returncode == 0:
+            provenance["source_dirty"] = bool(dirty.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return provenance
+
+
 def verify_criterion(
     db: Session,
     criterion_id: uuid.UUID,
@@ -161,6 +243,8 @@ def verify_criterion(
     if artifact is None:
         raise DomainError("Evidence artifact not found — verification requires evidence", 404)
 
+    project = db.get(Project, artifact.project_id) if artifact.project_id else None
+    provenance = _source_provenance(project.root_path if project else None)
     validation = Validation(
         project_id=artifact.project_id,
         task_id=task_id,
@@ -168,10 +252,30 @@ def verify_criterion(
         kind="requirement",
         status="passed",
         evidence_artifact_id=artifact.id,
-        detail={"artifact_name": artifact.name, **(detail or {})},
+        detail={
+            "artifact_name": artifact.name,
+            "artifact_sha256": artifact.sha256,
+            **provenance,
+            **(detail or {}),
+        },
     )
     db.add(validation)
+    db.flush()  # assign validation.id for the event payload below (same transaction)
     criterion.status = "verified"
+    emit_event(
+        db,
+        "CRITERION_VERIFIED",
+        source="overseer",
+        project_id=artifact.project_id,
+        task_id=task_id,
+        payload={
+            "criterion_id": str(criterion.id),
+            "requirement_id": str(criterion.requirement_id),
+            "validation_id": str(validation.id),
+            "evidence_artifact_id": str(artifact.id),
+            **provenance,
+        },
+    )
     db.commit()
     return {
         "criterion_id": str(criterion.id),
